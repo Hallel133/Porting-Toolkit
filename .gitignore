@@ -1,0 +1,11 @@
+/target/
+engine/.venv/
+__pycache__/
+.pytest_cache/
+*.ptk
+*.ptk.partial
+.DS_Store
+._*
+# Never commit game files.
+/game/
+/games/

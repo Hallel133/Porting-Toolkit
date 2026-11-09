@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: Python engine environment
+        working-directory: engine
+        run: uv sync --locked
+
+      - name: cargo fmt
+        run: cargo fmt --all --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: cargo test
+        env:
+          PTK_PYTHON: ${{ github.workspace }}/engine/.venv/bin/python
+        run: cargo test --workspace --locked
+
+      - name: pytest
+        working-directory: engine
+        run: uv run --locked pytest
+
+      - name: Smoke test
+        run: |
+          cargo run --locked -q -p ptk-cli -- --no-color
+          cargo run --locked -q -p ptk-cli -- scan fixtures/games/unity-windows
