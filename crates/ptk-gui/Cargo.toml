@@ -22,3 +22,8 @@ serde_json.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+
+# The native macOS menu bar.
+[target.'cfg(target_os = "macos")'.dependencies]
+muda = { version = "0.21", default-features = false }
+arboard = { version = "3", default-features = false }

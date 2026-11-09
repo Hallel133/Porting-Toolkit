@@ -114,23 +114,31 @@ SDK is the owner's separate project and is not part of phase 1.
 
 ## Desktop GUI (`crates/ptk-gui`)
 
-- `theme.rs`: an editor-style dark blue look (activity bar, side bar, editor,
-  blue status bar, code-editor accent colors). On macOS it loads the system
-  UI font from `/System/Library/Fonts` at runtime (never bundled);
-  `PTK_GUI_FONTS=builtin` uses egui's fonts.
-- `app.rs`: state, background jobs and window chrome. Engine calls, hashing,
-  packing and verifying run on a thread and send a `Msg` back over a channel;
-  the thread calls `request_repaint` so the idle UI wakes up. One job at a
-  time (`busy`). Recent projects and games live in `<data>/gui-state.json`.
-- `views.rs`: side bar and editor content of each view. `widgets.rs`: the
-  painted wordmark, cards, badges, bars, path fields with native pickers.
-- Edits go to an in-memory `Manifest`; `saved` holds the on-disk copy, so a
-  dot in the tab and status bar marks unsaved changes. Save (⌘S) validates
-  first and refuses invalid values.
-- Drop a project folder (opens it), a `.ptk` file (Share → Unpack) or any
-  other folder (Scan) on the window.
-- `ptk-gui --view scan --project P --game G --run --screenshot out.png`
-  opens a view, runs its job, saves a screenshot once the job is done and
+- `theme.rs`: deep navy surfaces with code-editor accent colors (blue
+  #007ACC / #3794FF, teal, soft yellow, orange, green, red). On macOS the
+  system UI font is loaded from `/System/Library/Fonts` at runtime (never
+  bundled); `PTK_GUI_FONTS=builtin` uses egui's fonts.
+- Layout (`app.rs`): a header with the logo, the project switcher (new,
+  open, recent, close), navigation pills (labels collapse to icons in narrow
+  windows) and Targets/Doctor buttons; a busy pill shows background work.
+  Pages (`views.rs`) are centred columns of cards that reflow: two or three
+  columns when there is room, one when narrow.
+- `menu.rs`: every action is a `Command`, listed once in `menus()`. On
+  macOS the native menu bar is built with `muda` (app menu with the native
+  About panel, File, Edit, View, Tools, Window, Help, plus Open Recent) and
+  items are enabled from `MenuState`. Menu clicks arrive on a channel and
+  wake the UI. Edit items are turned into egui events (copy/cut/paste/undo/
+  select all), so they act on the focused text field. Other systems get the
+  same commands from a ☰ button in the header and egui shortcuts.
+- Background jobs: engine calls, hashing, packing and verifying run on a
+  thread and send a `Msg` back; one job at a time (`busy`). Recent projects
+  and games live in `<data>/gui-state.json`.
+- Edits go to an in-memory `Manifest`; `saved` holds the on-disk copy, so an
+  "Unsaved changes" bar and a dot on the project chip mark edits. Save (⌘S)
+  validates first and refuses invalid values.
+- `ptk-gui --view scan --project P --game G --run --screenshot out.png
+  [--size WxH]` opens a page, runs its job, saves a screenshot when done and
   closes. `--smoke` opens the window for three seconds.
-- Tests in `app.rs` render every view headlessly through `egui::Context::run`
-  and drive the real jobs (scan, record, pack, verify, unpack).
+- Tests (`app.rs`, `menu.rs`) render every page headlessly through
+  `egui::Context::run`, drive the real jobs, and check command ids,
+  shortcuts and enabled states.

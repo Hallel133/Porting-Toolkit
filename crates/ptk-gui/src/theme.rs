@@ -1,5 +1,7 @@
-//! The GUI theme: an editor-style dark blue look (activity bar, side bar,
-//! editor area, blue status bar), with code-editor accent colors.
+//! The GUI theme: deep navy surfaces with code-editor accent colors
+//! (blue #007ACC / #3794FF, teal, soft yellow, orange, green, red).
+//! Layout is the app's own: a header with the project switcher and
+//! navigation pills, and centred pages of rounded cards.
 
 use std::sync::Arc;
 
@@ -12,13 +14,12 @@ pub const fn rgb(r: u8, g: u8, b: u8) -> Color32 {
 }
 
 // Surfaces, darkest to lightest.
-pub const ACTIVITY_BAR: Color32 = rgb(10, 19, 35);
-pub const SIDE_BAR: Color32 = rgb(14, 26, 46);
-pub const EDITOR: Color32 = rgb(18, 33, 57);
-pub const TAB_BAR: Color32 = rgb(13, 24, 42);
-pub const CARD: Color32 = rgb(23, 41, 69);
+pub const HEADER: Color32 = rgb(10, 19, 35);
+pub const PAGE: Color32 = rgb(14, 26, 46);
 pub const INPUT: Color32 = rgb(11, 21, 38);
-pub const HOVER: Color32 = rgb(31, 53, 86);
+pub const CARD: Color32 = rgb(21, 38, 64);
+pub const SURFACE: Color32 = rgb(28, 49, 80);
+pub const HOVER: Color32 = rgb(34, 58, 94);
 pub const BORDER: Color32 = rgb(36, 58, 92);
 pub const SELECTION: Color32 = rgb(38, 79, 120);
 
@@ -30,7 +31,6 @@ pub const TEXT_FAINT: Color32 = rgb(92, 110, 138);
 // Accents.
 pub const ACCENT: Color32 = rgb(0, 122, 204);
 pub const FOCUS: Color32 = rgb(55, 148, 255);
-pub const STATUS_BAR: Color32 = rgb(0, 122, 204);
 pub const BLUE: Color32 = rgb(86, 156, 214);
 pub const LIGHT_BLUE: Color32 = rgb(156, 220, 254);
 pub const TEAL: Color32 = rgb(78, 201, 176);
@@ -92,18 +92,18 @@ pub fn apply(style: &mut egui::Style) {
     ]
     .into();
     style.spacing.item_spacing = egui::vec2(8., 6.);
-    style.spacing.button_padding = egui::vec2(12., 4.);
-    style.spacing.interact_size.y = 26.;
+    style.spacing.button_padding = egui::vec2(14., 5.);
+    style.spacing.interact_size.y = 28.;
     style.spacing.combo_width = 140.;
     style.spacing.text_edit_width = 360.;
 
     let mut v = Visuals::dark();
     v.override_text_color = Some(TEXT);
-    v.panel_fill = EDITOR;
-    v.window_fill = SIDE_BAR;
+    v.panel_fill = PAGE;
+    v.window_fill = CARD;
     v.window_stroke = Stroke::new(1.0_f32, BORDER);
-    v.window_corner_radius = 6.into();
-    v.menu_corner_radius = 4.into();
+    v.window_corner_radius = 10.into();
+    v.menu_corner_radius = 8.into();
     v.window_shadow = egui::Shadow {
         offset: [0, 10],
         blur: 30,
@@ -122,7 +122,7 @@ pub fn apply(style: &mut egui::Style) {
     v.text_cursor.stroke = Stroke::new(2.0_f32, FOCUS);
     for (w, fill, stroke) in [
         (&mut v.widgets.noninteractive, CARD, BORDER),
-        (&mut v.widgets.inactive, rgb(28, 49, 80), rgb(44, 70, 108)),
+        (&mut v.widgets.inactive, SURFACE, rgb(44, 70, 108)),
         (&mut v.widgets.hovered, HOVER, FOCUS),
         (&mut v.widgets.active, ACCENT, FOCUS),
         (&mut v.widgets.open, HOVER, FOCUS),
@@ -130,7 +130,7 @@ pub fn apply(style: &mut egui::Style) {
         w.bg_fill = fill;
         w.weak_bg_fill = fill;
         w.bg_stroke = Stroke::new(1.0_f32, stroke);
-        w.corner_radius = 3.into();
+        w.corner_radius = 6.into();
         w.expansion = 0.;
     }
     v.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, TEXT);

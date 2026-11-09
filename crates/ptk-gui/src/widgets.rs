@@ -54,16 +54,210 @@ pub fn wordmark(ui: &mut Ui, cell: f32) -> egui::Response {
     response
 }
 
-/// An upper-case side bar section title.
-pub fn section(ui: &mut Ui, title: &str) {
-    ui.add_space(6.0);
-    ui.label(
-        RichText::new(title.to_uppercase())
-            .size(11.0)
-            .color(TEXT_WEAK)
-            .strong(),
+/// The app mark: a rounded blue square with "PT".
+pub fn logo(ui: &mut Ui, size: f32) {
+    let (rect, _) = ui.allocate_exact_size(vec2(size, size), Sense::hover());
+    let p = ui.painter();
+    p.rect_filled(rect, CornerRadius::same((size * 0.28) as u8), ACCENT);
+    let bar = Rect::from_min_max(
+        egui::pos2(rect.min.x + size * 0.24, rect.max.y - size * 0.2),
+        egui::pos2(rect.max.x - size * 0.24, rect.max.y - size * 0.13),
     );
-    ui.add_space(2.0);
+    p.rect_filled(bar, CornerRadius::same(2), TEAL);
+    p.text(
+        rect.center() - vec2(0.0, size * 0.06),
+        Align2::CENTER_CENTER,
+        "PT",
+        FontId::proportional(size * 0.44),
+        Color32::WHITE,
+    );
+}
+
+/// A navigation pill in the header; icon only when `labels` is false.
+pub fn nav_pill(
+    ui: &mut Ui,
+    icon: &str,
+    label: &str,
+    selected: bool,
+    labels: bool,
+) -> egui::Response {
+    let text = if labels {
+        format!("{icon}  {label}")
+    } else {
+        icon.to_owned()
+    };
+    let galley = ui
+        .painter()
+        .layout_no_wrap(text, FontId::proportional(13.5), Color32::WHITE);
+    let size = vec2(galley.size().x + 26.0, 34.0);
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+    let (fill, color) = if selected {
+        (SELECTION, Color32::WHITE)
+    } else if response.hovered() {
+        (HOVER, TEXT)
+    } else {
+        (Color32::TRANSPARENT, TEXT_WEAK)
+    };
+    ui.painter().rect_filled(rect, CornerRadius::same(17), fill);
+    if selected {
+        ui.painter().rect_stroke(
+            rect,
+            CornerRadius::same(17),
+            Stroke::new(1.0_f32, FOCUS.gamma_multiply(0.7)),
+            StrokeKind::Inside,
+        );
+    }
+    ui.painter()
+        .galley(rect.center() - galley.size() / 2.0, galley, color);
+    response
+}
+
+/// A round icon button (header right side).
+pub fn icon_button(ui: &mut Ui, icon: &str, selected: bool) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(34.0, 34.0), Sense::click());
+    let fill = if selected {
+        SELECTION
+    } else if response.hovered() {
+        HOVER
+    } else {
+        Color32::TRANSPARENT
+    };
+    ui.painter().rect_filled(rect, CornerRadius::same(17), fill);
+    centered_text(
+        ui,
+        rect,
+        icon,
+        16.0,
+        if selected || response.hovered() {
+            Color32::WHITE
+        } else {
+            TEXT_WEAK
+        },
+    );
+    response
+}
+
+/// Spinner and label while a background job runs.
+pub fn busy_pill(ui: &mut Ui, label: &str) {
+    Frame::new()
+        .fill(SURFACE)
+        .corner_radius(CornerRadius::same(14))
+        .inner_margin(Margin::symmetric(12, 5))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.add(egui::Spinner::new().size(13.0).color(FOCUS));
+                ui.label(RichText::new(label).size(12.5).color(TEXT));
+            });
+        });
+}
+
+/// A segmented control; returns true when the value changed.
+pub fn segmented<T: PartialEq + Copy>(
+    ui: &mut Ui,
+    value: &mut T,
+    options: &[(T, &str, Color32)],
+) -> bool {
+    let mut changed = false;
+    let seg_w = 96.0;
+    let (rect, _) =
+        ui.allocate_exact_size(vec2(seg_w * options.len() as f32, 28.0), Sense::hover());
+    ui.painter().rect_filled(rect, CornerRadius::same(8), INPUT);
+    for (i, (v, label, color)) in options.iter().enumerate() {
+        let r = Rect::from_min_size(rect.min + vec2(seg_w * i as f32, 0.0), vec2(seg_w, 28.0))
+            .shrink(2.0);
+        let response = ui.interact(
+            r,
+            ui.id()
+                .with(("seg", i, rect.min.x as i32, rect.min.y as i32)),
+            Sense::click(),
+        );
+        let selected = *value == *v;
+        if selected {
+            ui.painter()
+                .rect_filled(r, CornerRadius::same(6), color.gamma_multiply(0.22));
+            ui.painter().rect_stroke(
+                r,
+                CornerRadius::same(6),
+                Stroke::new(1.0_f32, color.gamma_multiply(0.7)),
+                StrokeKind::Inside,
+            );
+        } else if response.hovered() {
+            ui.painter().rect_filled(r, CornerRadius::same(6), HOVER);
+        }
+        centered_text(
+            ui,
+            r,
+            label,
+            13.0,
+            if selected { *color } else { TEXT_WEAK },
+        );
+        if response.clicked() && !selected {
+            *value = *v;
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// Color of an asset category in charts.
+pub fn category_color(id: &str) -> Color32 {
+    match id {
+        "textures" => FOCUS,
+        "models" => PURPLE,
+        "audio" => TEAL,
+        "video" => ORANGE,
+        "shaders" => YELLOW,
+        "scripts" => GREEN,
+        "data" => LIGHT_BLUE,
+        "fonts" => rgb(214, 157, 133),
+        "localization" => rgb(184, 215, 163),
+        "archives" => BLUE,
+        "executables" => ERROR,
+        _ => TEXT_FAINT,
+    }
+}
+
+/// One horizontal bar split into colored segments (`share` sums to ≤ 1).
+pub fn stacked_bar(ui: &mut Ui, parts: &[(f64, Color32)]) {
+    let width = ui.available_width();
+    let (rect, _) = ui.allocate_exact_size(vec2(width, 16.0), Sense::hover());
+    ui.painter().rect_filled(rect, CornerRadius::same(8), INPUT);
+    let mut x = rect.min.x;
+    for (share, color) in parts {
+        let w =
+            (rect.width() * share.clamp(0.0, 1.0) as f32).max(if *share > 0.0 { 3.0 } else { 0.0 });
+        let r = Rect::from_min_size(
+            egui::pos2(x, rect.min.y),
+            vec2(w.min(rect.max.x - x), rect.height()),
+        );
+        ui.painter().rect_filled(r, CornerRadius::ZERO, *color);
+        x += w;
+    }
+    ui.painter().rect_stroke(
+        rect,
+        CornerRadius::same(8),
+        Stroke::new(2.0_f32, CARD),
+        StrokeKind::Outside,
+    );
+}
+
+/// Page title and subtitle.
+pub fn page_header(ui: &mut Ui, title: &str, subtitle: &str) {
+    ui.label(
+        RichText::new(title)
+            .size(26.0)
+            .strong()
+            .color(Color32::WHITE),
+    );
+    if !subtitle.is_empty() {
+        ui.label(RichText::new(subtitle).size(14.0).color(TEXT_WEAK));
+    }
+    ui.add_space(14.0);
+}
+
+/// Number of columns that fit, each at least `min` wide.
+pub fn columns_for(ui: &Ui, min: f32, max: usize) -> usize {
+    ((ui.available_width() / min).floor() as usize).clamp(1, max)
 }
 
 /// A panel with a border, for grouping content in the editor area.
@@ -71,11 +265,13 @@ pub fn card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     Frame::new()
         .fill(CARD)
         .stroke(Stroke::new(1.0_f32, BORDER))
-        .corner_radius(CornerRadius::same(6))
-        .inner_margin(Margin::same(14))
+        .corner_radius(CornerRadius::same(12))
+        .inner_margin(Margin::same(18))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
-            add(ui)
+            // Plain top-down layout: columns are justified, cards are not.
+            ui.with_layout(egui::Layout::top_down(egui::Align::Min), add)
+                .inner
         })
         .inner
 }
@@ -113,16 +309,6 @@ pub fn badge(ui: &mut Ui, text: &str, color: Color32) {
     );
     ui.painter()
         .galley(rect.center() - galley.size() / 2.0, galley, color);
-}
-
-/// A horizontal share bar, `share` in 0..=1.
-pub fn share_bar(ui: &mut Ui, share: f64, width: f32) {
-    let (rect, _) = ui.allocate_exact_size(vec2(width, 10.0), Sense::hover());
-    ui.painter().rect_filled(rect, CornerRadius::same(2), INPUT);
-    let w = (rect.width() * share.clamp(0.0, 1.0) as f32).max(if share > 0.0 { 2.0 } else { 0.0 });
-    let filled = Rect::from_min_size(rect.min, vec2(w, rect.height()));
-    ui.painter()
-        .rect_filled(filled, CornerRadius::same(2), FOCUS);
 }
 
 /// A primary (filled blue) button.
@@ -199,8 +385,8 @@ pub fn message(ui: &mut Ui, color: Color32, text: &str) {
     Frame::new()
         .fill(color.gamma_multiply(0.12))
         .stroke(Stroke::new(1.0_f32, color.gamma_multiply(0.5)))
-        .corner_radius(CornerRadius::same(4))
-        .inner_margin(Margin::symmetric(10, 8))
+        .corner_radius(CornerRadius::same(8))
+        .inner_margin(Margin::symmetric(12, 9))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.label(RichText::new(text).color(TEXT));

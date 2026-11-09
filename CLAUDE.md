@@ -24,7 +24,7 @@ A community tool to manage, convert, export and import game projects between pla
 ## Commands
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"          # cargo is not on the default PATH on the owner's Mac
-cargo test --workspace                        # 47 Rust tests (incl. 7 GUI tests), starts the real Python engine
+cargo test --workspace                        # 50 Rust tests (incl. 10 GUI/menu tests), starts the real Python engine
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 (cd engine && uv run pytest)                  # 38 Python tests
@@ -45,13 +45,14 @@ cargo run -p ptk-gui -- --view scan --project P --game G --run --screenshot out.
 - `ptk doctor` was run for real on the owner's Mac; it created the managed env with uv.
 
 ## Done (phase 2, 2026-11-09)
-- Owner chose a **new theme, not Grand-V's**: "VS Code colors, dark blue". `crates/ptk-gui/src/theme.rs` is an editor-style dark blue look: activity bar, side bar, tab strip + breadcrumbs, blue status bar (#007ACC), code-editor accents. System UI font loaded at runtime on macOS (not bundled); `PTK_GUI_FONTS=builtin` disables it.
-- Views: Welcome (painted wordmark), Explorer/project form (⌘S save, revert, problems list), Scan (+ Record into project), Advanced options (per-category action/quality/max resolution/format + presets), Share (pack/unpack/verify), Plugins (list, validate, create, install with a permission confirmation modal), Targets, Doctor, About. Drag-and-drop of project folders, `.ptk` files and game folders.
-- Shared logic moved from the CLI into `ptk-core` (`scan`, `project`, `doctor`, `plugins`, `banner`, `error`); the CLI output is unchanged.
+- Owner feedback round 1: "VS Code colors, dark blue". Round 2 (same day): **only the colors**, not VS Code's layout, and **a native macOS menu bar**. Current design: header (logo, project switcher, navigation pills, Targets/Doctor), centred responsive pages of cards, same dark navy + editor accent palette. No activity bar, side bar or status bar; do not bring them back.
+- Native menu bar (`menu.rs`, `muda` 0.21, macOS only): Porting Toolkit (native About panel, Hide, Quit), File (New/Open/Open Recent/Save/Revert/Pack/Unpack/Close), Edit, View (⌘1–⌘7, full screen), Tools (scan, verify, doctor, engine setup, show folders), Window, Help (links to the docs). **Not verified visually by Claude**: macOS denied accessibility and screen capture to the session, so the owner must check the bar.
+- Pages: Home, Project (details, game, targets, workflow stepper, problems, folder), Scan (stacked category bar), Options (segmented Keep/Drop/Recompress per category, presets), Share (pack/unpack/verify), Plugins, Targets, Doctor, About. Drag-and-drop of project folders, `.ptk` files and game folders.
+- Shared logic lives in `ptk-core` (`scan`, `project`, `doctor`, `plugins`, `banner`, `error`); the CLI output is unchanged.
 - GUI screenshots in `docs/images/gui-*.png`. Do not commit screenshots that show local paths (user name).
 
 ## Next task
-1. Owner: try `cargo run --release -p ptk-gui` and give feedback on the look.
+1. Owner: try `cargo run --release -p ptk-gui`, check the macOS menu bar and shortcuts, and give feedback on the look.
 2. Phase 3: plugin runtime (separate process, restricted cwd, declared folders only), recipe format, marketplace with reviewed flag, AI-assisted advanced options. Phase 4: Windows/Linux.
 3. Not tested: Linux/Windows builds (CI adds `libgtk-3-dev` etc. for rfd/egui but Actions is blocked on the account), app bundling (`.app`, icon), real games (only fixtures and a sparse fake).
 

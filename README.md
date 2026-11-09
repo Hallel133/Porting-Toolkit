@@ -64,20 +64,24 @@ ptk verify ~/Games/MyGame -p my-port  # is this the same game version?
 
 ## Desktop app
 
-`ptk-gui` is an editor-style desktop app in dark blue: an activity bar
-(Explorer, Scan, Advanced options, Share, Plugins, Targets, Doctor), a side
-bar, the editor area and a blue status bar. It does everything the CLI does,
-and you can drop a project folder, a `.ptk` file or a game folder on the window.
+`ptk-gui` is the desktop app: a header with the project switcher and
+navigation (Home, Project, Scan, Options, Share, Plugins, plus Targets and
+Doctor), and pages of cards that reflow to the window width. On macOS it has
+a real menu bar (File, Edit, View, Tools, Window, Help) with the usual
+shortcuts: ⌘N new project, ⌘O open, ⌘S save, ⇧⌘E pack, ⇧⌘G scan a game,
+⌘R scan again, ⌘1–⌘7 switch pages. You can also drop a project folder, a
+`.ptk` file or a game folder on the window.
 
 ```bash
 cargo run --release -p ptk-gui
 ```
 
-![Porting Toolkit desktop app: scan view](docs/images/gui-scan.png)
+![Porting Toolkit desktop app: scan page](docs/images/gui-scan.png)
 
 | | |
 |---|---|
-| ![Welcome](docs/images/gui-welcome.png) | ![Advanced options](docs/images/gui-options.png) |
+| ![Home](docs/images/gui-home.png) | ![Advanced options](docs/images/gui-options.png) |
+| ![Project](docs/images/gui-project.png) | ![Narrow window](docs/images/gui-narrow.png) |
 
 ## Commands
 
@@ -150,7 +154,7 @@ MIT. See [LICENSE](LICENSE).
 
 ### אפליקציה גרפית
 
-`ptk-gui` היא אפליקציית דסקטופ בסגנון עורך קוד בגוון כחול כהה: סרגל פעילות, סרגל צד, אזור עבודה ושורת סטטוס כחולה. היא עושה כל מה שה-CLI עושה, ואפשר לגרור אליה תיקיית פרויקט, קובץ `.ptk` או תיקיית משחק. הפעלה: `cargo run --release -p ptk-gui`.
+`ptk-gui` היא אפליקציית דסקטופ בגוונים של כחול כהה: כותרת עם בורר פרויקטים וניווט, ודפים של כרטיסים שמתאימים את עצמם לרוחב החלון. ב-macOS יש לה menu bar אמיתי (File, Edit, View, Tools, Window, Help) עם קיצורי מקלדת (⌘N, ⌘O, ⌘S, ⌘1–⌘7 ועוד). היא עושה כל מה שה-CLI עושה, ואפשר לגרור אליה תיקיית פרויקט, קובץ `.ptk` או תיקיית משחק. הפעלה: `cargo run --release -p ptk-gui`.
 
 ### מפת דרכים
 

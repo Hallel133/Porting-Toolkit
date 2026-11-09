@@ -1,5 +1,6 @@
-//! Application state, background jobs and the window chrome (activity bar,
-//! side bar, editor tab strip, status bar). The views live in `views.rs`.
+//! Application state, background jobs, commands and the window chrome (a
+//! header with the project switcher and navigation). Pages live in
+//! `views.rs`, the menu bar in `menu.rs`.
 //!
 //! Long work (engine calls, hashing, packing) runs on a thread and reports
 //! back through a channel; the thread wakes the UI with `request_repaint`.
@@ -10,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use eframe::egui::{
     self, Align, Color32, CornerRadius, Frame, Key, KeyboardShortcut, Layout, Margin, Modifiers,
-    RichText, Sense, Stroke, vec2,
+    RichText, Stroke, vec2,
 };
 use ptk_core::doctor::Check;
 use ptk_core::engine::EngineClient;
@@ -23,13 +24,14 @@ use ptk_core::targets::TargetRegistry;
 use ptk_core::verify::VerifyReport;
 use serde::{Deserialize, Serialize};
 
+use crate::menu::{Command, MenuState};
 use crate::theme::*;
 use crate::widgets;
 
-/// The views of the activity bar.
+/// The pages of the app.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum View {
-    Welcome,
+    Home,
     Project,
     Scan,
     Options,
@@ -41,8 +43,8 @@ pub enum View {
 }
 
 impl View {
-    /// Activity bar order (About sits at the bottom).
-    pub const TOP: [View; 7] = [
+    pub const ALL: [View; 9] = [
+        View::Home,
         View::Project,
         View::Scan,
         View::Options,
@@ -50,11 +52,12 @@ impl View {
         View::Plugins,
         View::Targets,
         View::Doctor,
+        View::About,
     ];
 
     pub fn icon(self) -> &'static str {
         match self {
-            View::Welcome => "🏠",
+            View::Home => "🏠",
             View::Project => "🗀",
             View::Scan => "🔍",
             View::Options => "⚙",
@@ -68,10 +71,10 @@ impl View {
 
     pub fn title(self) -> &'static str {
         match self {
-            View::Welcome => "Welcome",
-            View::Project => "Explorer",
+            View::Home => "Home",
+            View::Project => "Project",
             View::Scan => "Scan",
-            View::Options => "Advanced options",
+            View::Options => "Options",
             View::Share => "Share",
             View::Plugins => "Plugins",
             View::Targets => "Targets",
@@ -81,14 +84,11 @@ impl View {
     }
 
     pub fn parse(s: &str) -> Option<View> {
-        [View::Welcome, View::About]
-            .into_iter()
-            .chain(View::TOP)
-            .find(|v| {
-                v.title().eq_ignore_ascii_case(s)
-                    || format!("{v:?}").eq_ignore_ascii_case(s)
-                    || (s == "options" && *v == View::Options)
-            })
+        View::ALL.into_iter().find(|v| {
+            v.title().eq_ignore_ascii_case(s)
+                || format!("{v:?}").eq_ignore_ascii_case(s)
+                || (s.eq_ignore_ascii_case("welcome") && *v == View::Home)
+        })
     }
 }
 
@@ -186,6 +186,8 @@ pub struct Config {
     pub auto_run: bool,
     pub screenshot: Option<PathBuf>,
     pub smoke: bool,
+    /// Install the native menu bar (macOS; never in tests).
+    pub native_menu: bool,
 }
 
 pub struct App {
@@ -195,7 +197,6 @@ pub struct App {
     state_file: PathBuf,
 
     pub project: Option<OpenProject>,
-    pub open_input: String,
     pub new_dir: String,
     pub new_title: String,
 
@@ -224,6 +225,9 @@ pub struct App {
     pub toast: Option<(String, ToastKind, Instant)>,
     tx: Sender<Msg>,
     rx: Receiver<Msg>,
+    menu_rx: Receiver<Command>,
+    #[cfg(target_os = "macos")]
+    native_menu: Option<crate::menu::NativeMenu>,
 
     created: Instant,
     screenshot: Option<PathBuf>,
@@ -233,19 +237,27 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: Config, ctx: &egui::Context) -> Self {
         let (tx, rx) = channel();
+        #[allow(unused_variables)]
+        let (menu_tx, menu_rx) = channel();
+        #[cfg(target_os = "macos")]
+        let native_menu = config.native_menu.then(|| {
+            let ctx = ctx.clone();
+            crate::menu::NativeMenu::install(menu_tx, move || ctx.request_repaint())
+        });
+        #[cfg(not(target_os = "macos"))]
+        let _ = (ctx, &config.native_menu);
         let state_file = config
             .state_file
             .clone()
             .unwrap_or_else(|| ptk_core::paths::data_dir().join("gui-state.json"));
         let mut app = App {
-            view: config.view.unwrap_or(View::Welcome),
+            view: config.view.unwrap_or(View::Home),
             registry: TargetRegistry::load_default().0,
             state: GuiState::load(&state_file),
             state_file,
             project: None,
-            open_input: String::new(),
             new_dir: String::new(),
             new_title: String::new(),
             game_input: config
@@ -278,6 +290,9 @@ impl App {
             toast: None,
             tx,
             rx,
+            menu_rx,
+            #[cfg(target_os = "macos")]
+            native_menu,
             created: Instant::now(),
             screenshot: config.screenshot,
             screenshot_requested: false,
@@ -313,7 +328,7 @@ impl App {
                 self.state.save(&self.state_file);
                 self.pack_result = None;
                 self.verify_result = None;
-                if self.view == View::Welcome {
+                if self.view == View::Home {
                     self.view = View::Project;
                 }
             }
@@ -670,9 +685,228 @@ impl App {
 
     // ----------------------------------------------------------------- layout
 
+    /// What the menus need to know to enable items.
+    pub fn menu_state(&self) -> MenuState {
+        MenuState {
+            project_open: self.project.is_some(),
+            dirty: self.project.as_ref().is_some_and(|p| p.dirty()),
+            busy: self.busy.is_some(),
+            has_game: !self.game_input.trim().is_empty(),
+            has_hashes: self
+                .project
+                .as_ref()
+                .is_some_and(|p| !p.saved.source_files.is_empty()),
+        }
+    }
+
+    /// Runs a menu or shortcut command (ignored while it is disabled).
+    pub fn run_command(&mut self, cmd: Command, ctx: &egui::Context) {
+        if !self.menu_state().enabled(cmd) {
+            return;
+        }
+        match cmd {
+            Command::NewProject => {
+                if let Some(dir) = rfd::FileDialog::new()
+                    .set_title("Choose a folder for the new project")
+                    .pick_folder()
+                {
+                    if dir.join(MANIFEST_FILE).is_file() {
+                        self.open_project(&dir);
+                    } else {
+                        self.new_dir = dir.display().to_string();
+                        self.create_project();
+                    }
+                }
+            }
+            Command::OpenProject => {
+                if let Some(dir) = rfd::FileDialog::new()
+                    .set_title("Open a Porting Toolkit project")
+                    .pick_folder()
+                {
+                    self.open_project(&dir);
+                    self.view = View::Project;
+                }
+            }
+            Command::OpenRecent(i) => {
+                if let Some(p) = self.state.recent_projects.get(i).cloned() {
+                    self.open_project(&p);
+                    self.view = View::Project;
+                }
+            }
+            Command::Save => self.save_project(),
+            Command::Revert => self.revert_project(),
+            Command::CloseProject => {
+                self.project = None;
+                self.view = View::Home;
+            }
+            Command::UnpackPtk => {
+                let pack = rfd::FileDialog::new()
+                    .add_filter("Porting Toolkit project", &["ptk"])
+                    .set_title("Unpack a .ptk file")
+                    .pick_file();
+                if let Some(pack) = pack {
+                    self.unpack_input = pack.display().to_string();
+                    self.view = View::Share;
+                    if let Some(dest) = rfd::FileDialog::new()
+                        .set_title("Choose a new or empty folder to unpack into")
+                        .pick_folder()
+                    {
+                        self.unpack_dest = dest.display().to_string();
+                        self.start_unpack(ctx);
+                    }
+                }
+            }
+            Command::PackProject => {
+                self.view = View::Share;
+                self.start_pack(ctx);
+            }
+            Command::Undo
+            | Command::Redo
+            | Command::Cut
+            | Command::Copy
+            | Command::Paste
+            | Command::SelectAll => self.inject_edit(ctx, cmd),
+            Command::Go(v) => self.go(v, ctx),
+            Command::ScanGame => {
+                if let Some(dir) = rfd::FileDialog::new()
+                    .set_title("Choose your game folder")
+                    .pick_folder()
+                {
+                    self.game_input = dir.display().to_string();
+                    self.view = View::Scan;
+                    self.start_scan(ctx);
+                }
+            }
+            Command::RescanGame => {
+                self.view = View::Scan;
+                self.start_scan(ctx);
+            }
+            Command::VerifyGame => {
+                if let Some(dir) = rfd::FileDialog::new()
+                    .set_title("Choose your copy of the game")
+                    .pick_folder()
+                {
+                    self.verify_game = dir.display().to_string();
+                    self.view = View::Share;
+                    self.start_verify(ctx);
+                }
+            }
+            Command::RunDoctor => {
+                self.view = View::Doctor;
+                self.start_doctor(ctx, false);
+            }
+            Command::SetUpEngine => {
+                self.view = View::Doctor;
+                self.start_doctor(ctx, true);
+            }
+            Command::RevealData => reveal(&ptk_core::paths::data_dir()),
+            Command::RevealPlugins => {
+                let dir = ptk_core::paths::plugins_dir();
+                let _ = std::fs::create_dir_all(&dir);
+                reveal(&dir);
+            }
+            Command::About => self.view = View::About,
+            Command::Help(i) => {
+                if let Some((_, url)) = crate::menu::HELP_LINKS.get(i) {
+                    open_url(url);
+                }
+            }
+        }
+    }
+
+    /// Switches view, loading what the view needs.
+    pub fn go(&mut self, view: View, ctx: &egui::Context) {
+        self.view = view;
+        if view == View::Plugins && self.plugins.is_none() {
+            self.refresh_plugins(ctx);
+        }
+    }
+
+    /// Edit menu items act on the focused text field, as the keys would.
+    fn inject_edit(&mut self, ctx: &egui::Context, cmd: Command) {
+        let key = |key: Key, shift: bool| egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: if shift {
+                Modifiers::COMMAND | Modifiers::SHIFT
+            } else {
+                Modifiers::COMMAND
+            },
+        };
+        let event = match cmd {
+            Command::Copy => egui::Event::Copy,
+            Command::Cut => egui::Event::Cut,
+            Command::Undo => key(Key::Z, false),
+            Command::Redo => key(Key::Z, true),
+            Command::SelectAll => key(Key::A, false),
+            Command::Paste => match clipboard_text() {
+                Some(text) => egui::Event::Paste(text),
+                None => return,
+            },
+            _ => return,
+        };
+        ctx.input_mut(|i| i.events.push(event));
+    }
+
+    /// Keyboard shortcuts for commands, when no native menu handles them.
+    fn shortcut_commands(&mut self, ctx: &egui::Context) -> Vec<Command> {
+        let mut out = Vec::new();
+        for spec in crate::menu::menus() {
+            for cmd in spec.items.into_iter().flatten() {
+                if matches!(
+                    cmd,
+                    Command::Undo
+                        | Command::Redo
+                        | Command::Cut
+                        | Command::Copy
+                        | Command::Paste
+                        | Command::SelectAll
+                ) {
+                    continue; // egui handles these keys itself
+                }
+                let Some((shift, ch)) = cmd.shortcut() else {
+                    continue;
+                };
+                let Some(key) = Key::from_name(&ch.to_string()) else {
+                    continue;
+                };
+                let mods = if shift {
+                    Modifiers::COMMAND | Modifiers::SHIFT
+                } else {
+                    Modifiers::COMMAND
+                };
+                if ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(mods, key))) {
+                    out.push(cmd);
+                }
+            }
+        }
+        out
+    }
+
     pub fn layout(&mut self, ctx: &egui::Context) {
+        let mut commands: Vec<Command> = self.menu_rx.try_iter().collect();
+        commands.extend(self.shortcut_commands(ctx));
+        for c in commands {
+            self.run_command(c, ctx);
+        }
         self.poll(ctx);
         self.first_run(ctx);
+        #[cfg(target_os = "macos")]
+        if let Some(menu) = &mut self.native_menu {
+            let state = MenuState {
+                project_open: self.project.is_some(),
+                dirty: self.project.as_ref().is_some_and(|p| p.dirty()),
+                busy: self.busy.is_some(),
+                has_game: !self.game_input.trim().is_empty(),
+                has_hashes: self
+                    .project
+                    .as_ref()
+                    .is_some_and(|p| !p.saved.source_files.is_empty()),
+            };
+            menu.sync(state, &self.state.recent_projects);
+        }
         let dropped: Vec<PathBuf> = ctx.input(|i| {
             i.raw
                 .dropped_files
@@ -683,56 +917,35 @@ impl App {
         for p in dropped {
             self.handle_drop(&p);
         }
-        if ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::S)))
-        {
-            self.save_project();
-        }
 
-        egui::TopBottomPanel::bottom("status")
-            .exact_height(24.0)
+        egui::TopBottomPanel::top("header")
+            .exact_height(58.0)
             .frame(
                 Frame::new()
-                    .fill(STATUS_BAR)
-                    .inner_margin(Margin::symmetric(8, 0)),
+                    .fill(HEADER)
+                    .inner_margin(Margin::symmetric(16, 0))
+                    .stroke(Stroke::new(1.0_f32, BORDER)),
             )
-            .show(ctx, |ui| self.status_bar(ui));
-        egui::SidePanel::left("activity")
-            .exact_width(48.0)
-            .resizable(false)
-            .frame(Frame::new().fill(ACTIVITY_BAR))
-            .show(ctx, |ui| self.activity_bar(ui));
-        egui::SidePanel::left("side")
-            .default_width(260.0)
-            .width_range(210.0..=420.0)
-            .frame(
-                Frame::new()
-                    .fill(SIDE_BAR)
-                    .inner_margin(Margin::symmetric(12, 8))
-                    .stroke(Stroke::new(1.0_f32, rgb(8, 15, 28))),
-            )
-            .show(ctx, |ui| {
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| self.side_bar(ui));
-            });
+            .show(ctx, |ui| self.header(ui));
         egui::CentralPanel::default()
-            .frame(Frame::new().fill(EDITOR))
+            .frame(Frame::new().fill(PAGE))
             .show(ctx, |ui| {
-                self.tab_strip(ui);
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
+                        let width = ui.available_width();
+                        let side = ((width - 1120.0) / 2.0).max(0.0)
+                            + if width < 700.0 { 16.0 } else { 32.0 };
                         Frame::new()
                             .inner_margin(Margin {
-                                left: 28,
-                                right: 28,
-                                top: 18,
-                                bottom: 24,
+                                left: side as i8,
+                                right: side as i8,
+                                top: 24,
+                                bottom: 32,
                             })
                             .show(ui, |ui| {
-                                // Cap the width, but never widen past the window.
-                                ui.set_max_width(ui.available_width().min(1000.0));
-                                self.editor(ui);
+                                ui.set_max_width(ui.available_width());
+                                self.page(ui);
                             });
                     });
             });
@@ -740,130 +953,148 @@ impl App {
         self.toast_area(ctx);
     }
 
-    fn activity_bar(&mut self, ui: &mut egui::Ui) {
-        ui.add_space(4.0);
-        for view in View::TOP {
-            self.activity_button(ui, view);
-        }
-        ui.with_layout(Layout::bottom_up(Align::Center), |ui| {
-            ui.add_space(4.0);
-            self.activity_button(ui, View::About);
-        });
-    }
-
-    fn activity_button(&mut self, ui: &mut egui::Ui, view: View) {
-        let (rect, response) = ui.allocate_exact_size(vec2(48.0, 46.0), Sense::click());
-        let selected = self.view == view
-            || (self.view == View::Welcome && view == View::Project && self.project.is_none());
-        let color = if selected || response.hovered() {
-            Color32::WHITE
-        } else {
-            TEXT_FAINT
-        };
-        if selected {
-            ui.painter().rect_filled(
-                egui::Rect::from_min_size(rect.min, vec2(2.0, rect.height())),
-                0.0,
-                Color32::WHITE,
-            );
-        }
-        widgets::centered_text(ui, rect, view.icon(), 21.0, color);
-        if response.on_hover_text(view.title()).clicked() {
-            self.view = view;
-            if view == View::Plugins && self.plugins.is_none() {
-                self.refresh_plugins(ui.ctx());
-            }
-        }
-    }
-
-    fn status_bar(&mut self, ui: &mut egui::Ui) {
+    fn header(&mut self, ui: &mut egui::Ui) {
+        let wide = ui.available_width() >= 1080.0;
+        let medium = ui.available_width() >= 760.0;
         ui.horizontal_centered(|ui| {
-            let white = |t: String| RichText::new(t).color(Color32::WHITE).size(12.0);
-            match &self.project {
-                Some(p) => {
-                    let dirty = if p.dirty() { " ●" } else { "" };
-                    ui.label(white(format!("⎇ {}{dirty}", p.manifest.name)));
-                    let issues = self.issues();
-                    let errors = issues
-                        .iter()
-                        .filter(|i| i.level == ptk_core::manifest::Level::Error)
-                        .count();
-                    ui.label(white(format!("  ✖ {errors}  ▲ {}", issues.len() - errors)));
-                }
-                None => {
-                    ui.label(white("No project open".into()));
+            #[cfg(not(target_os = "macos"))]
+            self.fallback_menu(ui);
+
+            widgets::logo(ui, 30.0);
+            if medium {
+                ui.label(
+                    RichText::new("Porting Toolkit")
+                        .size(15.0)
+                        .strong()
+                        .color(Color32::WHITE),
+                );
+            }
+            ui.add_space(6.0);
+            self.project_chip(ui);
+            ui.add_space(10.0);
+
+            for view in [
+                View::Home,
+                View::Project,
+                View::Scan,
+                View::Options,
+                View::Share,
+                View::Plugins,
+            ] {
+                let selected = self.view == view;
+                if widgets::nav_pill(ui, view.icon(), view.title(), selected, wide)
+                    .on_hover_text(format!(
+                        "{}  {}",
+                        view.title(),
+                        Command::Go(view).shortcut_text()
+                    ))
+                    .clicked()
+                {
+                    self.go(view, ui.ctx());
                 }
             }
-            if let Some(label) = &self.busy {
-                ui.add_space(8.0);
-                ui.add(egui::Spinner::new().size(12.0).color(Color32::WHITE));
-                let extra = match self.scan_progress {
-                    Some(n) if n > 0 => format!(" ({n} files)"),
-                    _ => String::new(),
-                };
-                ui.label(white(format!("{label}…{extra}")));
-            }
+
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                ui.label(white(format!("Porting Toolkit {}", ptk_core::VERSION)));
-                if let Some(host) = self.registry.host() {
-                    ui.label(white(format!("{}   ", host.id)));
+                for view in [View::Doctor, View::Targets] {
+                    if widgets::icon_button(ui, view.icon(), self.view == view)
+                        .on_hover_text(view.title())
+                        .clicked()
+                    {
+                        self.go(view, ui.ctx());
+                    }
+                }
+                if let Some(label) = &self.busy {
+                    let extra = match self.scan_progress {
+                        Some(n) if n > 0 => format!(" · {n} files"),
+                        _ => String::new(),
+                    };
+                    widgets::busy_pill(ui, &format!("{label}{extra}"));
                 }
             });
         });
     }
 
-    fn tab_strip(&mut self, ui: &mut egui::Ui) {
-        let title = match self.view {
-            View::Project => MANIFEST_FILE.to_owned(),
-            View::Scan => match &self.scan {
-                Some(s) => format!("Scan: {}", s.name),
-                None => "Scan".into(),
-            },
-            v => v.title().to_owned(),
+    fn project_chip(&mut self, ui: &mut egui::Ui) {
+        let (text, color) = match &self.project {
+            Some(p) => (
+                format!(
+                    "🗀  {}{}",
+                    p.manifest.name,
+                    if p.dirty() { "  ●" } else { "" }
+                ),
+                Color32::WHITE,
+            ),
+            None => ("🗀  No project".to_owned(), TEXT_WEAK),
         };
-        let dirty = self.view == View::Project && self.project.as_ref().is_some_and(|p| p.dirty());
-        Frame::new().fill(TAB_BAR).show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 0.0;
-                let label = format!(
-                    "{}  {}{}",
-                    self.view.icon(),
-                    title,
-                    if dirty { "  ●" } else { "" }
-                );
-                let galley = ui.painter().layout_no_wrap(
-                    label,
-                    egui::FontId::proportional(13.0),
-                    Color32::WHITE,
-                );
-                let (rect, _) =
-                    ui.allocate_exact_size(vec2(galley.size().x + 32.0, 35.0), Sense::hover());
-                ui.painter().rect_filled(rect, CornerRadius::ZERO, EDITOR);
-                ui.painter().rect_filled(
-                    egui::Rect::from_min_size(rect.min, vec2(rect.width(), 1.5)),
-                    0.0,
-                    FOCUS,
-                );
-                ui.painter().galley(
-                    rect.left_center() + vec2(16.0, -galley.size().y / 2.0),
-                    galley,
-                    Color32::WHITE,
-                );
-            });
-        });
-        // Breadcrumbs.
-        let crumbs = match (&self.project, self.view) {
-            (Some(p), View::Project | View::Options | View::Share) => {
-                format!("{}  ›  {}", p.dir.display(), MANIFEST_FILE)
+        let mut picked = None;
+        ui.menu_button(RichText::new(format!("{text}  ⏷")).color(color), |ui| {
+            ui.set_min_width(240.0);
+            for c in [Command::NewProject, Command::OpenProject] {
+                if ui.button(c.label()).clicked() {
+                    picked = Some(c);
+                }
             }
-            (_, View::Scan) => self.game_input.clone(),
-            _ => String::new(),
-        };
-        ui.horizontal(|ui| {
-            ui.add_space(16.0);
-            ui.label(RichText::new(crumbs).size(12.0).color(TEXT_WEAK));
+            if !self.state.recent_projects.is_empty() {
+                ui.separator();
+                ui.label(RichText::new("RECENT").size(11.0).color(TEXT_FAINT));
+                for (i, p) in self.state.recent_projects.iter().enumerate() {
+                    let name = p
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    if ui
+                        .button(name)
+                        .on_hover_text(p.display().to_string())
+                        .clicked()
+                    {
+                        picked = Some(Command::OpenRecent(i));
+                    }
+                }
+            }
+            if self.project.is_some() {
+                ui.separator();
+                if ui.button("Close Project").clicked() {
+                    picked = Some(Command::CloseProject);
+                }
+            }
         });
+        if let Some(c) = picked {
+            self.run_command(c, ui.ctx());
+        }
+    }
+
+    /// Menu button with every command, for systems without the native bar.
+    #[cfg(not(target_os = "macos"))]
+    fn fallback_menu(&mut self, ui: &mut egui::Ui) {
+        let state = self.menu_state();
+        let mut picked = None;
+        ui.menu_button(RichText::new("☰").size(18.0), |ui| {
+            for spec in crate::menu::menus() {
+                ui.menu_button(spec.title, |ui| {
+                    ui.set_min_width(220.0);
+                    for entry in spec.items {
+                        match entry {
+                            None => {
+                                ui.separator();
+                            }
+                            Some(c) => {
+                                let b =
+                                    egui::Button::new(c.label()).shortcut_text(c.shortcut_text());
+                                if ui.add_enabled(state.enabled(c), b).clicked() {
+                                    picked = Some(c);
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            if ui.button("About Porting Toolkit").clicked() {
+                picked = Some(Command::About);
+            }
+        });
+        if let Some(c) = picked {
+            self.run_command(c, ui.ctx());
+        }
     }
 
     fn install_modal(&mut self, ctx: &egui::Context) {
@@ -928,7 +1159,7 @@ impl App {
             .anchor(egui::Align2::RIGHT_BOTTOM, vec2(-14.0, -36.0))
             .show(ctx, |ui| {
                 Frame::new()
-                    .fill(SIDE_BAR)
+                    .fill(CARD)
                     .stroke(Stroke::new(1.0_f32, BORDER))
                     .corner_radius(CornerRadius::same(4))
                     .inner_margin(Margin::symmetric(12, 10))
@@ -988,6 +1219,41 @@ impl App {
     }
 }
 
+/// Shows a folder in Finder (or the system file manager).
+fn reveal(path: &Path) {
+    let opener = if cfg!(target_os = "macos") {
+        "open"
+    } else if cfg!(windows) {
+        "explorer"
+    } else {
+        "xdg-open"
+    };
+    let _ = std::process::Command::new(opener).arg(path).spawn();
+}
+
+/// Opens a web page in the default browser.
+fn open_url(url: &str) {
+    let (prog, args): (&str, Vec<&str>) = if cfg!(target_os = "macos") {
+        ("open", vec![url])
+    } else if cfg!(windows) {
+        ("cmd", vec!["/C", "start", "", url])
+    } else {
+        ("xdg-open", vec![url])
+    };
+    let _ = std::process::Command::new(prog).args(args).spawn();
+}
+
+/// Text on the system clipboard, for the Edit > Paste menu item.
+#[cfg(target_os = "macos")]
+fn clipboard_text() -> Option<String> {
+    arboard::Clipboard::new().ok()?.get_text().ok()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn clipboard_text() -> Option<String> {
+    None
+}
+
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.layout(ctx);
@@ -1008,10 +1274,13 @@ mod tests {
     }
 
     fn app(dir: &Path) -> App {
-        App::new(Config {
-            state_file: Some(dir.join("gui-state.json")),
-            ..Default::default()
-        })
+        App::new(
+            Config {
+                state_file: Some(dir.join("gui-state.json")),
+                ..Default::default()
+            },
+            &egui::Context::default(),
+        )
     }
 
     fn frame(app: &mut App, ctx: &egui::Context) {
@@ -1037,10 +1306,7 @@ mod tests {
         let ctx = egui::Context::default();
         crate::theme::install(&ctx);
         let mut app = app(tmp.path());
-        let views = [View::Welcome, View::About]
-            .into_iter()
-            .chain(View::TOP)
-            .collect::<Vec<_>>();
+        let views = View::ALL;
         for v in &views {
             app.view = *v;
             frame(&mut app, &ctx);

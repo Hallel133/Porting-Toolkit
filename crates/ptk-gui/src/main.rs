@@ -10,6 +10,7 @@
 //! closes; `--smoke` opens the window for three seconds.
 
 mod app;
+mod menu;
 mod theme;
 mod views;
 mod widgets;
@@ -20,7 +21,7 @@ use eframe::egui;
 
 use app::{App, Config, View};
 
-const USAGE: &str = "usage: ptk-gui [--view welcome|project|scan|options|share|plugins|targets|doctor|about] [--project DIR] [--game DIR] [--run] [--screenshot FILE.png] [--smoke] [--size WxH]";
+const USAGE: &str = "usage: ptk-gui [--view home|project|scan|options|share|plugins|targets|doctor|about] [--project DIR] [--game DIR] [--run] [--screenshot FILE.png] [--smoke] [--size WxH]";
 
 fn parse_args(args: impl Iterator<Item = String>) -> Result<(Config, [f32; 2]), String> {
     let mut config = Config::default();
@@ -75,7 +76,11 @@ fn main() -> std::process::ExitCode {
         options,
         Box::new(move |cc| {
             theme::install(&cc.egui_ctx);
-            Ok(Box::new(App::new(config)))
+            let config = Config {
+                native_menu: true,
+                ..config
+            };
+            Ok(Box::new(App::new(config, &cc.egui_ctx)))
         }),
     );
     if let Err(e) = result {
