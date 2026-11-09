@@ -16,7 +16,7 @@ from .categories import CATEGORY_IDS, classify
 from .signatures import GameIndex, detect, guess_platforms
 
 JUNK_NAMES = {".DS_Store", "Thumbs.db", "desktop.ini"}
-MAGIC_EXTENSIONS = {"", "exe", "dll", "so", "dylib", "bin", "x86_64"}
+MAGIC_EXTENSIONS = {"", "exe", "dll", "so", "dylib", "bin", "x86_64", "pck", "arm64"}
 MAX_MAGIC_READS = 4000
 
 
@@ -31,6 +31,8 @@ def read_magic(path: str) -> str | None:
             head = f.read(4)
     except OSError:
         return None
+    if head == b"GDPC":
+        return "godot-pck"
     if head[:2] == b"MZ":
         return "pe"
     if head == b"\x7fELF":
@@ -46,6 +48,21 @@ def read_magic(path: str) -> str | None:
     return None
 
 
+def has_embedded_pck(path: str) -> bool:
+    """True if a Godot export appended its .pck to this executable: the
+    file then ends with the 4-byte magic `GDPC` (a standalone .pck starts
+    with it). Only these 4 bytes are read; the pack is never decoded."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            if f.tell() < 8:
+                return False
+            f.seek(-4, os.SEEK_END)
+            return f.read(4) == b"GDPC"
+    except OSError:
+        return False
+
+
 def _ext(name: str) -> str:
     return name.rsplit(".", 1)[1].lower() if "." in name[1:] else ""
 
@@ -59,17 +76,30 @@ def scan(
     root = Path(path).expanduser()
     if not root.exists():
         raise EngineError(f"{path} does not exist")
-    if not root.is_dir():
-        raise EngineError(f"{path} is not a folder")
     root = root.resolve()
 
     files: list[tuple[str, int]] = []
     dirs: list[str] = []
     magic: dict[str, str] = {}
+    embedded: list[str] = []
     symlinks = unreadable = magic_reads = 0
     truncated = False
 
-    stack: list[tuple[str, str]] = [("", str(root))]
+    # A single file (a Windows .exe, a Linux binary, a .pck) is scanned as a
+    # folder holding only that file.
+    if root.is_file():
+        single = root
+        root = root.parent
+        stack: list[tuple[str, str]] = []
+        files.append((single.name, single.stat().st_size))
+        kind = read_magic(str(single))
+        if kind:
+            magic[single.name] = kind
+        if kind in ("pe", "elf", "mach-o") and has_embedded_pck(str(single)):
+            embedded.append(single.name)
+    else:
+        single = None
+        stack = [("", str(root))]
     while stack and not truncated:
         rel_dir, abs_dir = stack.pop()
         try:
@@ -103,13 +133,15 @@ def scan(
                 kind = read_magic(entry.path)
                 if kind:
                     magic[rel] = kind
+                if kind in ("pe", "elf", "mach-o") and has_embedded_pck(entry.path):
+                    embedded.append(rel)
             if progress and len(files) % 2000 == 0:
                 progress(len(files))
             if max_files and len(files) >= max_files:
                 truncated = True
                 break
 
-    index = GameIndex([f for f, _ in files], dirs, magic)
+    index = GameIndex([f for f, _ in files], dirs, magic, embedded)
     engines = detect(index)
 
     per_cat = {c: {"id": c, "files": 0, "size": 0} for c in CATEGORY_IDS}
@@ -121,9 +153,11 @@ def scan(
         classified.append((rel, size, cat))
     largest = sorted(classified, key=lambda x: (-x[1], x[0]))[:5]
 
+    shown = single if single is not None else root
     return {
-        "path": str(root),
-        "name": root.name,
+        "path": str(shown),
+        "name": shown.name,
+        "single_file": single is not None,
         "file_count": len(files),
         "dir_count": len(dirs),
         "total_size": sum(s for _, s in files),

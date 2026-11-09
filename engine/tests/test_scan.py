@@ -77,9 +77,6 @@ def test_max_files_truncates(games):
 def test_errors(tmp_path):
     with pytest.raises(EngineError):
         scan(str(tmp_path / "missing"))
-    (tmp_path / "file").write_text("x")
-    with pytest.raises(EngineError):
-        scan(str(tmp_path / "file"))
 
 
 def test_classify():
@@ -95,3 +92,29 @@ def test_classify():
 
 def test_engine_ids_are_unique():
     assert len(ENGINE_IDS) == len(set(ENGINE_IDS))
+
+
+def test_single_exe_with_embedded_godot_pack(tmp_path):
+    exe = tmp_path / "MyGame.exe"
+    exe.write_bytes(b"MZ" + b"\0" * 100 + b"pack data" + (9).to_bytes(8, "little") + b"GDPC")
+    result = scan(str(exe))
+    assert result["single_file"] is True
+    assert result["file_count"] == 1
+    assert result["name"] == "MyGame.exe"
+    assert result["primary"]["id"] == "godot"
+    assert result["primary"]["variant"] == "embedded .pck"
+    assert result["primary"]["evidence"] == ["MyGame.exe (embedded .pck)"]
+    assert result["platforms"] == ["windows"]
+
+
+def test_plain_exe_is_not_godot(tmp_path):
+    exe = tmp_path / "tool.exe"
+    exe.write_bytes(b"MZ" + b"\0" * 100)
+    result = scan(str(exe))
+    assert result["engines"] == []
+    assert result["platforms"] == ["windows"]
+
+
+def test_standalone_pck_header(tmp_path):
+    (tmp_path / "data.pck").write_bytes(b"GDPC" + b"\0" * 20)
+    assert scan(str(tmp_path))["primary"]["id"] == "godot"

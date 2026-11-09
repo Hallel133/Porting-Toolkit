@@ -49,6 +49,12 @@ pub fn verify_game(
     manifest: &Manifest,
     mut progress: impl FnMut(usize, usize),
 ) -> io::Result<VerifyReport> {
+    // A single executable is checked in the folder that holds it.
+    let game_dir = if game_dir.is_file() {
+        game_dir.parent().unwrap_or(game_dir)
+    } else {
+        game_dir
+    };
     if !game_dir.is_dir() {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,

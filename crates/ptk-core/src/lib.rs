@@ -20,12 +20,16 @@ pub mod engine;
 pub mod error;
 pub mod glob;
 pub mod hash;
+pub mod import;
 pub mod manifest;
+pub mod market;
 pub mod pack;
 pub mod paths;
 pub mod plugins;
 pub mod project;
+pub mod routes;
 pub mod scan;
+pub mod sdk;
 pub mod targets;
 pub mod verify;
 

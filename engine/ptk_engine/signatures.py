@@ -22,7 +22,8 @@ THRESHOLD = 0.5
 #   path     "/" + relative file path (so "*/x" also matches a top-level x)
 #   dir      folder name
 #   dirpath  "/" + relative folder path
-#   magic    a file whose header is "pe", "elf" or "mach-o"
+#   magic    a file whose header is "pe", "elf", "mach-o" or "godot-pck"
+#   embedded an executable with a Godot .pck appended (ends with GDPC)
 Rule = tuple[float, str, str]
 
 
@@ -75,6 +76,8 @@ ENGINES: tuple[EngineSignature, ...] = (
         "engine",
         (
             (0.6, "name", "*.pck"),
+            (0.6, "magic", "godot-pck"),
+            (0.9, "embedded", "pck"),
             (0.8, "name", "project.godot"),
             (0.3, "dir", ".godot"),
             (0.3, "name", "*.gdc"),
@@ -168,6 +171,7 @@ class GameIndex:
     files: list[str]
     dirs: list[str] = field(default_factory=list)
     magic: dict[str, str] = field(default_factory=dict)
+    embedded_pck: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self._names = [f.rsplit("/", 1)[-1].lower() for f in self.files]
@@ -189,6 +193,8 @@ class GameIndex:
     def _find(self, kind: str, pattern: str) -> str | None:
         if kind == "magic":
             return next((p for p, m in self.magic.items() if m == pattern), None)
+        if kind == "embedded":
+            return next((f"{p} (embedded .pck)" for p in self.embedded_pck), None)
         has_wildcard = any(c in pattern for c in "*?[")
         if kind == "name" and not has_wildcard:
             return self._name_set.get(pattern)
@@ -225,6 +231,8 @@ def _variant(engine_id: str, index: GameIndex) -> str | None:
             return "IL2CPP"
         if f("path", "*/managed/assembly-csharp.dll"):
             return "Mono"
+    if engine_id == "godot" and index.embedded_pck:
+        return "embedded .pck"
     if engine_id == "unreal" and (f("name", "*.utoc") or f("name", "*.ucas")):
         return "IoStore (UE 4.26+ / UE5)"
     if engine_id == "rpgmaker":

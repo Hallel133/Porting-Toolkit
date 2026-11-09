@@ -65,7 +65,19 @@ pub fn relative_path(root: &Path, path: &Path) -> Option<String> {
 
 /// Hashes every regular file under `root` (symbolic links and OS clutter
 /// are skipped), sorted by path. Used to record a game's source files.
+/// A single file is recorded under its own name.
 pub fn hash_tree(root: &Path) -> io::Result<Vec<SourceFile>> {
+    if root.is_file() {
+        let name = root
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        return Ok(vec![SourceFile {
+            path: name,
+            size: std::fs::metadata(root)?.len(),
+            sha256: sha256_file(root)?,
+        }]);
+    }
     let mut out = Vec::new();
     for entry in WalkDir::new(root).follow_links(false).sort_by_file_name() {
         let entry = entry.map_err(io::Error::other)?;

@@ -16,6 +16,9 @@ pub struct ScanResult {
     pub path: String,
     #[serde(default)]
     pub name: String,
+    /// The scan was of one file (an executable), not a folder.
+    #[serde(default)]
+    pub single_file: bool,
     pub file_count: u64,
     pub dir_count: u64,
     pub total_size: u64,
@@ -121,10 +124,10 @@ pub fn record(project: &Path, game_dir: &Path, scan: &ScanResult) -> Result<Reco
         m.game.engine = Some(p.id.clone());
     }
     if m.game.title.is_none() {
-        m.game.title = game_dir
+        let p = game_dir
             .canonicalize()
-            .ok()
-            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()));
+            .unwrap_or_else(|_| game_dir.to_owned());
+        m.game.title = Some(crate::import::title_of(&p));
     }
     if let [platform] = scan.platforms.as_slice() {
         m.game.source_platform = Some(platform.clone());

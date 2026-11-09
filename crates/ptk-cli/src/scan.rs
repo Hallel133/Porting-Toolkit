@@ -5,6 +5,9 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use ptk_core::engine::EngineClient;
+use ptk_core::import::prepare;
+use ptk_core::manifest::MANIFEST_FILE;
+use ptk_core::routes::{RouteKind, route_for};
 use ptk_core::scan::{Detected, ScanResult, record, scan};
 
 use crate::style::{Style, Table, human_size};
@@ -44,6 +47,17 @@ pub fn run(
     json_out: bool,
     project: Option<&Path>,
 ) -> anyhow::Result<ExitCode> {
+    let prepared = prepare(game_dir)?;
+    if let Some(dir) = &prepared.extracted
+        && !json_out
+    {
+        eprintln!(
+            "  unpacked the {} into {}",
+            prepared.kind.describe(),
+            dir.display()
+        );
+    }
+    let game_dir = prepared.game.as_path();
     let mut engine = EngineClient::start()?;
     let show_progress = !json_out && std::io::stderr().is_terminal();
     let (result, raw) = scan(&mut engine, game_dir, &mut |n| {
@@ -179,6 +193,7 @@ pub fn print_scan(style: &Style, scan: &ScanResult, shown: &Path) {
         }
         println!("{}", t.render(style));
     }
+    print_route(style, scan);
     println!();
     println!(
         "  {}",
@@ -186,4 +201,71 @@ pub fn print_scan(style: &Style, scan: &ScanResult, shown: &Path) {
             "Detected from file names and headers only; no game archive was opened or decoded."
         )
     );
+}
+
+/// What it takes to port this engine, with or without source code.
+pub fn print_route(style: &Style, scan: &ScanResult) {
+    let engine = scan.primary.as_ref().map(|p| p.id.as_str());
+    if let Some(r) = route_for(engine) {
+        println!("{}", style.heading("Porting route"));
+        let label = match r.kind {
+            RouteKind::Retarget | RouteKind::Native => style.green(r.kind.label()),
+            RouteKind::Partial => style.yellow(r.kind.label()),
+            RouteKind::NeedsSource => style.red(r.kind.label()),
+        };
+        println!("  {}  {label}", style.bold(r.name));
+        println!("  {}", r.how);
+    }
+}
+
+/// `ptk import`: a project from a game build.
+pub fn import(style: &Style, build: &Path, project: Option<&Path>) -> anyhow::Result<ExitCode> {
+    let prepared = prepare(build)?;
+    println!(
+        "{} {} ({})",
+        style.ok(),
+        prepared.title,
+        prepared.kind.describe()
+    );
+    if let Some(dir) = &prepared.extracted {
+        println!("  unpacked into {}", dir.display());
+    }
+    let mut engine = EngineClient::start()?;
+    let (result, _) = scan(&mut engine, &prepared.game, &mut |_| {})?;
+    engine.shutdown()?;
+    let project = project.map(Path::to_path_buf).unwrap_or_else(|| {
+        std::path::PathBuf::from(format!(
+            "{}-port",
+            ptk_core::manifest::slugify(&prepared.title)
+        ))
+    });
+    if !project.join(MANIFEST_FILE).exists() {
+        let registry = ptk_core::targets::TargetRegistry::load_default().0;
+        ptk_core::project::init(
+            &project,
+            ptk_core::project::InitOptions {
+                title: Some(prepared.title.clone()),
+                ..Default::default()
+            },
+            &registry,
+        )?;
+        println!("{} Created project {}", style.ok(), project.display());
+    }
+    let r = record(&project, &prepared.game, &result)?;
+    println!(
+        "{} Recorded {} file hashes{}",
+        style.ok(),
+        r.files,
+        r.engine
+            .as_ref()
+            .map(|e| format!(" and the engine ({e})"))
+            .unwrap_or_default()
+    );
+    print_route(style, &result);
+    println!();
+    println!(
+        "  Next: {}",
+        style.bold(format!("ptk info {}", project.display()))
+    );
+    Ok(ExitCode::SUCCESS)
 }

@@ -1,6 +1,7 @@
 //! `ptk`: the Porting Toolkit command line.
 
 mod banner;
+mod community;
 mod doctor;
 mod plugin;
 mod project;
@@ -112,6 +113,73 @@ enum Command {
     Plugin {
         #[command(subcommand)]
         action: PluginAction,
+    },
+    /// Start a project from a game build: folder, .app, .exe, .zip, .deb or .dmg
+    Import {
+        /// The game build you own (no source code needed)
+        build: PathBuf,
+        /// Project folder (created if missing; default: NAME-port)
+        #[arg(short, long)]
+        project: Option<PathBuf>,
+    },
+    /// Create, validate and install SDKs (new targets + their plugins)
+    Sdk {
+        #[command(subcommand)]
+        action: SdkAction,
+    },
+    /// Browse and install community plugins, SDKs and projects
+    Market {
+        #[command(subcommand)]
+        action: MarketAction,
+    },
+    /// Package a plugin, SDK or .ptk for the marketplace (zip + SHA-256 + entry)
+    Publish {
+        /// Plugin folder, SDK folder or .ptk file
+        path: PathBuf,
+        /// Where to write the zip (default: ./dist)
+        #[arg(short, long, default_value = "dist")]
+        output: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SdkAction {
+    /// Create an SDK skeleton (a target and its export plugin)
+    New {
+        dir: PathBuf,
+        /// SDK id (default: from the folder name)
+        #[arg(long)]
+        id: Option<String>,
+    },
+    /// Check ptk-sdk.toml, targets and plugins
+    Validate {
+        dir: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Install an SDK after showing its plugins' permissions
+    Install {
+        dir: PathBuf,
+        #[arg(long)]
+        yes: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum MarketAction {
+    /// List marketplace entries
+    List {
+        /// Filter by text
+        #[arg(long)]
+        search: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Download (SHA-256 checked) and install an entry
+    Install {
+        id: String,
+        #[arg(long)]
+        yes: bool,
     },
 }
 
@@ -254,6 +322,10 @@ fn run(cli: Cli, style: &Style) -> anyhow::Result<ExitCode> {
             json,
         } => project::verify(style, &game_dir, &project, json),
         Command::Plugin { action } => plugin::run(style, action),
+        Command::Import { build, project } => scan::import(style, &build, project.as_deref()),
+        Command::Sdk { action } => community::sdk(style, action),
+        Command::Market { action } => community::market(style, action),
+        Command::Publish { path, output } => community::publish(style, &path, &output),
     }
 }
 
