@@ -18,7 +18,7 @@ A community tool to manage, convert, export and import game projects between pla
 
 ## Git / release state (2026-11-09)
 - Remote `origin` = https://github.com/Hallel133/Porting-Toolkit (public; the owner created it with a one-line README). Work on `main`.
-- Phase 1 committed on `main`. See "Next task" for whether the push succeeded.
+- Phase 1 (commit 4c21302) was pushed to `origin/main` on 2026-11-09; pushing works despite the account flag.
 - The owner said their GitHub account is "flagged" (Grand-V notes: GitHub Actions is disabled for the Hallel133 account, `HTTP 422`). So `.github/workflows/ci.yml` (macos-14 + ubuntu: fmt, clippy -D warnings, cargo test, uv run pytest) has probably never run. Run the same commands locally.
 
 ## Commands
