@@ -1,18 +1,14 @@
 //! Project commands: about, init, info, options, targets, pack, unpack, verify.
 
-use std::fs;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::{Context, bail};
 use ptk_core::category::{CATEGORIES, category};
-use ptk_core::manifest::{
-    CategoryOptions, Level, MANIFEST_FILE, Manifest, slugify, valid_project_name,
-};
-use ptk_core::pack::{
-    PackOptions, PluginsLock, default_pack_name, load_any_manifest, read_pack_manifest,
-};
+use ptk_core::manifest::{CategoryOptions, Level, MANIFEST_FILE, Manifest};
+use ptk_core::pack::{PackOptions, default_pack_name, load_any_manifest, read_pack_manifest};
+use ptk_core::project::InitOptions;
 use ptk_core::targets::{TargetRegistry, TargetSource, TargetStatus};
 use ptk_core::{paths, verify::verify_game};
 
@@ -84,13 +80,6 @@ pub fn about(style: &Style) -> anyhow::Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-const PROJECT_README: &str = "# {title}\n\nA [Porting Toolkit](https://github.com/Hallel133/Porting-Toolkit) project.\n\n- `ptk.json`: the manifest (game, targets, advanced options, source hashes)\n- `recipes/`: conversion recipes\n- `patches/`: community-written patches and code\n- `plugins.lock`: exact plugin versions\n\nBring your own copy of the game, then:\n\n```bash\nptk verify /path/to/your/game -p .\n```\n\nThis project never contains original game files.\n";
-
-const RECIPES_README: &str =
-    "# Recipes\n\nConversion recipes for this project (format arrives with plugins in phase 3).\n";
-const PATCHES_README: &str = "# Patches\n\nCommunity-written patches and code. Never put original or decompiled game files here.\n";
-const GITIGNORE: &str = "# Never commit game files.\n/game/\n*.ptk\n.DS_Store\n._*\n";
-
 pub fn init(
     style: &Style,
     dir: &Path,
@@ -98,55 +87,17 @@ pub fn init(
     title: Option<String>,
     targets: Vec<String>,
 ) -> anyhow::Result<ExitCode> {
-    if dir.join(MANIFEST_FILE).exists() {
-        bail!("{} already has a {MANIFEST_FILE}", dir.display());
-    }
     let reg = registry(style);
-    let folder_name = dir
-        .canonicalize()
-        .ok()
-        .or_else(|| std::env::current_dir().ok().map(|c| c.join(dir)))
-        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
-        .unwrap_or_else(|| "project".into());
-    let name = name.unwrap_or_else(|| slugify(&folder_name));
-    if !valid_project_name(&name) {
-        bail!("{name:?} is not a valid project name (letters, digits, '-', '_', '.')");
-    }
-    for t in &targets {
-        if reg.get(t).is_none() {
-            bail!("unknown target {t:?}; see `ptk targets`");
-        }
-    }
-    let targets = if targets.is_empty() {
-        reg.host()
-            .filter(|t| t.status == TargetStatus::Active)
-            .map(|t| vec![t.id.clone()])
-            .unwrap_or_default()
-    } else {
-        targets
-    };
-
-    fs::create_dir_all(dir.join("recipes"))?;
-    fs::create_dir_all(dir.join("patches"))?;
-    let mut m = Manifest::new(&name);
-    m.game.title = title.clone();
-    m.targets = targets;
-    m.save(dir)?;
-    let title = title.unwrap_or_else(|| name.clone());
-    let files = [
-        ("README.md", PROJECT_README.replace("{title}", &title)),
-        ("plugins.lock", PluginsLock::TEMPLATE.to_owned()),
-        ("recipes/README.md", RECIPES_README.to_owned()),
-        ("patches/README.md", PATCHES_README.to_owned()),
-        (".gitignore", GITIGNORE.to_owned()),
-    ];
-    for (rel, text) in &files {
-        let path = dir.join(rel);
-        if !path.exists() {
-            fs::write(&path, text).with_context(|| path.display().to_string())?;
-        }
-    }
-
+    let m = ptk_core::project::init(
+        dir,
+        InitOptions {
+            name,
+            title,
+            targets,
+        },
+        &reg,
+    )?;
+    let name = m.name;
     println!(
         "{} Created project {} in {}",
         style.ok(),
@@ -154,14 +105,7 @@ pub fn init(
         dir.display()
     );
     println!();
-    for rel in [
-        MANIFEST_FILE,
-        "README.md",
-        "plugins.lock",
-        "recipes/",
-        "patches/",
-        ".gitignore",
-    ] {
+    for rel in ptk_core::project::CREATED {
         println!("  {}", style.cyan(rel));
     }
     let d = dir.display();
@@ -178,26 +122,6 @@ pub fn init(
     );
     println!("  3. {}", style.bold(format!("ptk pack {d}")));
     Ok(ExitCode::SUCCESS)
-}
-
-fn count_files(dir: &Path) -> usize {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return 0;
-    };
-    entries
-        .filter_map(|e| e.ok())
-        .map(|e| {
-            let p = e.path();
-            let name = e.file_name().to_string_lossy().into_owned();
-            if ptk_core::hash::is_junk_file(&name) || name == "README.md" {
-                0
-            } else if p.is_dir() {
-                count_files(&p)
-            } else {
-                1
-            }
-        })
-        .sum()
 }
 
 fn options_table(style: &Style, m: &Manifest) -> Table {
@@ -289,16 +213,12 @@ pub fn info(style: &Style, project: &Path, json: bool) -> anyhow::Result<ExitCod
         },
     );
     if is_dir {
-        let locked = PluginsLock::load(project)?
-            .map(|l| l.plugin.len())
-            .unwrap_or(0);
+        let c = ptk_core::project::contents(project)?;
         row(
             "Contents",
             format!(
                 "{} recipes, {} patches, {} locked plugins",
-                count_files(&project.join("recipes")),
-                count_files(&project.join("patches")),
-                locked
+                c.recipes, c.patches, c.locked_plugins
             ),
         );
     }

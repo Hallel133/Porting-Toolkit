@@ -1,32 +1,12 @@
 //! The PORTING TOOLKIT banner.
 //!
-//! An original FIGlet-style block font drawn for this project (generator:
-//! `tools/gen_banner.py`), colored with 256-color ANSI codes: a warm
-//! gradient for PORTING, a cool one for TOOLKIT, grey drop shadow.
+//! The art lives in `ptk_core::banner` (shared with the GUI); this module
+//! colors it with 256-color ANSI codes.
 
 use crate::style::Style;
 
-/// The banner art, 12 lines, at most 72 columns.
-pub const ART: &str = r"██████      ████    ██████    ██████████  ██████  ██      ██    ██████
-██░░░░██  ██ ░░░██  ██░░░░██   ░░░██░░░░░  ░██░░░ ████    ██░ ██ ░░░░░░
-██████ ░░ ██░   ██░ ██████ ░░     ██░       ██░   ██░░██  ██░ ██░ ████
-██░░░░░   ██░   ██░ ██░░██░       ██░       ██░   ██░  ░████░ ██░  ░██░
-██░        ░████ ░░ ██░  ░██      ██░     ██████  ██░    ░██░  ░██████░
- ░░          ░░░░    ░░    ░░      ░░      ░░░░░░  ░░      ░░    ░░░░░░
-██████████    ████      ████    ██        ██    ██  ██████  ██████████
- ░░░██░░░░░ ██ ░░░██  ██ ░░░██  ██░       ██░ ██ ░░  ░██░░░  ░░░██░░░░░
-    ██░     ██░   ██░ ██░   ██░ ██░       ████ ░░     ██░       ██░
-    ██░     ██░   ██░ ██░   ██░ ██░       ██░░██      ██░       ██░
-    ██░      ░████ ░░  ░████ ░░ ████████  ██░  ░██  ██████      ██░
-     ░░        ░░░░      ░░░░    ░░░░░░░░  ░░    ░░  ░░░░░░      ░░
-";
-
-/// Foreground colors per art line (256-color palette).
-const LINE_COLORS: [u8; 12] = [
-    202, 208, 214, 220, 226, 0, // PORTING: orange to yellow (last row is shadow only)
-    51, 45, 39, 33, 27, 0, // TOOLKIT: cyan to blue
-];
-const SHADOW_COLOR: u8 = 240;
+pub use ptk_core::banner::ART;
+use ptk_core::banner::{LINE_COLORS, SHADOW_COLOR};
 
 /// The art, colored when `color` is on.
 pub fn render_art(color: bool) -> String {

@@ -1,57 +1,13 @@
-//! `ptk scan`: rendered from the Python engine's `scan` result.
+//! `ptk scan`: rendered from the engine's `scan` result.
 
 use std::io::IsTerminal;
 use std::path::Path;
 use std::process::ExitCode;
 
-use anyhow::Context;
 use ptk_core::engine::EngineClient;
-use ptk_core::hash::hash_tree;
-use ptk_core::manifest::Manifest;
-use serde::Deserialize;
-use serde_json::{Value, json};
+use ptk_core::scan::{Detected, ScanResult, record, scan};
 
 use crate::style::{Style, Table, human_size};
-
-#[derive(Deserialize)]
-pub struct ScanResult {
-    pub file_count: u64,
-    pub dir_count: u64,
-    pub total_size: u64,
-    pub symlinks_skipped: u64,
-    pub unreadable: u64,
-    pub truncated: bool,
-    pub engines: Vec<Detected>,
-    pub primary: Option<Detected>,
-    pub platforms: Vec<String>,
-    pub categories: Vec<CategoryStat>,
-    pub largest: Vec<LargeFile>,
-}
-
-#[derive(Clone, Deserialize)]
-pub struct Detected {
-    pub id: String,
-    pub name: String,
-    pub kind: String,
-    pub confidence: f64,
-    pub label: String,
-    pub variant: Option<String>,
-    pub evidence: Vec<String>,
-}
-
-#[derive(Deserialize)]
-pub struct CategoryStat {
-    pub id: String,
-    pub files: u64,
-    pub size: u64,
-}
-
-#[derive(Deserialize)]
-pub struct LargeFile {
-    pub path: String,
-    pub size: u64,
-    pub category: String,
-}
 
 fn bar(style: &Style, share: f64, width: usize) -> String {
     let filled = ((share * width as f64).round() as usize).min(width);
@@ -86,39 +42,45 @@ pub fn run(
     style: &Style,
     game_dir: &Path,
     json_out: bool,
-    record: Option<&Path>,
+    project: Option<&Path>,
 ) -> anyhow::Result<ExitCode> {
-    let abs = game_dir
-        .canonicalize()
-        .with_context(|| format!("{} does not exist", game_dir.display()))?;
     let mut engine = EngineClient::start()?;
     let show_progress = !json_out && std::io::stderr().is_terminal();
-    let raw = engine.call_with(
-        "scan",
-        json!({ "path": abs.to_string_lossy() }),
-        &mut |method, params: &Value| {
-            if show_progress && method == "progress" {
-                eprint!("\r  scanned {} files", params["files"]);
-            }
-        },
-    )?;
+    let (result, raw) = scan(&mut engine, game_dir, &mut |n| {
+        if show_progress {
+            eprint!("\r  scanned {n} files");
+        }
+    })?;
     if show_progress {
         eprint!("\r\x1b[2K");
     }
     engine.shutdown()?;
 
-    if json_out && record.is_none() {
-        println!("{}", serde_json::to_string_pretty(&raw)?);
-        return Ok(ExitCode::SUCCESS);
-    }
-    let scan: ScanResult = serde_json::from_value(raw.clone()).context("unexpected scan result")?;
     if json_out {
         println!("{}", serde_json::to_string_pretty(&raw)?);
     } else {
-        print_scan(style, &scan, game_dir);
+        print_scan(style, &result, game_dir);
     }
-    if let Some(project) = record {
-        record_into(style, project, &abs, &scan, json_out)?;
+    if let Some(project) = project {
+        if !json_out {
+            eprintln!(
+                "  hashing {} files ({})...",
+                result.file_count,
+                human_size(result.total_size)
+            );
+        }
+        let r = record(project, game_dir, &result)?;
+        let msg = format!(
+            "{} Recorded {} file hashes and the engine into {}",
+            style.ok(),
+            r.files,
+            r.manifest_path.display()
+        );
+        if json_out {
+            eprintln!("{msg}")
+        } else {
+            println!("{msg}")
+        }
     }
     Ok(ExitCode::SUCCESS)
 }
@@ -137,21 +99,16 @@ pub fn print_scan(style: &Style, scan: &ScanResult, shown: &Path) {
                 },
                 engine_line(style, p),
             );
+            let more = if p.evidence.len() > 3 {
+                format!(" +{} more", p.evidence.len() - 3)
+            } else {
+                String::new()
+            };
             row(
                 "",
                 style.dim(format!(
-                    "evidence: {}{}",
-                    p.evidence
-                        .iter()
-                        .take(3)
-                        .cloned()
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                    if p.evidence.len() > 3 {
-                        format!(" +{} more", p.evidence.len() - 3)
-                    } else {
-                        String::new()
-                    }
+                    "evidence: {}{more}",
+                    p.evidence[..p.evidence.len().min(3)].join(", ")
                 )),
             );
         }
@@ -190,17 +147,9 @@ pub fn print_scan(style: &Style, scan: &ScanResult, shown: &Path) {
         row("", style.yellow("stopped early: too many files"));
     }
 
-    let mut cats: Vec<&CategoryStat> = scan.categories.iter().collect();
-    cats.sort_by(|a, b| b.size.cmp(&a.size).then(b.files.cmp(&a.files)));
-    let by_size = scan.total_size > 0;
-    let total = if by_size {
-        scan.total_size
-    } else {
-        scan.file_count.max(1)
-    } as f64;
     let mut t = Table::new(&["CATEGORY", ">FILES", ">SIZE", "SHARE", ">"]);
-    for c in cats {
-        let share = if by_size { c.size } else { c.files } as f64 / total;
+    for c in scan.categories_by_size() {
+        let share = scan.share(c);
         t.row(vec![
             c.id.clone(),
             c.files.to_string(),
@@ -211,7 +160,7 @@ pub fn print_scan(style: &Style, scan: &ScanResult, shown: &Path) {
     }
     println!(
         "{}",
-        style.heading(if by_size {
+        style.heading(if scan.total_size > 0 {
             "Assets by size"
         } else {
             "Assets by file count"
@@ -237,46 +186,4 @@ pub fn print_scan(style: &Style, scan: &ScanResult, shown: &Path) {
             "Detected from file names and headers only; no game archive was opened or decoded."
         )
     );
-}
-
-fn record_into(
-    style: &Style,
-    project: &Path,
-    game: &Path,
-    scan: &ScanResult,
-    quiet: bool,
-) -> anyhow::Result<()> {
-    let mut m = Manifest::load(project)?;
-    if !quiet {
-        eprintln!(
-            "  hashing {} files ({})...",
-            scan.file_count,
-            human_size(scan.total_size)
-        );
-    }
-    let files = hash_tree(game).with_context(|| format!("hashing {}", game.display()))?;
-    if let Some(p) = scan.primary.as_ref().filter(|p| p.kind == "engine") {
-        m.game.engine = Some(p.id.clone());
-    }
-    if m.game.title.is_none() {
-        m.game.title = game.file_name().map(|n| n.to_string_lossy().into_owned());
-    }
-    if let [platform] = scan.platforms.as_slice() {
-        m.game.source_platform = Some(platform.clone());
-    }
-    let count = files.len();
-    m.source_files = files;
-    let path = m.save(project)?;
-    let msg = format!(
-        "{} Recorded {} file hashes and the engine into {}",
-        style.ok(),
-        count,
-        path.display()
-    );
-    if quiet {
-        eprintln!("{msg}")
-    } else {
-        println!("{msg}")
-    }
-    Ok(())
 }

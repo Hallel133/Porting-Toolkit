@@ -13,15 +13,23 @@
 //! carries recipes, settings, community patches and hashes, never original
 //! game files. See `docs/legal.md`.
 
+pub mod banner;
 pub mod category;
+pub mod doctor;
 pub mod engine;
+pub mod error;
 pub mod glob;
 pub mod hash;
 pub mod manifest;
 pub mod pack;
 pub mod paths;
+pub mod plugins;
+pub mod project;
+pub mod scan;
 pub mod targets;
 pub mod verify;
+
+pub use error::{Error, Result};
 
 /// Version of the toolkit, shared by every crate in the workspace.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

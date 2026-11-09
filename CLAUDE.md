@@ -5,7 +5,7 @@ Read this first in every new session. The owner (Hallel133) writes in Hebrew: **
 ## What this repo is
 A community tool to manage, convert, export and import game projects between platforms. macOS first. Not part of Grand-V (it lives next to it, in `~/porting-toolkit`).
 
-- Rust workspace: `crates/ptk-core` (manifest, targets, `.ptk` pack/unpack, verify, hashing, engine RPC client), `crates/ptk-cli` (binary `ptk`, clap), `crates/ptk-gui` (phase 2 placeholder).
+- Rust workspace: `crates/ptk-core` (manifest, targets, `.ptk` pack/unpack, verify, hashing, engine RPC client, plus shared operations `scan`/`project`/`doctor`/`plugins`/`banner`), `crates/ptk-cli` (binary `ptk`, clap), `crates/ptk-gui` (binary `ptk-gui`, egui 0.33 desktop app).
 - Python engine: `engine/ptk_engine` (uv + pytest, standard library only, Python 3.11+). Detection, plugins; Rust runs it as a subprocess over JSON-RPC on stdin/stdout.
 - Docs: `README.md`, `ARCHITECTURE.md` (protocol, layout), `docs/project-format.md`, `docs/plugins.md`, `docs/legal.md`.
 - Fixtures: `fixtures/games/*` are fake game folders of **empty files** with the right names.
@@ -24,12 +24,14 @@ A community tool to manage, convert, export and import game projects between pla
 ## Commands
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"          # cargo is not on the default PATH on the owner's Mac
-cargo test --workspace                        # 38 Rust tests, starts the real Python engine
+cargo test --workspace                        # 47 Rust tests (incl. 7 GUI tests), starts the real Python engine
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 (cd engine && uv run pytest)                  # 38 Python tests
 cargo run -q -p ptk-cli -- scan fixtures/games/unity-windows
-python3 tools/gen_banner.py                   # regenerate banner art (then update banner.rs + tests/snapshots/banner.txt)
+python3 tools/gen_banner.py                   # regenerate banner art (then update ptk-core/src/banner.rs + ptk-cli/tests/snapshots/banner.txt)
+cargo run -p ptk-gui                          # the desktop app
+cargo run -p ptk-gui -- --view scan --project P --game G --run --screenshot out.png   # screenshot after the job, then exits
 ```
 - Tests set `PTK_HOME` to a temp folder; never let tests touch the real data folder.
 - `PTK_PYTHON` picks the interpreter (CI sets it to `engine/.venv/bin/python`); otherwise the managed env, then `python3` + `PYTHONPATH=engine`.
@@ -42,10 +44,16 @@ python3 tools/gen_banner.py                   # regenerate banner art (then upda
 - Screenshots: `docs/images/banner.png`, `docs/images/scan.png` (scan of a fake sparse-file Unity game, not a real game).
 - `ptk doctor` was run for real on the owner's Mac; it created the managed env with uv.
 
+## Done (phase 2, 2026-11-09)
+- Owner chose a **new theme, not Grand-V's**: "VS Code colors, dark blue". `crates/ptk-gui/src/theme.rs` is an editor-style dark blue look: activity bar, side bar, tab strip + breadcrumbs, blue status bar (#007ACC), code-editor accents. System UI font loaded at runtime on macOS (not bundled); `PTK_GUI_FONTS=builtin` disables it.
+- Views: Welcome (painted wordmark), Explorer/project form (⌘S save, revert, problems list), Scan (+ Record into project), Advanced options (per-category action/quality/max resolution/format + presets), Share (pack/unpack/verify), Plugins (list, validate, create, install with a permission confirmation modal), Targets, Doctor, About. Drag-and-drop of project folders, `.ptk` files and game folders.
+- Shared logic moved from the CLI into `ptk-core` (`scan`, `project`, `doctor`, `plugins`, `banner`, `error`); the CLI output is unchanged.
+- GUI screenshots in `docs/images/gui-*.png`. Do not commit screenshots that show local paths (user name).
+
 ## Next task
-1. Phase 2: GUI (`crates/ptk-gui`, egui). Ask the owner whether to reuse Grand-V's GTA V-style theme (`Grand-V/LauncherApp/rust/src/ui/theme.rs`) and OFL fonts.
-2. Later: phase 3 plugin runtime (separate process, restricted cwd, declared folders only), recipe format, marketplace with reviewed flag, AI-assisted advanced options; phase 4 Windows/Linux.
-3. Not tested: Linux/Windows builds, CI (Actions blocked on the account), real games (only fixtures and a sparse fake).
+1. Owner: try `cargo run --release -p ptk-gui` and give feedback on the look.
+2. Phase 3: plugin runtime (separate process, restricted cwd, declared folders only), recipe format, marketplace with reviewed flag, AI-assisted advanced options. Phase 4: Windows/Linux.
+3. Not tested: Linux/Windows builds (CI adds `libgtk-3-dev` etc. for rfd/egui but Actions is blocked on the account), app bundling (`.app`, icon), real games (only fixtures and a sparse fake).
 
 ## Working agreement (after every change)
 1. Run the tests (Rust and Python); for CLI output changes, take screenshots and show them.

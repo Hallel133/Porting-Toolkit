@@ -2,66 +2,18 @@
 //!
 //! Plugins are Python packages and get full access to the computer once
 //! they run, so installing shows the declared permissions and asks first.
-//! Phase 1 only copies a validated plugin into place; nothing is executed.
+//! Nothing is executed yet; running plugins arrives in phase 3.
 
-use std::fs;
 use std::io::{BufRead, IsTerminal, Write};
-use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use anyhow::{Context, bail};
+use anyhow::bail;
 use ptk_core::engine::EngineClient;
 use ptk_core::paths;
-use ptk_core::targets::TargetRegistry;
-use serde::Deserialize;
-use serde_json::json;
+use ptk_core::plugins::{self, Validation};
 
 use crate::style::{Style, Table};
 use crate::{PluginAction, PluginKind};
-
-#[derive(Deserialize)]
-struct Validation {
-    path: String,
-    valid: bool,
-    errors: Vec<String>,
-    warnings: Vec<String>,
-    plugin: Option<PluginInfo>,
-    permissions: Vec<String>,
-    risk: String,
-}
-
-#[derive(Deserialize)]
-struct PluginInfo {
-    id: Option<String>,
-    name: Option<String>,
-    version: Option<String>,
-    kind: Option<String>,
-    description: Option<String>,
-    license: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct Listed {
-    id: String,
-    version: String,
-    kind: String,
-    path: String,
-    valid: bool,
-    risk: String,
-    reviewed: bool,
-}
-
-fn absolute(p: &Path) -> anyhow::Result<PathBuf> {
-    Ok(if p.is_absolute() {
-        p.to_owned()
-    } else {
-        std::env::current_dir()?.join(p)
-    })
-}
-
-fn known_targets() -> Vec<String> {
-    TargetRegistry::load_default().0.ids()
-}
 
 fn risk(style: &Style, r: &str) -> String {
     match r {
@@ -72,21 +24,8 @@ fn risk(style: &Style, r: &str) -> String {
     }
 }
 
-fn validate(
-    engine: &mut EngineClient,
-    dir: &Path,
-) -> anyhow::Result<(Validation, serde_json::Value)> {
-    let raw = engine.call(
-        "plugin.validate",
-        json!({ "path": absolute(dir)?.to_string_lossy(), "known_targets": known_targets() }),
-    )?;
-    Ok((
-        serde_json::from_value(raw.clone()).context("unexpected validation result")?,
-        raw,
-    ))
-}
-
 fn print_validation(style: &Style, v: &Validation) {
+    let label = |k: &str| style.dim(format!("{k:<12}"));
     let name = v
         .plugin
         .as_ref()
@@ -102,22 +41,18 @@ fn print_validation(style: &Style, v: &Validation) {
     println!("{}", style.heading(&format!("Plugin {name}")));
     if let Some(p) = &v.plugin {
         if let Some(n) = &p.name {
-            println!("  {} {n}", style.dim(format!("{:<12}", "Name")));
+            println!("  {} {n}", label("Name"));
         }
         if let Some(d) = p.description.as_ref().filter(|d| !d.is_empty()) {
-            println!("  {} {d}", style.dim(format!("{:<12}", "About")));
+            println!("  {} {d}", label("About"));
         }
         if let Some(l) = &p.license {
-            println!("  {} {l}", style.dim(format!("{:<12}", "License")));
+            println!("  {} {l}", label("License"));
         }
     }
-    println!("  {} {}", style.dim(format!("{:<12}", "Path")), v.path);
+    println!("  {} {}", label("Path"), v.path);
     if !v.permissions.is_empty() {
-        println!(
-            "  {} {}",
-            style.dim(format!("{:<12}", "Risk")),
-            risk(style, &v.risk)
-        );
+        println!("  {} {}", label("Risk"), risk(style, &v.risk));
         println!("  {}", style.dim("Permissions"));
         for p in &v.permissions {
             println!("    • {p}");
@@ -134,56 +69,14 @@ fn print_validation(style: &Style, v: &Validation) {
     }
 }
 
-fn copy_tree(src: &Path, dst: &Path) -> anyhow::Result<usize> {
-    fs::create_dir_all(dst)?;
-    let mut n = 0;
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let name = entry.file_name();
-        let name_s = name.to_string_lossy();
-        if matches!(
-            name_s.as_ref(),
-            ".git" | "__pycache__" | ".venv" | ".pytest_cache"
-        ) || ptk_core::hash::is_junk_file(&name_s)
-        {
-            continue;
-        }
-        let ft = entry.file_type()?;
-        if ft.is_symlink() {
-            bail!(
-                "{} is a symbolic link; plugins must not contain links",
-                entry.path().display()
-            );
-        } else if ft.is_dir() {
-            n += copy_tree(&entry.path(), &dst.join(&name))?;
-        } else if ft.is_file() {
-            fs::copy(entry.path(), dst.join(&name))?;
-            n += 1;
-        }
-    }
-    Ok(n)
-}
-
 pub fn run(style: &Style, action: PluginAction) -> anyhow::Result<ExitCode> {
     let mut engine = EngineClient::start()?;
     let code = match action {
         PluginAction::List { json } => {
-            let mut dirs = vec![paths::plugins_dir()];
-            let local = std::env::current_dir()?.join("plugins");
-            if local.is_dir() {
-                dirs.push(local);
-            }
-            let raw = engine.call(
-                "plugin.list",
-                json!({
-                    "dirs": dirs.iter().map(|d| d.to_string_lossy()).collect::<Vec<_>>(),
-                    "known_targets": known_targets(),
-                }),
-            )?;
+            let (list, raw) = plugins::list(&mut engine, &plugins::default_dirs())?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&raw)?);
             } else {
-                let list: Vec<Listed> = serde_json::from_value(raw)?;
                 println!("{}", style.heading("Plugins"));
                 if list.is_empty() {
                     println!(
@@ -223,17 +116,7 @@ pub fn run(style: &Style, action: PluginAction) -> anyhow::Result<ExitCode> {
             ExitCode::SUCCESS
         }
         PluginAction::New { dir, kind, id } => {
-            #[derive(Deserialize)]
-            struct Created {
-                path: String,
-                id: String,
-                files: Vec<String>,
-            }
-            let raw = engine.call(
-                "plugin.new",
-                json!({ "path": absolute(&dir)?.to_string_lossy(), "kind": kind.as_str(), "id": id }),
-            )?;
-            let c: Created = serde_json::from_value(raw)?;
+            let c = plugins::create(&mut engine, &dir, kind.as_str(), id.as_deref())?;
             println!(
                 "{} Created {} plugin {} in {}",
                 style.ok(),
@@ -260,7 +143,7 @@ pub fn run(style: &Style, action: PluginAction) -> anyhow::Result<ExitCode> {
             ExitCode::SUCCESS
         }
         PluginAction::Validate { dir, json } => {
-            let (v, raw) = validate(&mut engine, &dir)?;
+            let (v, raw) = plugins::validate(&mut engine, &dir)?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&raw)?);
             } else {
@@ -273,7 +156,7 @@ pub fn run(style: &Style, action: PluginAction) -> anyhow::Result<ExitCode> {
             }
         }
         PluginAction::Install { dir, yes } => {
-            let (v, _) = validate(&mut engine, &dir)?;
+            let (v, _) = plugins::validate(&mut engine, &dir)?;
             print_validation(style, &v);
             if !v.valid {
                 bail!("not installing an invalid plugin");
@@ -282,7 +165,7 @@ pub fn run(style: &Style, action: PluginAction) -> anyhow::Result<ExitCode> {
                 .plugin
                 .as_ref()
                 .and_then(|p| p.id.clone())
-                .context("plugin has no id")?;
+                .unwrap_or_default();
             let dest = paths::plugins_dir().join(&id);
             println!();
             println!(
@@ -309,20 +192,7 @@ pub fn run(style: &Style, action: PluginAction) -> anyhow::Result<ExitCode> {
                     return Ok(ExitCode::FAILURE);
                 }
             }
-            let staging = paths::plugins_dir().join(format!(".{id}.installing"));
-            let _ = fs::remove_dir_all(&staging);
-            let n = copy_tree(&absolute(&dir)?, &staging);
-            let n = match n {
-                Ok(n) => n,
-                Err(e) => {
-                    let _ = fs::remove_dir_all(&staging);
-                    return Err(e);
-                }
-            };
-            if dest.exists() {
-                fs::remove_dir_all(&dest)?;
-            }
-            fs::rename(&staging, &dest)?;
+            let (dest, n) = plugins::install(&dir, &v)?;
             println!(
                 "{} Installed {id} ({n} files) in {}",
                 style.ok(),

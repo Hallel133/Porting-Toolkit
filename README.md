@@ -25,9 +25,9 @@ SHA-256 hashes, never original game files or decompiled game code. See
 
 ![ptk scan on a fake Unity game](docs/images/scan.png)
 
-> Status: **phase 1** (CLI infrastructure). Detection, project files, packing
-> and plugin validation work. Converting and exporting arrive with plugins in
-> phase 3.
+> Status: **phase 2** (CLI + desktop GUI). Detection, project files, advanced
+> options, packing, verifying and plugin validation work. Converting and
+> exporting arrive with plugins in phase 3.
 
 ## Install from source (macOS)
 
@@ -62,6 +62,23 @@ ptk unpack my-port-0.1.0.ptk
 ptk verify ~/Games/MyGame -p my-port  # is this the same game version?
 ```
 
+## Desktop app
+
+`ptk-gui` is an editor-style desktop app in dark blue: an activity bar
+(Explorer, Scan, Advanced options, Share, Plugins, Targets, Doctor), a side
+bar, the editor area and a blue status bar. It does everything the CLI does,
+and you can drop a project folder, a `.ptk` file or a game folder on the window.
+
+```bash
+cargo run --release -p ptk-gui
+```
+
+![Porting Toolkit desktop app: scan view](docs/images/gui-scan.png)
+
+| | |
+|---|---|
+| ![Welcome](docs/images/gui-welcome.png) | ![Advanced options](docs/images/gui-options.png) |
+
 ## Commands
 
 | Command | What it does |
@@ -85,8 +102,8 @@ Colors are off when output is not a terminal, with `NO_COLOR=1` or `--no-color`.
 
 ## Roadmap
 
-1. **macOS + CLI infrastructure + banner + file structure** (now)
-2. Desktop GUI (egui)
+1. macOS + CLI infrastructure + banner + file structure (done)
+2. **Desktop GUI (egui)** (now)
 3. Import/export plugins and smart, AI-assisted advanced options
 4. Windows/Linux and the full community marketplace
 
@@ -131,10 +148,14 @@ MIT. See [LICENSE](LICENSE).
 - `ptk pack` / `ptk unpack` / `ptk verify` לשיתוף פרויקטים.
 - `ptk plugin new|validate|install|list` לתוספי ייבוא/ייצוא (ב-Python, עם הצהרת הרשאות).
 
+### אפליקציה גרפית
+
+`ptk-gui` היא אפליקציית דסקטופ בסגנון עורך קוד בגוון כחול כהה: סרגל פעילות, סרגל צד, אזור עבודה ושורת סטטוס כחולה. היא עושה כל מה שה-CLI עושה, ואפשר לגרור אליה תיקיית פרויקט, קובץ `.ptk` או תיקיית משחק. הפעלה: `cargo run --release -p ptk-gui`.
+
 ### מפת דרכים
 
-1. ‏macOS + תשתית CLI + באנר + מבנה קבצים (עכשיו)
-2. ממשק גרפי
+1. ‏macOS + תשתית CLI + באנר + מבנה קבצים (הושלם)
+2. ממשק גרפי (עכשיו)
 3. תוספי ייבוא/ייצוא ואפשרויות מתקדמות חכמות (בעזרת AI)
 4. ‏Windows/Linux וקהילה מלאה
 

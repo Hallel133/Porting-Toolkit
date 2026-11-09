@@ -2,7 +2,7 @@
 
 Porting Toolkit has two halves:
 
-- **Rust** for the application: the `ptk` CLI now, the GUI in phase 2. It owns
+- **Rust** for the application: the `ptk` CLI and the `ptk-gui` desktop app. It owns
   the project format, packing, hashing, the target registry and everything
   the user touches.
 - **Python** for the algorithms: engine detection, import/export pipelines
@@ -32,7 +32,9 @@ Porting Toolkit has two halves:
 | `crates/ptk-core/src/engine.rs` | Locating and talking to the Python engine |
 | `crates/ptk-core/src/paths.rs` | Per-user data folder (`PTK_HOME` overrides) |
 | `crates/ptk-cli` | `ptk` binary (clap), banner, colors, tables |
-| `crates/ptk-gui` | Placeholder for phase 2 |
+| `crates/ptk-core/src/{scan,project,doctor,plugins}.rs` | Operations shared by CLI and GUI (scan + record, init, environment checks, plugin list/validate/create/install) |
+| `crates/ptk-core/src/banner.rs` | The wordmark art, shared by the CLI banner and the GUI |
+| `crates/ptk-gui` | Desktop app (egui 0.33 + eframe/glow, rfd dialogs) |
 | `engine/ptk_engine` | Python engine (standard library only, 3.11+) |
 | `fixtures/games` | Fake game folders (empty files with the right names) |
 | `tools/gen_banner.py` | Generator of the banner art |
@@ -110,8 +112,25 @@ SDK is the owner's separate project and is not part of phase 1.
 | `ptk-cli/tests/cli.rs` | the `ptk` binary end to end (isolated `PTK_HOME`) |
 | `engine/tests` | detection on fixtures, plugin validation, RPC server |
 
-## Phase 2 notes (GUI)
+## Desktop GUI (`crates/ptk-gui`)
 
-`ptk-gui` will be an egui app on top of `ptk-core`. If the owner wants, it can
-reuse the GTA V-style theme from Grand-V (`LauncherApp/rust/src/ui/theme.rs`)
-and its OFL fonts. Long engine calls must run off the UI thread.
+- `theme.rs`: an editor-style dark blue look (activity bar, side bar, editor,
+  blue status bar, code-editor accent colors). On macOS it loads the system
+  UI font from `/System/Library/Fonts` at runtime (never bundled);
+  `PTK_GUI_FONTS=builtin` uses egui's fonts.
+- `app.rs`: state, background jobs and window chrome. Engine calls, hashing,
+  packing and verifying run on a thread and send a `Msg` back over a channel;
+  the thread calls `request_repaint` so the idle UI wakes up. One job at a
+  time (`busy`). Recent projects and games live in `<data>/gui-state.json`.
+- `views.rs`: side bar and editor content of each view. `widgets.rs`: the
+  painted wordmark, cards, badges, bars, path fields with native pickers.
+- Edits go to an in-memory `Manifest`; `saved` holds the on-disk copy, so a
+  dot in the tab and status bar marks unsaved changes. Save (⌘S) validates
+  first and refuses invalid values.
+- Drop a project folder (opens it), a `.ptk` file (Share → Unpack) or any
+  other folder (Scan) on the window.
+- `ptk-gui --view scan --project P --game G --run --screenshot out.png`
+  opens a view, runs its job, saves a screenshot once the job is done and
+  closes. `--smoke` opens the window for three seconds.
+- Tests in `app.rs` render every view headlessly through `egui::Context::run`
+  and drive the real jobs (scan, record, pack, verify, unpack).

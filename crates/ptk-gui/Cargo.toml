@@ -1,6 +1,6 @@
 [package]
 name = "ptk-gui"
-description = "Porting Toolkit desktop GUI (phase 2 placeholder)"
+description = "Porting Toolkit desktop GUI"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,5 +8,17 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[[bin]]
+name = "ptk-gui"
+path = "src/main.rs"
+
 [dependencies]
 ptk-core.workspace = true
+eframe = { version = "0.33", default-features = false, features = ["glow", "default_fonts", "wayland", "x11"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+rfd = "0.15"
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
