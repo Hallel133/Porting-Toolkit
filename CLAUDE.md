@@ -24,7 +24,7 @@ A community tool to manage, convert, export and import game projects between pla
 ## Commands
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"          # cargo is not on the default PATH on the owner's Mac
-cargo test --workspace                        # 60 Rust tests, starts the real Python engine
+cargo test --workspace                        # 64 Rust tests, starts the real Python engine
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 (cd engine && uv run pytest)                  # 38 Python tests
@@ -51,24 +51,17 @@ cargo run -p ptk-gui -- --view scan --project P --game G --run --screenshot out.
 - Shared logic lives in `ptk-core` (`scan`, `project`, `doctor`, `plugins`, `banner`, `error`); the CLI output is unchanged.
 - GUI screenshots in `docs/images/gui-*.png`. Do not commit screenshots that show local paths (user name).
 
-## In progress (2026-11-09, owner feedback round 3)
-Owner asked: (1) redesign the GUI using Godot's Project Manager as inspiration (tabs Projects / Asset store-like Marketplace / Settings, toolbar Create/Import/Scan + filter + sort, project list with icons, right action column, bottom status line), same dark blue colors, no copying of Godot logo/art; (2) how to export and import directly from EXE/.app/.deb, without source; (3) the marketplace is unclear and uninviting, and how to upload an SDK.
-
-Done in core/CLI (commit "Import builds, SDKs, marketplace"):
-- `ptk_core::import`: folder, .app, single executable (.exe/.x86_64/.pck), .zip, .deb (ar parsed in Rust + system tar), .dmg (hdiutil + ditto). Archives unpack once into `<data>/imports/`. Engine scans single files and detects a Godot .pck embedded in an exe (ends with `GDPC`).
-- `ptk_core::routes`: per engine, whether porting needs source code (Godot/Ren'Py/RPG Maker: no; GameMaker/Unity: depends; Unreal/RAGE/Source: needs source or a Wine-style compatibility layer).
-- `ptk_core::sdk`: `ptk-sdk.toml` + `targets/*.toml` + `plugins/*/`; create/validate/install.
-- `ptk_core::market`: JSON index at `Hallel133/ptk-marketplace` (`index.json`, PTK_MARKETPLACE_URL overrides), SHA-256 checked downloads, `package()` for publishing (zip + entry to submit by PR). **The ptk-marketplace repo does not exist yet**; the owner must create it (or allow Claude to with gh).
-- CLI: `ptk import <build> [-p DIR]`, `ptk scan` accepts archives/exe, `ptk sdk new|validate|install`, `ptk market list|install`, `ptk publish <path>`; scan prints the porting route.
-
-NOT done yet (next session):
-1. GUI redesign à la Godot project manager + Import Game flow, Export page (routes table + needed export plugins), Marketplace tab (Browse / Installed / Publish wizard), Settings tab. The current GUI still has the previous header design and does not use the new core features.
-2. Docs: docs/marketplace.md (index format, publish flow), README/ARCHITECTURE sections for import/SDK/marketplace.
-3. Actual exporters (phase 3): Godot .pck + export template is the most realistic first one.
+## Done (2026-11-10, owner feedback round 3)
+Owner asked for a Godot-Project-Manager-inspired GUI (same dark blue colors; do not copy Godot's logo or art), how to export / import EXE, .app and .deb without source, and a clearer, more inviting marketplace with a way to upload an SDK.
+- Core/CLI: `import` (folder, .app, executable, .zip, .deb parsed in Rust, .dmg), `routes` (per engine: portable without source or not), `sdk` (ptk-sdk.toml + targets + plugins), `market` (JSON index, SHA-256 downloads, `package` for publishing). CLI `ptk import`, `ptk sdk`, `ptk market`, `ptk publish`; `ptk scan` accepts archives/exe and prints the porting route. Engine detects a Godot .pck appended to an exe (`GDPC` at the end) and scans single files.
+- GUI: tab bar (Projects, Marketplace, the open project's Overview/Scan/Options/Export, Settings) + status bar. Projects = project manager (Create, Import Game, Open, Find, filter, sort, favorites, missing projects, action column). Import Game modal (default project folder `~/Porting Toolkit/<name>-port`). Export page shows the porting route, exporters per target and a "without source code?" table, plus Pack/Unpack/Verify. Marketplace: Browse (index from GitHub, inviting header), Installed (plugins, SDKs, check a plugin), Publish (create SDK/plugin → validate & package → submit by PR). Settings: Environment (doctor), Targets, About. Install confirmation modal for plugins and SDKs.
+- Menus: File gains Import Game (⌘I); View = ⌘1 Projects … ⌘6 Export; app menu has Settings… (⌘,); Tools gains Find Projects, Publish, New SDK.
+- docs/marketplace.md written.
+- **The marketplace repository `Hallel133/ptk-marketplace` does not exist yet**, so Browse shows "could not be loaded". The owner must create it (with an `index.json` of `{"schema_version": 1, "entries": []}`) or let Claude do it with gh.
 
 ## Next task
-1. Owner: try `cargo run --release -p ptk-gui`, check the macOS menu bar and shortcuts, and give feedback on the look.
-2. Phase 3: plugin runtime (separate process, restricted cwd, declared folders only), recipe format, marketplace with reviewed flag, AI-assisted advanced options. Phase 4: Windows/Linux.
+1. Owner: try `cargo run --release -p ptk-gui` (Projects, Import Game, Marketplace), check the macOS menu bar, create the ptk-marketplace repo.
+2. Phase 3: first exporter (Godot: .pck + export template), plugin runtime (separate process, restricted cwd, declared folders only), recipe format, marketplace with reviewed flag, AI-assisted advanced options. Phase 4: Windows/Linux.
 3. Not tested: Linux/Windows builds (CI adds `libgtk-3-dev` etc. for rfd/egui but Actions is blocked on the account), app bundling (`.app`, icon), real games (only fixtures and a sparse fake).
 
 ## Working agreement (after every change)

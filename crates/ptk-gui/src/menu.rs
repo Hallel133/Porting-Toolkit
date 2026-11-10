@@ -35,6 +35,7 @@ pub const HELP_LINKS: &[(&str, &str)] = &[
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Command {
     NewProject,
+    ImportGame,
     OpenProject,
     OpenRecent(usize),
     Save,
@@ -56,19 +57,22 @@ pub enum Command {
     SetUpEngine,
     RevealData,
     RevealPlugins,
+    FindProjects,
+    Publish,
+    NewSdk,
+    Settings,
     About,
     Help(usize),
 }
 
 /// Views in navigation order, with their ⌘-number.
-pub const NAV: [View; 7] = [
-    View::Home,
-    View::Project,
+pub const NAV: [View; 6] = [
+    View::Projects,
+    View::Marketplace,
+    View::Overview,
     View::Scan,
     View::Options,
-    View::Share,
-    View::Plugins,
-    View::Targets,
+    View::Export,
 ];
 
 impl Command {
@@ -98,6 +102,11 @@ impl Command {
     pub fn label(self) -> String {
         match self {
             Command::NewProject => "New Project…".into(),
+            Command::ImportGame => "Import Game…".into(),
+            Command::FindProjects => "Find Projects in Folder…".into(),
+            Command::Publish => "Publish to Marketplace…".into(),
+            Command::NewSdk => "New SDK…".into(),
+            Command::Settings => "Settings…".into(),
             Command::OpenProject => "Open Project…".into(),
             Command::OpenRecent(i) => format!("Recent {i}"),
             Command::Save => "Save".into(),
@@ -128,6 +137,8 @@ impl Command {
     pub fn shortcut(self) -> Option<(bool, char)> {
         Some(match self {
             Command::NewProject => (false, 'N'),
+            Command::ImportGame => (false, 'I'),
+            Command::Settings => (false, ','),
             Command::OpenProject => (false, 'O'),
             Command::Save => (false, 'S'),
             Command::CloseProject => (true, 'W'),
@@ -162,6 +173,11 @@ impl Command {
 /// Every fixed command (for id lookups).
 pub const ALL: &[Command] = &[
     Command::NewProject,
+    Command::ImportGame,
+    Command::FindProjects,
+    Command::Publish,
+    Command::NewSdk,
+    Command::Settings,
     Command::OpenProject,
     Command::Save,
     Command::Revert,
@@ -200,6 +216,7 @@ pub fn menus() -> Vec<MenuSpec> {
             title: "File",
             items: vec![
                 Some(NewProject),
+                Some(ImportGame),
                 Some(OpenProject),
                 None,
                 Some(Save),
@@ -233,6 +250,10 @@ pub fn menus() -> Vec<MenuSpec> {
                 Some(ScanGame),
                 Some(RescanGame),
                 Some(VerifyGame),
+                Some(FindProjects),
+                None,
+                Some(Publish),
+                Some(NewSdk),
                 None,
                 Some(RunDoctor),
                 Some(SetUpEngine),
@@ -290,7 +311,9 @@ mod native {
 
     fn code(key: char) -> Option<Code> {
         Some(match key {
+            ',' => Code::Comma,
             'A' => Code::KeyA,
+            'I' => Code::KeyI,
             'C' => Code::KeyC,
             'D' => Code::KeyD,
             'E' => Code::KeyE,
@@ -310,6 +333,7 @@ mod native {
             '5' => Code::Digit5,
             '6' => Code::Digit6,
             '7' => Code::Digit7,
+            '8' => Code::Digit8,
             _ => return None,
         })
     }
@@ -360,11 +384,19 @@ mod native {
                     ..Default::default()
                 }),
             );
+            let settings = MenuItem::with_id(
+                Command::Settings.id(),
+                Command::Settings.label(),
+                true,
+                accelerator(Command::Settings),
+            );
             let app = Submenu::with_items(
                 "Porting Toolkit",
                 true,
                 &[
                     &about,
+                    &PredefinedMenuItem::separator(),
+                    &settings,
                     &PredefinedMenuItem::separator(),
                     &PredefinedMenuItem::services(None),
                     &PredefinedMenuItem::separator(),
@@ -391,7 +423,7 @@ mod native {
                             let item = MenuItem::with_id(c.id(), c.label(), true, accelerator(*c));
                             let _ = sub.append(&item);
                             items.insert(c.id(), (*c, item));
-                            if *c == Command::OpenProject && i == 1 {
+                            if *c == Command::OpenProject && i == 2 {
                                 let _ = sub.append(&recent);
                             }
                         }
@@ -487,7 +519,8 @@ mod tests {
                 }
             }
         }
-        assert_eq!(Command::Go(View::Scan).shortcut_text(), "⌘3");
+        assert_eq!(Command::Go(View::Scan).shortcut_text(), "⌘4");
+        assert_eq!(Command::Settings.shortcut_text(), "⌘,");
         assert_eq!(Command::PackProject.shortcut_text(), "⇧⌘E");
     }
 

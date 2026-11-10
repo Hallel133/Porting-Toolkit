@@ -16,6 +16,7 @@ use eframe::egui::{
 use ptk_core::doctor::Check;
 use ptk_core::engine::EngineClient;
 use ptk_core::manifest::{Issue, MANIFEST_FILE, Manifest};
+use ptk_core::market::{EntryKind, MarketEntry, MarketIndex, Published};
 use ptk_core::pack::{PackOptions, UnpackReport};
 use ptk_core::plugins::{CreatedPlugin, ListedPlugin, Validation};
 use ptk_core::project::Contents;
@@ -28,68 +29,138 @@ use crate::menu::{Command, MenuState};
 use crate::theme::*;
 use crate::widgets;
 
-/// The pages of the app.
+/// The pages of the app. The first three are always in the tab bar; the
+/// workspace pages appear when a project is open.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum View {
-    Home,
-    Project,
+    Projects,
+    Marketplace,
+    Settings,
+    Overview,
     Scan,
     Options,
-    Share,
-    Plugins,
-    Targets,
-    Doctor,
-    About,
+    Export,
 }
 
 impl View {
-    pub const ALL: [View; 9] = [
-        View::Home,
-        View::Project,
+    pub const ALL: [View; 7] = [
+        View::Projects,
+        View::Marketplace,
+        View::Settings,
+        View::Overview,
         View::Scan,
         View::Options,
-        View::Share,
-        View::Plugins,
-        View::Targets,
-        View::Doctor,
-        View::About,
+        View::Export,
     ];
+    pub const WORKSPACE: [View; 4] = [View::Overview, View::Scan, View::Options, View::Export];
 
     pub fn icon(self) -> &'static str {
         match self {
-            View::Home => "🏠",
-            View::Project => "🗀",
+            View::Projects => "🗀",
+            View::Marketplace => "🔌",
+            View::Settings => "🔧",
+            View::Overview => "🏠",
             View::Scan => "🔍",
             View::Options => "⚙",
-            View::Share => "📦",
-            View::Plugins => "🔌",
-            View::Targets => "🎯",
-            View::Doctor => "✚",
-            View::About => "ℹ",
+            View::Export => "📦",
         }
     }
 
     pub fn title(self) -> &'static str {
         match self {
-            View::Home => "Home",
-            View::Project => "Project",
+            View::Projects => "Projects",
+            View::Marketplace => "Marketplace",
+            View::Settings => "Settings",
+            View::Overview => "Overview",
             View::Scan => "Scan",
             View::Options => "Options",
-            View::Share => "Share",
-            View::Plugins => "Plugins",
-            View::Targets => "Targets",
-            View::Doctor => "Doctor",
-            View::About => "About",
+            View::Export => "Export",
         }
     }
 
     pub fn parse(s: &str) -> Option<View> {
-        View::ALL.into_iter().find(|v| {
-            v.title().eq_ignore_ascii_case(s)
-                || format!("{v:?}").eq_ignore_ascii_case(s)
-                || (s.eq_ignore_ascii_case("welcome") && *v == View::Home)
+        let s = s.to_ascii_lowercase();
+        let alias = match s.as_str() {
+            "home" | "welcome" => Some(View::Projects),
+            "project" => Some(View::Overview),
+            "share" => Some(View::Export),
+            "plugins" | "market" => Some(View::Marketplace),
+            "doctor" | "targets" | "about" => Some(View::Settings),
+            _ => None,
+        };
+        alias.or_else(|| {
+            View::ALL
+                .into_iter()
+                .find(|v| v.title().eq_ignore_ascii_case(&s))
         })
     }
+}
+
+/// Sub-pages of Settings.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SettingsTab {
+    Environment,
+    Targets,
+    About,
+}
+
+/// Sub-pages of the Marketplace.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MarketTab {
+    Browse,
+    Installed,
+    Publish,
+}
+
+/// How the project list is sorted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProjectSort {
+    LastOpened,
+    Name,
+    Engine,
+}
+
+/// One row of the project list.
+#[derive(Clone, Debug)]
+pub struct ProjectRow {
+    pub path: PathBuf,
+    pub name: String,
+    pub title: Option<String>,
+    pub engine: Option<String>,
+    pub modified: Option<std::time::SystemTime>,
+    pub missing: bool,
+}
+
+impl ProjectRow {
+    pub fn load(path: &Path) -> Self {
+        match Manifest::load(path) {
+            Ok(m) => ProjectRow {
+                path: path.to_owned(),
+                name: m.name,
+                title: m.game.title,
+                engine: m.game.engine,
+                modified: std::fs::metadata(path.join(MANIFEST_FILE))
+                    .and_then(|m| m.modified())
+                    .ok(),
+                missing: false,
+            },
+            Err(_) => ProjectRow {
+                path: path.to_owned(),
+                name: "Missing project".into(),
+                title: None,
+                engine: None,
+                modified: None,
+                missing: true,
+            },
+        }
+    }
+}
+
+/// Something waiting for the user's consent before it is installed.
+#[derive(Clone, Debug)]
+pub enum PendingInstall {
+    Plugin(Validation),
+    Sdk(ptk_core::sdk::SdkReport),
 }
 
 /// Remembered between runs (`<data>/gui-state.json`).
@@ -99,9 +170,11 @@ pub struct GuiState {
     pub recent_projects: Vec<PathBuf>,
     #[serde(default)]
     pub recent_games: Vec<PathBuf>,
+    #[serde(default)]
+    pub favorites: Vec<PathBuf>,
 }
 
-const MAX_RECENT: usize = 8;
+const MAX_RECENT: usize = 24;
 
 impl GuiState {
     pub fn load(path: &Path) -> Self {
@@ -166,6 +239,19 @@ pub enum Msg {
     Validated(Result<Validation, String>),
     PluginCreated(Result<CreatedPlugin, String>),
     Installed(Result<(PathBuf, usize), String>),
+    Imported(Result<(PathBuf, ScanResult), String>),
+    Market(Result<(MarketIndex, Vec<String>), String>),
+    /// A marketplace download, ready for consent (or a project to unpack).
+    Downloaded(Result<Downloaded, String>),
+    SdkInstalled(Result<ptk_core::sdk::Installed, String>),
+    SdkCreated(Result<PathBuf, String>),
+    Published(Result<Published, String>),
+    FoundProjects(Vec<PathBuf>),
+}
+
+pub enum Downloaded {
+    Install(Box<PendingInstall>),
+    Project(PathBuf),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -219,7 +305,23 @@ pub struct App {
     pub plugin_new_dir: String,
     pub plugin_kind_export: bool,
     pub plugin_validation: Option<Result<Validation, String>>,
-    pub confirm_install: bool,
+    pub pending: Option<PendingInstall>,
+
+    pub settings_tab: SettingsTab,
+    pub market_tab: MarketTab,
+    pub rows: Vec<ProjectRow>,
+    pub selected: Option<PathBuf>,
+    pub filter: String,
+    pub sort: ProjectSort,
+    pub import_open: bool,
+    pub import_build: String,
+    pub import_dest: String,
+    pub market: Option<Result<MarketIndex, String>>,
+    pub market_search: String,
+    pub market_kind: Option<EntryKind>,
+    pub publish_path: String,
+    pub published: Option<Result<Published, String>>,
+    pub sdk_new_dir: String,
 
     pub busy: Option<String>,
     pub toast: Option<(String, ToastKind, Instant)>,
@@ -253,7 +355,7 @@ impl App {
             .clone()
             .unwrap_or_else(|| ptk_core::paths::data_dir().join("gui-state.json"));
         let mut app = App {
-            view: config.view.unwrap_or(View::Home),
+            view: config.view.unwrap_or(View::Projects),
             registry: TargetRegistry::load_default().0,
             state: GuiState::load(&state_file),
             state_file,
@@ -285,7 +387,22 @@ impl App {
             plugin_new_dir: String::new(),
             plugin_kind_export: false,
             plugin_validation: None,
-            confirm_install: false,
+            pending: None,
+            settings_tab: SettingsTab::Environment,
+            market_tab: MarketTab::Browse,
+            rows: Vec::new(),
+            selected: None,
+            filter: String::new(),
+            sort: ProjectSort::LastOpened,
+            import_open: false,
+            import_build: String::new(),
+            import_dest: String::new(),
+            market: None,
+            market_search: String::new(),
+            market_kind: None,
+            publish_path: String::new(),
+            published: None,
+            sdk_new_dir: String::new(),
             busy: None,
             toast: None,
             tx,
@@ -299,10 +416,85 @@ impl App {
             smoke: config.smoke,
             auto_run: config.auto_run,
         };
+        let view = app.view;
         if let Some(p) = config.project {
             app.open_project(&p);
+            app.view = view;
         }
+        app.refresh_rows();
         app
+    }
+
+    /// Reloads the project list from the remembered projects.
+    pub fn refresh_rows(&mut self) {
+        self.rows = self
+            .state
+            .recent_projects
+            .iter()
+            .map(|p| ProjectRow::load(p))
+            .collect();
+    }
+
+    /// Rows after filtering and sorting (favorites first).
+    pub fn visible_rows(&self) -> Vec<ProjectRow> {
+        let q = self.filter.trim().to_lowercase();
+        let mut rows: Vec<ProjectRow> = self
+            .rows
+            .iter()
+            .filter(|r| {
+                q.is_empty()
+                    || r.name.to_lowercase().contains(&q)
+                    || r.path.display().to_string().to_lowercase().contains(&q)
+                    || r.engine.as_deref().unwrap_or("").contains(&q)
+            })
+            .cloned()
+            .collect();
+        match self.sort {
+            ProjectSort::LastOpened => {}
+            ProjectSort::Name => rows.sort_by_key(|r| r.name.to_lowercase()),
+            ProjectSort::Engine => {
+                rows.sort_by_key(|r| r.engine.clone().unwrap_or_else(|| "~".into()))
+            }
+        }
+        let fav = &self.state.favorites;
+        rows.sort_by_key(|r| !fav.contains(&r.path));
+        rows
+    }
+
+    pub fn toggle_favorite(&mut self, path: &Path) {
+        let favs = &mut self.state.favorites;
+        if let Some(i) = favs.iter().position(|p| p == path) {
+            favs.remove(i);
+        } else {
+            favs.push(path.to_owned());
+        }
+        self.state.save(&self.state_file);
+    }
+
+    /// Forgets a project (the folder is not touched).
+    pub fn forget_project(&mut self, path: &Path) {
+        self.state.recent_projects.retain(|p| p != path);
+        self.state.favorites.retain(|p| p != path);
+        self.state.save(&self.state_file);
+        if self.project.as_ref().is_some_and(|p| p.dir == path) {
+            self.project = None;
+        }
+        if self.selected.as_deref() == Some(path) {
+            self.selected = None;
+        }
+        self.refresh_rows();
+    }
+
+    pub fn forget_missing(&mut self) {
+        let missing: Vec<PathBuf> = self
+            .rows
+            .iter()
+            .filter(|r| r.missing)
+            .map(|r| r.path.clone())
+            .collect();
+        for p in missing {
+            self.forget_project(&p);
+        }
     }
 
     // ---------------------------------------------------------------- project
@@ -326,11 +518,13 @@ impl App {
                 });
                 GuiState::remember(&mut self.state.recent_projects, dir);
                 self.state.save(&self.state_file);
+                self.selected = dir.canonicalize().ok().or(Some(dir.to_owned()));
                 self.pack_result = None;
                 self.verify_result = None;
-                if self.view == View::Home {
-                    self.view = View::Project;
+                if !View::WORKSPACE.contains(&self.view) {
+                    self.view = View::Overview;
                 }
+                self.refresh_rows();
             }
             Err(e) => self.notify(e.to_string(), ToastKind::Error),
         }
@@ -355,7 +549,7 @@ impl App {
                 self.new_dir.clear();
                 self.new_title.clear();
                 self.open_project(&dir);
-                self.view = View::Project;
+                self.view = View::Overview;
             }
             Err(e) => self.notify(e.to_string(), ToastKind::Error),
         }
@@ -577,15 +771,163 @@ impl App {
         });
     }
 
-    pub fn install_plugin(&mut self, ctx: &egui::Context) {
-        let Some(Ok(v)) = &self.plugin_validation else {
+    /// Installs what the user just agreed to.
+    pub fn confirm_pending(&mut self, ctx: &egui::Context) {
+        let Some(p) = self.pending.take() else {
             return;
         };
-        let v = v.clone();
-        let dir = PathBuf::from(&v.path);
-        self.confirm_install = false;
-        self.spawn(ctx, "Installing plugin", move |_| {
-            Msg::Installed(ptk_core::plugins::install(&dir, &v).map_err(|e| e.to_string()))
+        match p {
+            PendingInstall::Plugin(v) => {
+                let dir = PathBuf::from(&v.path);
+                self.spawn(ctx, "Installing plugin", move |_| {
+                    Msg::Installed(ptk_core::plugins::install(&dir, &v).map_err(|e| e.to_string()))
+                });
+            }
+            PendingInstall::Sdk(r) => {
+                self.spawn(ctx, "Installing SDK", move |_| {
+                    Msg::SdkInstalled(ptk_core::sdk::install(&r).map_err(|e| e.to_string()))
+                });
+            }
+        }
+    }
+
+    /// Asks to install the plugin that was just validated.
+    pub fn install_plugin(&mut self) {
+        if let Some(Ok(v)) = &self.plugin_validation {
+            self.pending = Some(PendingInstall::Plugin(v.clone()));
+        }
+    }
+
+    /// Import Game: unpack if needed, scan, create the project, record hashes.
+    pub fn import_game(&mut self, ctx: &egui::Context) {
+        let build = PathBuf::from(self.import_build.trim());
+        if build.as_os_str().is_empty() {
+            return self.notify("Choose the game build to import".into(), ToastKind::Error);
+        }
+        let dest =
+            Some(PathBuf::from(self.import_dest.trim())).filter(|d| !d.as_os_str().is_empty());
+        let registry = self.registry.clone();
+        self.import_open = false;
+        self.spawn(ctx, "Importing game", move |_| {
+            let run = || -> ptk_core::Result<(PathBuf, ScanResult)> {
+                let prepared = ptk_core::import::prepare(&build)?;
+                let mut engine = EngineClient::start()?;
+                let (scan, _) = ptk_core::scan::scan(&mut engine, &prepared.game, &mut |_| {})?;
+                let _ = engine.shutdown();
+                let project = dest.unwrap_or_else(|| default_project_dir(&prepared.title));
+                if !project.join(MANIFEST_FILE).exists() {
+                    ptk_core::project::init(
+                        &project,
+                        ptk_core::project::InitOptions {
+                            title: Some(prepared.title.clone()),
+                            ..Default::default()
+                        },
+                        &registry,
+                    )?;
+                }
+                ptk_core::scan::record(&project, &prepared.game, &scan)?;
+                Ok((project, scan))
+            };
+            Msg::Imported(run().map_err(|e| e.to_string()))
+        });
+    }
+
+    pub fn refresh_market(&mut self, ctx: &egui::Context) {
+        let url = ptk_core::market::index_url();
+        self.market = None;
+        self.spawn(ctx, "Loading the marketplace", move |_| {
+            Msg::Market(ptk_core::market::fetch_index(&url).map_err(|e| e.to_string()))
+        });
+    }
+
+    /// Downloads a marketplace entry, checks it, and asks before installing.
+    pub fn market_install(&mut self, ctx: &egui::Context, entry: MarketEntry) {
+        self.spawn(ctx, &format!("Downloading {}", entry.id), move |_| {
+            let run = || -> ptk_core::Result<Downloaded> {
+                let path = ptk_core::market::download(&entry)?;
+                if entry.kind == EntryKind::Project {
+                    return Ok(Downloaded::Project(path));
+                }
+                let mut e = EngineClient::start()?;
+                let pending = if entry.kind == EntryKind::Sdk {
+                    PendingInstall::Sdk(ptk_core::sdk::validate(&path, &mut e)?)
+                } else {
+                    PendingInstall::Plugin(ptk_core::plugins::validate(&mut e, &path)?.0)
+                };
+                let _ = e.shutdown();
+                Ok(Downloaded::Install(Box::new(pending)))
+            };
+            Msg::Downloaded(run().map_err(|e| e.to_string()))
+        });
+    }
+
+    pub fn create_sdk(&mut self, ctx: &egui::Context) {
+        let dir = PathBuf::from(self.sdk_new_dir.trim());
+        if dir.as_os_str().is_empty() {
+            return self.notify("Choose a folder for the new SDK".into(), ToastKind::Error);
+        }
+        let name = dir
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let id = ptk_core::manifest::slugify(&name)
+            .trim_end_matches("-sdk")
+            .to_owned();
+        self.spawn(ctx, "Creating SDK", move |_| {
+            let run = || -> ptk_core::Result<PathBuf> {
+                let mut e = EngineClient::start()?;
+                ptk_core::sdk::create(&dir, &id, &mut e)?;
+                let _ = e.shutdown();
+                Ok(dir)
+            };
+            Msg::SdkCreated(run().map_err(|e| e.to_string()))
+        });
+    }
+
+    /// Validates and packages a plugin, SDK or .ptk for the marketplace.
+    pub fn publish(&mut self, ctx: &egui::Context) {
+        let src = PathBuf::from(self.publish_path.trim());
+        if src.as_os_str().is_empty() {
+            return self.notify("Choose what to publish".into(), ToastKind::Error);
+        }
+        let out = src.parent().unwrap_or(Path::new(".")).join("dist");
+        self.published = None;
+        self.spawn(ctx, "Packaging", move |_| {
+            let run = || -> ptk_core::Result<Published> {
+                let mut e = EngineClient::start()?;
+                let p = ptk_core::market::package(&src, &out, &mut e)?;
+                let _ = e.shutdown();
+                Ok(p)
+            };
+            Msg::Published(run().map_err(|e| e.to_string()))
+        });
+    }
+
+    /// Finds `ptk.json` projects under a folder (a few levels deep).
+    pub fn find_projects(&mut self, ctx: &egui::Context, root: PathBuf) {
+        self.spawn(ctx, "Looking for projects", move |_| {
+            fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
+                if dir.join(MANIFEST_FILE).is_file() {
+                    out.push(dir.to_owned());
+                    return;
+                }
+                if depth == 0 {
+                    return;
+                }
+                if let Ok(rd) = std::fs::read_dir(dir) {
+                    for e in rd.flatten() {
+                        let name = e.file_name().to_string_lossy().into_owned();
+                        let skip =
+                            name.starts_with('.') || name == "node_modules" || name == "target";
+                        if !skip && e.file_type().is_ok_and(|t| t.is_dir()) {
+                            walk(&e.path(), depth - 1, out);
+                        }
+                    }
+                }
+            }
+            let mut out = Vec::new();
+            walk(&root, 4, &mut out);
+            Msg::FoundProjects(out)
         });
     }
 
@@ -630,9 +972,9 @@ impl App {
                 Msg::PluginCreated(r) => match r {
                     Ok(c) => {
                         self.notify(format!("Created plugin {}", c.id), ToastKind::Ok);
-                        self.plugin_dir = c.path;
+                        self.plugin_dir = c.path.clone();
+                        self.publish_path = c.path;
                         self.plugin_new_dir.clear();
-                        self.validate_plugin(ctx);
                     }
                     Err(e) => self.notify(e, ToastKind::Error),
                 },
@@ -642,29 +984,92 @@ impl App {
                             format!("Installed {n} files in {}", dest.display()),
                             ToastKind::Ok,
                         );
+                        self.registry = TargetRegistry::load_default().0;
                         self.refresh_plugins(ctx);
                     }
                     Err(e) => self.notify(e, ToastKind::Error),
                 },
+                Msg::Imported(r) => match r {
+                    Ok((dir, scan)) => {
+                        self.game_input = scan.path.clone();
+                        self.scan = Some(scan);
+                        self.open_project(&dir);
+                        self.view = View::Overview;
+                        self.notify(format!("Imported into {}", dir.display()), ToastKind::Ok);
+                    }
+                    Err(e) => self.notify(e, ToastKind::Error),
+                },
+                Msg::Market(r) => {
+                    self.market = Some(r.map(|(index, _)| index));
+                    if self.plugins.is_none() {
+                        self.refresh_plugins(ctx);
+                    }
+                }
+                Msg::Downloaded(r) => match r {
+                    Ok(Downloaded::Install(p)) => self.pending = Some(*p),
+                    Ok(Downloaded::Project(path)) => {
+                        self.unpack_input = path.display().to_string();
+                        self.view = View::Export;
+                        self.notify(
+                            "Downloaded. Choose a folder and press Unpack.".into(),
+                            ToastKind::Ok,
+                        );
+                    }
+                    Err(e) => self.notify(e, ToastKind::Error),
+                },
+                Msg::SdkInstalled(r) => match r {
+                    Ok(i) => {
+                        self.notify(
+                            format!(
+                                "Installed {} targets and {} plugins",
+                                i.targets.len(),
+                                i.plugins.len()
+                            ),
+                            ToastKind::Ok,
+                        );
+                        self.registry = TargetRegistry::load_default().0;
+                        self.refresh_plugins(ctx);
+                    }
+                    Err(e) => self.notify(e, ToastKind::Error),
+                },
+                Msg::SdkCreated(r) => match r {
+                    Ok(dir) => {
+                        self.notify(format!("Created SDK in {}", dir.display()), ToastKind::Ok);
+                        self.publish_path = dir.display().to_string();
+                        self.sdk_new_dir.clear();
+                    }
+                    Err(e) => self.notify(e, ToastKind::Error),
+                },
+                Msg::Published(r) => self.published = Some(r),
+                Msg::FoundProjects(list) => {
+                    let n = list.len();
+                    for p in &list {
+                        GuiState::remember(&mut self.state.recent_projects, p);
+                    }
+                    self.state.save(&self.state_file);
+                    self.refresh_rows();
+                    self.notify(format!("Found {n} projects"), ToastKind::Info);
+                }
             }
         }
     }
 
     /// Opens what was dropped on the window: a project folder, a `.ptk`
-    /// file, or a game folder to scan.
+    /// file, or a game build to import.
     pub fn handle_drop(&mut self, path: &Path) {
         if path.join(MANIFEST_FILE).is_file() {
             self.open_project(path);
-            self.view = View::Project;
+            self.view = View::Overview;
         } else if path
             .extension()
             .is_some_and(|e| e.eq_ignore_ascii_case("ptk"))
         {
             self.unpack_input = path.display().to_string();
-            self.view = View::Share;
-        } else if path.is_dir() {
-            self.game_input = path.display().to_string();
-            self.view = View::Scan;
+            self.view = View::Export;
+        } else if path.exists() {
+            self.import_build = path.display().to_string();
+            self.import_open = true;
+            self.view = View::Projects;
         }
     }
 
@@ -674,9 +1079,9 @@ impl App {
         }
         match self.view {
             View::Scan if !self.game_input.is_empty() => self.start_scan(ctx),
-            View::Doctor => self.start_doctor(ctx, false),
-            View::Plugins => self.refresh_plugins(ctx),
-            View::Share if !self.verify_game.is_empty() && self.project.is_some() => {
+            View::Settings => self.start_doctor(ctx, false),
+            View::Marketplace => self.refresh_market(ctx),
+            View::Export if !self.verify_game.is_empty() && self.project.is_some() => {
                 self.start_verify(ctx)
             }
             _ => {}
@@ -718,26 +1123,30 @@ impl App {
                     }
                 }
             }
+            Command::ImportGame => {
+                self.view = View::Projects;
+                self.import_open = true;
+            }
             Command::OpenProject => {
                 if let Some(dir) = rfd::FileDialog::new()
                     .set_title("Open a Porting Toolkit project")
                     .pick_folder()
                 {
                     self.open_project(&dir);
-                    self.view = View::Project;
+                    self.view = View::Overview;
                 }
             }
             Command::OpenRecent(i) => {
                 if let Some(p) = self.state.recent_projects.get(i).cloned() {
                     self.open_project(&p);
-                    self.view = View::Project;
+                    self.view = View::Overview;
                 }
             }
             Command::Save => self.save_project(),
             Command::Revert => self.revert_project(),
             Command::CloseProject => {
                 self.project = None;
-                self.view = View::Home;
+                self.view = View::Projects;
             }
             Command::UnpackPtk => {
                 let pack = rfd::FileDialog::new()
@@ -746,7 +1155,7 @@ impl App {
                     .pick_file();
                 if let Some(pack) = pack {
                     self.unpack_input = pack.display().to_string();
-                    self.view = View::Share;
+                    self.view = View::Export;
                     if let Some(dest) = rfd::FileDialog::new()
                         .set_title("Choose a new or empty folder to unpack into")
                         .pick_folder()
@@ -757,7 +1166,7 @@ impl App {
                 }
             }
             Command::PackProject => {
-                self.view = View::Share;
+                self.view = View::Export;
                 self.start_pack(ctx);
             }
             Command::Undo
@@ -767,6 +1176,7 @@ impl App {
             | Command::Paste
             | Command::SelectAll => self.inject_edit(ctx, cmd),
             Command::Go(v) => self.go(v, ctx),
+            Command::Settings => self.go(View::Settings, ctx),
             Command::ScanGame => {
                 if let Some(dir) = rfd::FileDialog::new()
                     .set_title("Choose your game folder")
@@ -787,16 +1197,42 @@ impl App {
                     .pick_folder()
                 {
                     self.verify_game = dir.display().to_string();
-                    self.view = View::Share;
+                    self.view = View::Export;
                     self.start_verify(ctx);
                 }
             }
+            Command::FindProjects => {
+                if let Some(dir) = rfd::FileDialog::new()
+                    .set_title("Find Porting Toolkit projects in a folder")
+                    .pick_folder()
+                {
+                    self.view = View::Projects;
+                    self.find_projects(ctx, dir);
+                }
+            }
+            Command::Publish => {
+                self.go(View::Marketplace, ctx);
+                self.market_tab = MarketTab::Publish;
+            }
+            Command::NewSdk => {
+                self.go(View::Marketplace, ctx);
+                self.market_tab = MarketTab::Publish;
+                if let Some(dir) = rfd::FileDialog::new()
+                    .set_title("Choose a new folder for the SDK")
+                    .pick_folder()
+                {
+                    self.sdk_new_dir = dir.display().to_string();
+                    self.create_sdk(ctx);
+                }
+            }
             Command::RunDoctor => {
-                self.view = View::Doctor;
+                self.view = View::Settings;
+                self.settings_tab = SettingsTab::Environment;
                 self.start_doctor(ctx, false);
             }
             Command::SetUpEngine => {
-                self.view = View::Doctor;
+                self.view = View::Settings;
+                self.settings_tab = SettingsTab::Environment;
                 self.start_doctor(ctx, true);
             }
             Command::RevealData => reveal(&ptk_core::paths::data_dir()),
@@ -805,7 +1241,10 @@ impl App {
                 let _ = std::fs::create_dir_all(&dir);
                 reveal(&dir);
             }
-            Command::About => self.view = View::About,
+            Command::About => {
+                self.view = View::Settings;
+                self.settings_tab = SettingsTab::About;
+            }
             Command::Help(i) => {
                 if let Some((_, url)) = crate::menu::HELP_LINKS.get(i) {
                     open_url(url);
@@ -817,8 +1256,8 @@ impl App {
     /// Switches view, loading what the view needs.
     pub fn go(&mut self, view: View, ctx: &egui::Context) {
         self.view = view;
-        if view == View::Plugins && self.plugins.is_none() {
-            self.refresh_plugins(ctx);
+        if view == View::Marketplace && self.market.is_none() && self.busy.is_none() {
+            self.refresh_market(ctx);
         }
     }
 
@@ -853,6 +1292,11 @@ impl App {
     /// Keyboard shortcuts for commands, when no native menu handles them.
     fn shortcut_commands(&mut self, ctx: &egui::Context) -> Vec<Command> {
         let mut out = Vec::new();
+        if ctx.input_mut(|i| {
+            i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::Comma))
+        }) {
+            out.push(Command::Settings);
+        }
         for spec in crate::menu::menus() {
             for cmd in spec.items.into_iter().flatten() {
                 if matches!(
@@ -869,7 +1313,8 @@ impl App {
                 let Some((shift, ch)) = cmd.shortcut() else {
                     continue;
                 };
-                let Some(key) = Key::from_name(&ch.to_string()) else {
+                let key = Key::from_name(&ch.to_string());
+                let Some(key) = key else {
                     continue;
                 };
                 let mods = if shift {
@@ -894,18 +1339,11 @@ impl App {
         self.poll(ctx);
         self.first_run(ctx);
         #[cfg(target_os = "macos")]
-        if let Some(menu) = &mut self.native_menu {
-            let state = MenuState {
-                project_open: self.project.is_some(),
-                dirty: self.project.as_ref().is_some_and(|p| p.dirty()),
-                busy: self.busy.is_some(),
-                has_game: !self.game_input.trim().is_empty(),
-                has_hashes: self
-                    .project
-                    .as_ref()
-                    .is_some_and(|p| !p.saved.source_files.is_empty()),
-            };
-            menu.sync(state, &self.state.recent_projects);
+        {
+            let state = self.menu_state();
+            if let Some(menu) = &mut self.native_menu {
+                menu.sync(state, &self.state.recent_projects);
+            }
         }
         let dropped: Vec<PathBuf> = ctx.input(|i| {
             i.raw
@@ -918,18 +1356,33 @@ impl App {
             self.handle_drop(&p);
         }
 
-        egui::TopBottomPanel::top("header")
-            .exact_height(58.0)
+        egui::TopBottomPanel::top("tabs")
+            .exact_height(54.0)
             .frame(
                 Frame::new()
                     .fill(HEADER)
-                    .inner_margin(Margin::symmetric(16, 0))
+                    .inner_margin(Margin::symmetric(14, 0))
                     .stroke(Stroke::new(1.0_f32, BORDER)),
             )
-            .show(ctx, |ui| self.header(ui));
+            .show(ctx, |ui| self.tab_bar(ui));
+        egui::TopBottomPanel::bottom("status")
+            .exact_height(26.0)
+            .frame(
+                Frame::new()
+                    .fill(HEADER)
+                    .inner_margin(Margin::symmetric(14, 0))
+                    .stroke(Stroke::new(1.0_f32, BORDER)),
+            )
+            .show(ctx, |ui| self.status_bar(ui));
         egui::CentralPanel::default()
             .frame(Frame::new().fill(PAGE))
             .show(ctx, |ui| {
+                if self.view == View::Projects {
+                    Frame::new()
+                        .inner_margin(Margin::same(14))
+                        .show(ui, |ui| self.projects_page(ui));
+                    return;
+                }
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
@@ -949,118 +1402,99 @@ impl App {
                             });
                     });
             });
+        self.import_modal(ctx);
         self.install_modal(ctx);
         self.toast_area(ctx);
     }
 
-    fn header(&mut self, ui: &mut egui::Ui) {
-        let wide = ui.available_width() >= 1080.0;
-        let medium = ui.available_width() >= 760.0;
+    /// The top bar: brand, main tabs, the open project's tabs, Settings.
+    fn tab_bar(&mut self, ui: &mut egui::Ui) {
+        let width = ui.available_width();
+        let labels = width >= 980.0;
         ui.horizontal_centered(|ui| {
             #[cfg(not(target_os = "macos"))]
             self.fallback_menu(ui);
 
-            widgets::logo(ui, 30.0);
-            if medium {
+            widgets::logo(ui, 28.0);
+            if width >= 760.0 {
                 ui.label(
-                    RichText::new("Porting Toolkit")
-                        .size(15.0)
+                    RichText::new("PORTING TOOLKIT")
+                        .size(14.0)
                         .strong()
                         .color(Color32::WHITE),
                 );
             }
-            ui.add_space(6.0);
-            self.project_chip(ui);
-            ui.add_space(10.0);
-
-            for view in [
-                View::Home,
-                View::Project,
-                View::Scan,
-                View::Options,
-                View::Share,
-                View::Plugins,
-            ] {
-                let selected = self.view == view;
-                if widgets::nav_pill(ui, view.icon(), view.title(), selected, wide)
-                    .on_hover_text(format!(
-                        "{}  {}",
-                        view.title(),
-                        Command::Go(view).shortcut_text()
-                    ))
+            ui.add_space(14.0);
+            for view in [View::Projects, View::Marketplace] {
+                if widgets::tab(ui, view.icon(), view.title(), self.view == view, true)
+                    .on_hover_text(Command::Go(view).shortcut_text())
                     .clicked()
                 {
                     self.go(view, ui.ctx());
                 }
             }
-
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                for view in [View::Doctor, View::Targets] {
-                    if widgets::icon_button(ui, view.icon(), self.view == view)
-                        .on_hover_text(view.title())
+            if let Some(p) = &self.project {
+                let name = format!("{}{}", p.manifest.name, if p.dirty() { " ●" } else { "" });
+                ui.add_space(6.0);
+                ui.label(RichText::new("│").color(BORDER).size(20.0));
+                ui.label(RichText::new(name).strong().color(LIGHT_BLUE));
+                for view in View::WORKSPACE {
+                    if widgets::tab(ui, view.icon(), view.title(), self.view == view, labels)
+                        .on_hover_text(format!(
+                            "{}  {}",
+                            view.title(),
+                            Command::Go(view).shortcut_text()
+                        ))
                         .clicked()
                     {
                         self.go(view, ui.ctx());
                     }
                 }
-                if let Some(label) = &self.busy {
-                    let extra = match self.scan_progress {
-                        Some(n) if n > 0 => format!(" · {n} files"),
-                        _ => String::new(),
-                    };
-                    widgets::busy_pill(ui, &format!("{label}{extra}"));
+            }
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let s = View::Settings;
+                if widgets::tab(ui, s.icon(), s.title(), self.view == s, width >= 640.0)
+                    .on_hover_text("⌘,")
+                    .clicked()
+                {
+                    self.go(s, ui.ctx());
                 }
             });
         });
     }
 
-    fn project_chip(&mut self, ui: &mut egui::Ui) {
-        let (text, color) = match &self.project {
-            Some(p) => (
-                format!(
-                    "🗀  {}{}",
-                    p.manifest.name,
-                    if p.dirty() { "  ●" } else { "" }
-                ),
-                Color32::WHITE,
-            ),
-            None => ("🗀  No project".to_owned(), TEXT_WEAK),
-        };
-        let mut picked = None;
-        ui.menu_button(RichText::new(format!("{text}  ⏷")).color(color), |ui| {
-            ui.set_min_width(240.0);
-            for c in [Command::NewProject, Command::OpenProject] {
-                if ui.button(c.label()).clicked() {
-                    picked = Some(c);
+    fn status_bar(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal_centered(|ui| {
+            let small = |t: String, c: Color32| RichText::new(t).size(12.0).color(c);
+            match &self.busy {
+                Some(label) => {
+                    ui.add(egui::Spinner::new().size(12.0).color(FOCUS));
+                    let extra = match self.scan_progress {
+                        Some(n) if n > 0 => format!(" · {n} files"),
+                        _ => String::new(),
+                    };
+                    ui.label(small(format!("{label}…{extra}"), TEXT));
+                }
+                None => {
+                    let text = match &self.project {
+                        Some(p) => widgets::display_path(&p.dir),
+                        None => format!("{} projects", self.rows.len()),
+                    };
+                    ui.label(small(text, TEXT_FAINT));
                 }
             }
-            if !self.state.recent_projects.is_empty() {
-                ui.separator();
-                ui.label(RichText::new("RECENT").size(11.0).color(TEXT_FAINT));
-                for (i, p) in self.state.recent_projects.iter().enumerate() {
-                    let name = p
-                        .file_name()
-                        .map(|n| n.to_string_lossy().into_owned())
-                        .unwrap_or_default();
-                    if ui
-                        .button(name)
-                        .on_hover_text(p.display().to_string())
-                        .clicked()
-                    {
-                        picked = Some(Command::OpenRecent(i));
-                    }
-                }
-            }
-            if self.project.is_some() {
-                ui.separator();
-                if ui.button("Close Project").clicked() {
-                    picked = Some(Command::CloseProject);
-                }
-            }
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let host = self
+                    .registry
+                    .host()
+                    .map(|t| t.id.clone())
+                    .unwrap_or_default();
+                ui.label(small(
+                    format!("v{}  ·  {host}", ptk_core::VERSION),
+                    TEXT_WEAK,
+                ));
+            });
         });
-        if let Some(c) = picked {
-            self.run_command(c, ui.ctx());
-        }
     }
 
     /// Menu button with every command, for systems without the native bar.
@@ -1088,8 +1522,8 @@ impl App {
                     }
                 });
             }
-            if ui.button("About Porting Toolkit").clicked() {
-                picked = Some(Command::About);
+            if ui.button("Settings").clicked() {
+                picked = Some(Command::Settings);
             }
         });
         if let Some(c) = picked {
@@ -1097,47 +1531,134 @@ impl App {
         }
     }
 
-    fn install_modal(&mut self, ctx: &egui::Context) {
-        if !self.confirm_install {
+    /// Import Game: start a project from a build the user owns.
+    fn import_modal(&mut self, ctx: &egui::Context) {
+        if !self.import_open {
             return;
         }
-        let Some(Ok(v)) = self.plugin_validation.clone() else {
-            self.confirm_install = false;
+        let mut import = false;
+        let mut cancel = false;
+        egui::Modal::new(egui::Id::new("import-game")).show(ctx, |ui| {
+            ui.set_width(520.0);
+            ui.heading("Import a game");
+            widgets::hint(
+                ui,
+                "Start a project from a build you own. No source code needed: Porting Toolkit reads file names and headers, records SHA-256 hashes, and never copies the game into the project.",
+            );
+            ui.add_space(8.0);
+            ui.label(RichText::new("Game build").color(TEXT_WEAK));
+            ui.add(
+                egui::TextEdit::singleline(&mut self.import_build)
+                    .hint_text("folder, .app, .exe, .zip, .deb or .dmg")
+                    .desired_width(f32::INFINITY),
+            );
+            ui.horizontal(|ui| {
+                if ui.button("Choose File…").clicked()
+                    && let Some(p) = rfd::FileDialog::new().set_title("Choose the game").pick_file()
+                {
+                    self.import_build = p.display().to_string();
+                }
+                if ui.button("Choose Folder…").clicked()
+                    && let Some(p) = rfd::FileDialog::new().set_title("Choose the game folder").pick_folder()
+                {
+                    self.import_build = p.display().to_string();
+                }
+            });
+            ui.add_space(6.0);
+            ui.label(RichText::new("Project folder").color(TEXT_WEAK));
+            let default = if self.import_build.trim().is_empty() {
+                default_project_dir("my-game")
+            } else {
+                default_project_dir(&ptk_core::import::title_of(Path::new(self.import_build.trim())))
+            };
+            widgets::path_field(
+                ui,
+                &mut self.import_dest,
+                &default.display().to_string(),
+                widgets::Pick::Folder,
+            );
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                import = widgets::primary(ui, !self.import_build.trim().is_empty(), "Import").clicked();
+                cancel = ui.button("Cancel").clicked();
+            });
+        });
+        if import {
+            self.import_game(ctx);
+        } else if cancel || ctx.input(|i| i.key_pressed(Key::Escape)) {
+            self.import_open = false;
+        }
+    }
+
+    /// Consent before installing a plugin or an SDK.
+    fn install_modal(&mut self, ctx: &egui::Context) {
+        let Some(pending) = self.pending.clone() else {
             return;
         };
         let mut install = false;
         let mut cancel = false;
-        egui::Modal::new(egui::Id::new("install-plugin")).show(ctx, |ui| {
-            ui.set_width(460.0);
-            let id = v
-                .plugin
-                .as_ref()
-                .and_then(|p| p.id.clone())
-                .unwrap_or_default();
-            ui.heading(format!("Install {id}?"));
+        egui::Modal::new(egui::Id::new("install")).show(ctx, |ui| {
+            ui.set_width(500.0);
+            let (title, valid, plugins): (String, bool, Vec<Validation>) = match &pending {
+                PendingInstall::Plugin(v) => (
+                    format!(
+                        "Install plugin {}?",
+                        v.plugin.as_ref().and_then(|p| p.id.clone()).unwrap_or_default()
+                    ),
+                    v.valid,
+                    vec![v.clone()],
+                ),
+                PendingInstall::Sdk(r) => (
+                    format!(
+                        "Install SDK {}?",
+                        r.sdk.as_ref().map(|s| s.name.clone()).unwrap_or_default()
+                    ),
+                    r.valid,
+                    r.plugins.clone(),
+                ),
+            };
+            ui.heading(title);
             ui.add_space(6.0);
-            ui.label("This plugin declares that it needs:");
-            for p in &v.permissions {
-                ui.label(format!("  •  {p}"));
+            if let PendingInstall::Sdk(r) = &pending {
+                ui.label(RichText::new("Adds these platforms").color(TEXT_WEAK));
+                for t in &r.targets {
+                    ui.label(format!("  •  {} ({} / {})", t.id, t.os, t.arch));
+                }
+                for e in &r.errors {
+                    ui.label(RichText::new(format!("✖ {e}")).color(ERROR));
+                }
+            }
+            for v in &plugins {
+                let id = v.plugin.as_ref().and_then(|p| p.id.clone()).unwrap_or_default();
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(format!("🔌 {id}")).strong());
+                    widgets::badge(ui, &format!("{} risk", v.risk), match v.risk.as_str() {
+                        "low" => GREEN,
+                        "medium" => WARN,
+                        _ => ERROR,
+                    });
+                });
+                for p in &v.permissions {
+                    ui.label(format!("  •  {p}"));
+                }
             }
             ui.add_space(6.0);
             widgets::message(
                 ui,
                 WARN,
-                "Python plugins can do anything your user account can. The permissions above \
-                 are what the author declares, and this plugin has not been reviewed. \
-                 Plugins do not run until phase 3.",
+                "Python plugins can do anything your user account can. The permissions above are what the author declares. Plugins do not run until phase 3.",
             );
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                install = widgets::primary(ui, true, "Install").clicked();
+                install = widgets::primary(ui, valid, "Install").clicked();
                 cancel = ui.button("Cancel").clicked();
             });
         });
         if install {
-            self.install_plugin(ctx);
+            self.confirm_pending(ctx);
         } else if cancel || ctx.input(|i| i.key_pressed(Key::Escape)) {
-            self.confirm_install = false;
+            self.pending = None;
         }
     }
 
@@ -1217,6 +1738,15 @@ impl App {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
     }
+}
+
+/// Default folder for a project imported from a game build.
+pub fn default_project_dir(title: &str) -> PathBuf {
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+    home.join("Porting Toolkit")
+        .join(format!("{}-port", ptk_core::manifest::slugify(title)))
 }
 
 /// Shows a folder in Finder (or the system file manager).
@@ -1375,15 +1905,17 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let project = new_project(tmp.path());
         let mut app = app(tmp.path());
+        // A game build opens Import Game, prefilled.
         app.handle_drop(&fixtures().join("godot"));
-        assert_eq!(app.view, View::Scan);
-        assert!(app.game_input.ends_with("godot"));
+        assert_eq!(app.view, View::Projects);
+        assert!(app.import_open);
+        assert!(app.import_build.ends_with("godot"));
         let pack = tmp.path().join("x.ptk");
         std::fs::write(&pack, b"").unwrap();
         app.handle_drop(&pack);
-        assert_eq!(app.view, View::Share);
+        assert_eq!(app.view, View::Export);
         app.handle_drop(&project);
-        assert_eq!(app.view, View::Project);
+        assert_eq!(app.view, View::Overview);
         assert!(app.project.is_some());
     }
 
@@ -1391,6 +1923,9 @@ mod tests {
     fn recent_lists_are_deduplicated_and_bounded() {
         let mut list = Vec::new();
         for i in 0..12 {
+            GuiState::remember(&mut list, Path::new(&format!("/p{i}")));
+        }
+        for i in 12..30 {
             GuiState::remember(&mut list, Path::new(&format!("/p{i}")));
         }
         GuiState::remember(&mut list, Path::new("/p5"));
@@ -1402,6 +1937,73 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn project_list_filters_sorts_and_forgets() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = app(tmp.path());
+        for name in ["beta", "alpha"] {
+            let p = tmp.path().join(name);
+            ptk_core::project::init(&p, Default::default(), &TargetRegistry::builtin()).unwrap();
+            app.open_project(&p);
+        }
+        let gone = tmp.path().join("gone");
+        ptk_core::project::init(&gone, Default::default(), &TargetRegistry::builtin()).unwrap();
+        app.open_project(&gone);
+        std::fs::remove_dir_all(&gone).unwrap();
+        app.refresh_rows();
+        assert_eq!(app.rows.len(), 3);
+        assert!(app.rows.iter().any(|r| r.missing));
+
+        app.sort = ProjectSort::Name;
+        let names: Vec<_> = app.visible_rows().iter().map(|r| r.name.clone()).collect();
+        assert_eq!(names, ["alpha", "beta", "Missing project"]);
+        let beta = app
+            .rows
+            .iter()
+            .find(|r| r.name == "beta")
+            .unwrap()
+            .path
+            .clone();
+        app.toggle_favorite(&beta);
+        assert_eq!(app.visible_rows()[0].name, "beta");
+        app.filter = "alp".into();
+        assert_eq!(app.visible_rows().len(), 1);
+        app.filter.clear();
+        app.forget_missing();
+        assert_eq!(app.rows.len(), 2);
+        app.forget_project(&beta);
+        assert_eq!(app.rows.len(), 1);
+    }
+
+    #[test]
+    fn import_game_creates_a_project() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = egui::Context::default();
+        let mut app = app(tmp.path());
+        let exe = tmp.path().join("MyGame.exe");
+        let mut bytes = b"MZ".to_vec();
+        bytes.extend([0u8; 40]);
+        bytes.extend(8u64.to_le_bytes());
+        bytes.extend(b"GDPC");
+        std::fs::write(&exe, bytes).unwrap();
+        app.import_build = exe.display().to_string();
+        app.import_dest = tmp.path().join("my-port").display().to_string();
+        app.import_open = true;
+        app.import_game(&ctx);
+        let start = Instant::now();
+        while app.busy.is_some() {
+            assert!(start.elapsed() < Duration::from_secs(30));
+            std::thread::sleep(Duration::from_millis(20));
+            app.poll(&ctx);
+        }
+        let p = app.project.as_ref().expect("project opened");
+        assert_eq!(p.manifest.game.engine.as_deref(), Some("godot"));
+        assert_eq!(p.manifest.game.title.as_deref(), Some("MyGame"));
+        assert_eq!(p.manifest.source_files.len(), 1);
+        assert_eq!(app.view, View::Overview);
+        assert!(!app.import_open);
     }
 
     /// Scan through the real engine, record into a project, pack and

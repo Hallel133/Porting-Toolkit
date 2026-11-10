@@ -64,24 +64,52 @@ ptk verify ~/Games/MyGame -p my-port  # is this the same game version?
 
 ## Desktop app
 
-`ptk-gui` is the desktop app: a header with the project switcher and
-navigation (Home, Project, Scan, Options, Share, Plugins, plus Targets and
-Doctor), and pages of cards that reflow to the window width. On macOS it has
-a real menu bar (File, Edit, View, Tools, Window, Help) with the usual
-shortcuts: ⌘N new project, ⌘O open, ⌘S save, ⇧⌘E pack, ⇧⌘G scan a game,
-⌘R scan again, ⌘1–⌘7 switch pages. You can also drop a project folder, a
-`.ptk` file or a game folder on the window.
+`ptk-gui` is a project manager in the spirit of game-engine launchers: a
+**Projects** list (favorites, filter, sort, an action column with Open,
+Export, Scan, Verify, Show in Finder, Remove), a **Marketplace** (Browse,
+Installed, Publish) and **Settings** (environment check, targets, about).
+Opening a project adds its tabs: Overview, Scan, Options and Export. On macOS
+it has a real menu bar with the usual shortcuts (⌘N, ⌘I import, ⌘O, ⌘S,
+⌘1–⌘6, ⌘, settings). Drop a game, a project or a `.ptk` on the window.
 
 ```bash
 cargo run --release -p ptk-gui
 ```
 
-![Porting Toolkit desktop app: scan page](docs/images/gui-scan.png)
+![Porting Toolkit: projects](docs/images/gui-projects.png)
 
 | | |
 |---|---|
-| ![Home](docs/images/gui-home.png) | ![Advanced options](docs/images/gui-options.png) |
-| ![Project](docs/images/gui-project.png) | ![Narrow window](docs/images/gui-narrow.png) |
+| ![Overview](docs/images/gui-overview.png) | ![Export](docs/images/gui-export.png) |
+
+## Import a game (no source code)
+
+```bash
+ptk import "Space Hopper.exe"        # or a folder, .app, .zip, .deb, .dmg
+```
+
+Porting Toolkit reads names and headers (it even finds a Godot `.pck` inside
+an `.exe`), records SHA-256 hashes and creates a project. Archives are
+unpacked into your data folder; game files never go into the project.
+
+**Can it be ported without source code?** It depends on where the game's
+logic lives:
+
+| Engine | Without source code |
+|---|---|
+| Godot, Ren'Py, RPG Maker | Yes: the game data is portable; pair it with the engine runtime for the target |
+| Unity, GameMaker | Depends: Unity Mono yes, IL2CPP no; GameMaker needs a runner for the target |
+| Unreal, RAGE, Source | No: native code. Needs the source, or a compatibility layer (Wine-style) |
+
+Exporting runs **export plugins**, which arrive in phase 3; today you can
+import, scan, choose the advanced options, install exporters and share.
+
+## Marketplace and SDKs
+
+Plugins, SDKs (new platforms + their exporters) and projects are listed in a
+JSON index on GitHub. `ptk market list|install`, `ptk sdk new|validate|install`
+and `ptk publish <folder>` (zip + SHA-256 + index entry for a pull request).
+See [docs/marketplace.md](docs/marketplace.md).
 
 ## Commands
 
@@ -97,6 +125,10 @@ cargo run --release -p ptk-gui
 | `ptk pack` / `ptk unpack` | Create / check-and-extract a `.ptk` community project file |
 | `ptk verify <game-dir>` | Compare your game files with a project's recorded hashes |
 | `ptk plugin list\|new\|validate\|install` | Import/export plugins (format only in phase 1) |
+| `ptk import <build>` | Project from a folder, .app, .exe, .zip, .deb or .dmg |
+| `ptk sdk new\|validate\|install` | SDKs: new platforms and their exporters |
+| `ptk market list\|install` | Community marketplace |
+| `ptk publish <path>` | Package a plugin, SDK or .ptk for the marketplace |
 
 `ptk scan` recognises Unity, Unreal, Godot, RAGE, Source, GameMaker, Ren'Py,
 RPG Maker (MV/MZ/VX/VX Ace/XP) and macOS `.app` / Mach-O, from names and
@@ -116,6 +148,7 @@ Colors are off when output is not a terminal, with `NO_COLOR=1` or `--no-color`.
 - [ARCHITECTURE.md](ARCHITECTURE.md): Rust app + Python engine, JSON-RPC protocol
 - [docs/project-format.md](docs/project-format.md): `ptk.json` and `.ptk` files
 - [docs/plugins.md](docs/plugins.md): plugin format and security model
+- [docs/marketplace.md](docs/marketplace.md): marketplace, SDKs and publishing
 - [docs/legal.md](docs/legal.md): why the toolkit never distributes games
 
 ## Development
@@ -154,7 +187,21 @@ MIT. See [LICENSE](LICENSE).
 
 ### אפליקציה גרפית
 
-`ptk-gui` היא אפליקציית דסקטופ בגוונים של כחול כהה: כותרת עם בורר פרויקטים וניווט, ודפים של כרטיסים שמתאימים את עצמם לרוחב החלון. ב-macOS יש לה menu bar אמיתי (File, Edit, View, Tools, Window, Help) עם קיצורי מקלדת (⌘N, ⌘O, ⌘S, ⌘1–⌘7 ועוד). היא עושה כל מה שה-CLI עושה, ואפשר לגרור אליה תיקיית פרויקט, קובץ `.ptk` או תיקיית משחק. הפעלה: `cargo run --release -p ptk-gui`.
+`ptk-gui` היא מנהל פרויקטים בהשראת מנהלי הפרויקטים של מנועי משחק: רשימת **Projects** (מועדפים, סינון, מיון ועמודת פעולות), **Marketplace** (Browse, Installed, Publish) ו-**Settings**. פרויקט פתוח מוסיף לשוניות Overview, Scan, Options ו-Export. ב-macOS יש menu bar אמיתי עם קיצורי מקלדת. הפעלה: `cargo run --release -p ptk-gui`.
+
+### ייבוא משחק בלי קוד מקור
+
+`ptk import` (או Import Game באפליקציה) מקבל תיקייה, ‎.app, ‏‎.exe, ‏‎.zip, ‏‎.deb או ‎.dmg, מזהה את המנוע (כולל ‎.pck של Godot שארוז בתוך ‎.exe), שומר hashes ויוצר פרויקט.
+
+- **Godot,‏ Ren'Py,‏ RPG Maker:** אפשר לעשות port בלי קוד מקור, כי הלוגיקה נמצאת במידע שלא תלוי בפלטפורמה.
+- **Unity ו-GameMaker:** תלוי ב-build.
+- **Unreal,‏ RAGE,‏ Source:** צריך קוד מקור, או שכבת תאימות בסגנון Wine.
+
+Export מתבצע דרך export plugins שמגיעים בשלב 3.
+
+### Marketplace ו-SDK
+
+תוספים, SDK (פלטפורמות חדשות עם ה-exporter שלהן) ופרויקטים נמצאים באינדקס JSON ב-GitHub. כדי לפרסם: `ptk sdk new`, ‏`ptk publish`, ואז pull request. הפרטים ב-[docs/marketplace.md](docs/marketplace.md).
 
 ### מפת דרכים
 

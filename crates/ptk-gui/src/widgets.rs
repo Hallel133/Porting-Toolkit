@@ -73,84 +73,6 @@ pub fn logo(ui: &mut Ui, size: f32) {
     );
 }
 
-/// A navigation pill in the header; icon only when `labels` is false.
-pub fn nav_pill(
-    ui: &mut Ui,
-    icon: &str,
-    label: &str,
-    selected: bool,
-    labels: bool,
-) -> egui::Response {
-    let text = if labels {
-        format!("{icon}  {label}")
-    } else {
-        icon.to_owned()
-    };
-    let galley = ui
-        .painter()
-        .layout_no_wrap(text, FontId::proportional(13.5), Color32::WHITE);
-    let size = vec2(galley.size().x + 26.0, 34.0);
-    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
-    let (fill, color) = if selected {
-        (SELECTION, Color32::WHITE)
-    } else if response.hovered() {
-        (HOVER, TEXT)
-    } else {
-        (Color32::TRANSPARENT, TEXT_WEAK)
-    };
-    ui.painter().rect_filled(rect, CornerRadius::same(17), fill);
-    if selected {
-        ui.painter().rect_stroke(
-            rect,
-            CornerRadius::same(17),
-            Stroke::new(1.0_f32, FOCUS.gamma_multiply(0.7)),
-            StrokeKind::Inside,
-        );
-    }
-    ui.painter()
-        .galley(rect.center() - galley.size() / 2.0, galley, color);
-    response
-}
-
-/// A round icon button (header right side).
-pub fn icon_button(ui: &mut Ui, icon: &str, selected: bool) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(vec2(34.0, 34.0), Sense::click());
-    let fill = if selected {
-        SELECTION
-    } else if response.hovered() {
-        HOVER
-    } else {
-        Color32::TRANSPARENT
-    };
-    ui.painter().rect_filled(rect, CornerRadius::same(17), fill);
-    centered_text(
-        ui,
-        rect,
-        icon,
-        16.0,
-        if selected || response.hovered() {
-            Color32::WHITE
-        } else {
-            TEXT_WEAK
-        },
-    );
-    response
-}
-
-/// Spinner and label while a background job runs.
-pub fn busy_pill(ui: &mut Ui, label: &str) {
-    Frame::new()
-        .fill(SURFACE)
-        .corner_radius(CornerRadius::same(14))
-        .inner_margin(Margin::symmetric(12, 5))
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.add(egui::Spinner::new().size(13.0).color(FOCUS));
-                ui.label(RichText::new(label).size(12.5).color(TEXT));
-            });
-        });
-}
-
 /// A segmented control; returns true when the value changed.
 pub fn segmented<T: PartialEq + Copy>(
     ui: &mut Ui,
@@ -426,5 +348,195 @@ pub fn human_size(bytes: u64) -> String {
         format!("{value:.0} {}", UNITS[unit])
     } else {
         format!("{value:.1} {}", UNITS[unit])
+    }
+}
+
+/// A top-bar tab: highlighted text with a blue underline when selected.
+pub fn tab(ui: &mut Ui, icon: &str, label: &str, selected: bool, labels: bool) -> egui::Response {
+    let text = if labels {
+        format!("{icon}  {label}")
+    } else {
+        icon.to_owned()
+    };
+    let color = if selected { FOCUS } else { TEXT_WEAK };
+    let galley = ui
+        .painter()
+        .layout_no_wrap(text, FontId::proportional(14.5), color);
+    let size = vec2(galley.size().x + 22.0, 54.0);
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+    let color = if response.hovered() && !selected {
+        TEXT
+    } else {
+        color
+    };
+    if response.hovered() && !selected {
+        ui.painter()
+            .rect_filled(rect.shrink2(vec2(2.0, 11.0)), CornerRadius::same(6), HOVER);
+    }
+    ui.painter().galley_with_override_text_color(
+        rect.center() - galley.size() / 2.0,
+        galley,
+        color,
+    );
+    if selected {
+        let bar = Rect::from_min_max(
+            egui::pos2(rect.min.x + 8.0, rect.max.y - 3.0),
+            egui::pos2(rect.max.x - 8.0, rect.max.y),
+        );
+        ui.painter().rect_filled(bar, CornerRadius::same(2), FOCUS);
+    }
+    response
+}
+
+/// A full-width button of an action column: icon, label, left aligned.
+pub fn action_button(ui: &mut Ui, icon: &str, label: &str, enabled: bool) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 36.0), Sense::click());
+    let response = if enabled {
+        response
+    } else {
+        ui.interact(rect, response.id, Sense::hover())
+    };
+    let fill = if !enabled {
+        CARD.gamma_multiply(0.6)
+    } else if response.hovered() {
+        HOVER
+    } else {
+        SURFACE
+    };
+    ui.painter().rect_filled(rect, CornerRadius::same(6), fill);
+    let color = if enabled { TEXT } else { TEXT_FAINT };
+    ui.painter().text(
+        rect.left_center() + vec2(14.0, 0.0),
+        Align2::LEFT_CENTER,
+        icon,
+        FontId::proportional(14.0),
+        if enabled { LIGHT_BLUE } else { TEXT_FAINT },
+    );
+    ui.painter().text(
+        rect.left_center() + vec2(40.0, 0.0),
+        Align2::LEFT_CENTER,
+        label,
+        FontId::proportional(13.5),
+        color,
+    );
+    response
+}
+
+/// Color and letter of an engine's project icon.
+pub fn engine_badge(engine: Option<&str>) -> (Color32, &'static str) {
+    match engine {
+        Some("godot") => (rgb(71, 140, 191), "G"),
+        Some("unity") => (rgb(110, 118, 135), "U"),
+        Some("unreal") => (PURPLE, "UE"),
+        Some("rage") => (ORANGE, "R"),
+        Some("source") => (rgb(196, 154, 60), "S"),
+        Some("gamemaker") => (GREEN, "GM"),
+        Some("renpy") => (rgb(230, 120, 120), "R'"),
+        Some("rpgmaker") => (TEAL, "RM"),
+        Some("macos") => (LIGHT_BLUE, ""),
+        _ => (SURFACE, "?"),
+    }
+}
+
+/// A rounded square with the engine's letter.
+pub fn project_icon(ui: &Ui, rect: Rect, engine: Option<&str>, dim: bool) {
+    let (color, letter) = engine_badge(engine);
+    let color = if dim {
+        color.gamma_multiply(0.35)
+    } else {
+        color
+    };
+    ui.painter()
+        .rect_filled(rect, CornerRadius::same(10), color);
+    ui.painter().text(
+        rect.center(),
+        Align2::CENTER_CENTER,
+        letter,
+        FontId::proportional(rect.height() * 0.42),
+        Color32::WHITE.gamma_multiply(if dim { 0.5 } else { 1.0 }),
+    );
+}
+
+/// A path with the home folder shown as `~`.
+pub fn display_path(path: &std::path::Path) -> String {
+    let text = path.display().to_string();
+    match std::env::var("HOME") {
+        Ok(home) if !home.is_empty() && text.starts_with(&home) => {
+            format!("~{}", &text[home.len()..])
+        }
+        _ => text,
+    }
+}
+
+/// Shortens text to `max` characters by cutting out the middle.
+pub fn elide_middle(text: &str, max: usize) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() <= max || max < 5 {
+        return text.to_owned();
+    }
+    let keep = max - 1;
+    let head = keep / 3;
+    let tail = keep - head;
+    let mut out: String = chars[..head].iter().collect();
+    out.push('…');
+    out.extend(&chars[chars.len() - tail..]);
+    out
+}
+
+/// `just now`, `5 min ago`, `3 h ago`, `2 days ago`, or a date.
+pub fn relative_time(t: std::time::SystemTime) -> String {
+    let Ok(age) = std::time::SystemTime::now().duration_since(t) else {
+        return "just now".into();
+    };
+    let s = age.as_secs();
+    match s {
+        0..=59 => "just now".into(),
+        60..=3599 => format!("{} min ago", s / 60),
+        3600..=86399 => format!("{} h ago", s / 3600),
+        86400..=2_591_999 => format!("{} days ago", s / 86400),
+        _ => {
+            // Civil date from days since the epoch (UTC).
+            let days = t
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() / 86400)
+                .unwrap_or(0) as i64;
+            let z = days + 719_468;
+            let era = z.div_euclid(146_097);
+            let doe = z - era * 146_097;
+            let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+            let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+            let mp = (5 * doy + 2) / 153;
+            let d = doy - (153 * mp + 2) / 5 + 1;
+            let m = if mp < 10 { mp + 3 } else { mp - 9 };
+            let y = yoe + era * 400 + if m <= 2 { 1 } else { 0 };
+            format!("{y:04}-{m:02}-{d:02}")
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn paths() {
+        assert_eq!(elide_middle("abcdefghij", 20), "abcdefghij");
+        let e = elide_middle("/Users/someone/projects/very/long/path/my-port", 20);
+        assert_eq!(e.chars().count(), 20);
+        assert!(e.ends_with("my-port") && e.contains('…'));
+    }
+
+    #[test]
+    fn relative_times() {
+        use std::time::{Duration, SystemTime, UNIX_EPOCH};
+        assert_eq!(relative_time(SystemTime::now()), "just now");
+        assert_eq!(
+            relative_time(SystemTime::now() - Duration::from_secs(7200)),
+            "2 h ago"
+        );
+        assert_eq!(
+            relative_time(UNIX_EPOCH + Duration::from_secs(1_762_646_400)),
+            "2025-11-09"
+        );
     }
 }

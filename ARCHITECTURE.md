@@ -33,6 +33,10 @@ Porting Toolkit has two halves:
 | `crates/ptk-core/src/paths.rs` | Per-user data folder (`PTK_HOME` overrides) |
 | `crates/ptk-cli` | `ptk` binary (clap), banner, colors, tables |
 | `crates/ptk-core/src/{scan,project,doctor,plugins}.rs` | Operations shared by CLI and GUI (scan + record, init, environment checks, plugin list/validate/create/install) |
+| `crates/ptk-core/src/import.rs` | Game builds: folder, .app, executable, .zip, .deb (ar parsed in Rust), .dmg |
+| `crates/ptk-core/src/routes.rs` | Per engine: can it be ported without source code |
+| `crates/ptk-core/src/sdk.rs` | SDK format: create, validate, install |
+| `crates/ptk-core/src/market.rs` | Marketplace index, SHA-256 checked downloads, publishing |
 | `crates/ptk-core/src/banner.rs` | The wordmark art, shared by the CLI banner and the GUI |
 | `crates/ptk-gui` | Desktop app (egui 0.33 + eframe/glow, rfd dialogs) |
 | `engine/ptk_engine` | Python engine (standard library only, 3.11+) |
@@ -118,11 +122,13 @@ SDK is the owner's separate project and is not part of phase 1.
   #007ACC / #3794FF, teal, soft yellow, orange, green, red). On macOS the
   system UI font is loaded from `/System/Library/Fonts` at runtime (never
   bundled); `PTK_GUI_FONTS=builtin` uses egui's fonts.
-- Layout (`app.rs`): a header with the logo, the project switcher (new,
-  open, recent, close), navigation pills (labels collapse to icons in narrow
-  windows) and Targets/Doctor buttons; a busy pill shows background work.
-  Pages (`views.rs`) are centred columns of cards that reflow: two or three
-  columns when there is room, one when narrow.
+- Layout (`app.rs`): a tab bar (logo, Projects, Marketplace, the open
+  project's Overview/Scan/Options/Export tabs, Settings) and a status bar.
+  Projects is a project manager: toolbar (Create, Import Game, Open, Find,
+  filter, sort), a list of projects (favorites first, missing ones greyed)
+  and an action column. Other pages are centred columns of cards that
+  reflow to the window width. Import Game and install confirmation are
+  modal windows.
 - `menu.rs`: every action is a `Command`, listed once in `menus()`. On
   macOS the native menu bar is built with `muda` (app menu with the native
   About panel, File, Edit, View, Tools, Window, Help, plus Open Recent) and

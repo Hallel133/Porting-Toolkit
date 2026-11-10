@@ -5,9 +5,10 @@ use eframe::egui::{self, Align, Color32, Layout, RichText, Ui, vec2};
 use ptk_core::category::CATEGORIES;
 use ptk_core::doctor::Status;
 use ptk_core::manifest::{AssetAction, CategoryOptions, Level, OWN_WORK_LICENSE};
+use ptk_core::market::EntryKind;
 use ptk_core::targets::{TargetSource, TargetStatus};
 
-use crate::app::{App, View};
+use crate::app::{App, MarketTab, ProjectSort, SettingsTab, View};
 use crate::menu::Command;
 use crate::theme::*;
 use crate::widgets::{
@@ -103,15 +104,13 @@ fn empty_state(ui: &mut Ui, icon: &str, title: &str, text: &str) {
 impl App {
     pub fn page(&mut self, ui: &mut Ui) {
         match self.view {
-            View::Home => self.home(ui),
-            View::Project => self.project_page(ui),
+            View::Projects => self.projects_page(ui),
+            View::Marketplace => self.marketplace_page(ui),
+            View::Settings => self.settings_page(ui),
+            View::Overview => self.project_page(ui),
             View::Scan => self.scan_page(ui),
             View::Options => self.options_page(ui),
-            View::Share => self.share_page(ui),
-            View::Plugins => self.plugins_page(ui),
-            View::Targets => self.targets_page(ui),
-            View::Doctor => self.doctor_page(ui),
-            View::About => self.about_page(ui),
+            View::Export => self.export_page(ui),
         }
     }
 
@@ -151,123 +150,765 @@ impl App {
         ui.add_space(12.0);
     }
 
-    // ================================================================ home
+    // ============================================================ projects
 
-    fn home(&mut self, ui: &mut Ui) {
-        card(ui, |ui| {
+    /// The project manager: toolbar, project list and an action column.
+    pub fn projects_page(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            self.command_button(ui, Command::NewProject, "+  Create", false);
+            self.command_button(ui, Command::ImportGame, "⬇  Import Game", true);
+            self.command_button(ui, Command::OpenProject, "🗀  Open", false);
+            self.command_button(ui, Command::FindProjects, "🔍  Find", false);
             ui.add_space(6.0);
-            let cell = ((ui.available_width() - 8.0) / 72.0).clamp(2.0, 6.0);
-            widgets::wordmark(ui, cell);
-            ui.add_space(12.0);
-            ui.label(
-                RichText::new(
-                    "Manage, convert, export and import game projects between platforms.",
-                )
-                .size(16.0)
-                .color(TEXT),
-            );
-            hint(
-                ui,
-                "Bring your own game: Porting Toolkit works on files you own and never ships them.",
-            );
-            ui.add_space(12.0);
-            ui.horizontal_wrapped(|ui| {
-                self.command_button(ui, Command::NewProject, "+  New Project…", true);
-                self.command_button(ui, Command::OpenProject, "🗀  Open Project…", false);
-                self.command_button(ui, Command::ScanGame, "🔍  Scan a Game…", false);
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                egui::ComboBox::from_id_salt("sort")
+                    .width(130.0)
+                    .selected_text(match self.sort {
+                        ProjectSort::LastOpened => "Last opened",
+                        ProjectSort::Name => "Name",
+                        ProjectSort::Engine => "Engine",
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut self.sort, ProjectSort::LastOpened, "Last opened");
+                        ui.selectable_value(&mut self.sort, ProjectSort::Name, "Name");
+                        ui.selectable_value(&mut self.sort, ProjectSort::Engine, "Engine");
+                    });
+                ui.label(RichText::new("Sort:").color(TEXT_WEAK));
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.filter)
+                        .hint_text("🔍  Filter projects")
+                        .desired_width(ui.available_width()),
+                );
             });
         });
-        ui.add_space(22.0);
+        ui.add_space(10.0);
 
-        ui.label(
-            RichText::new("Recent projects")
-                .size(17.0)
-                .strong()
-                .color(Color32::WHITE),
-        );
-        ui.add_space(6.0);
-        let recent = self.state.recent_projects.clone();
-        if recent.is_empty() {
-            hint(
-                ui,
-                "Nothing yet. Create a project, or drop a project or game folder on this window.",
-            );
-            ui.add_space(14.0);
-        } else {
-            let cols = columns_for(ui, 260.0, 3);
-            let mut open = None;
-            card_grid(ui, recent.len().min(6), cols, |ui, i| {
-                let p = &recent[i];
-                card(ui, |ui| {
-                    let name = p
-                        .file_name()
-                        .map(|n| n.to_string_lossy().into_owned())
-                        .unwrap_or_default();
-                    if ui
-                        .link(
-                            RichText::new(format!("🗀  {name}"))
-                                .size(15.0)
-                                .color(LIGHT_BLUE),
-                        )
-                        .clicked()
-                    {
-                        open = Some(p.clone());
-                    }
-                    ui.label(
-                        RichText::new(
-                            p.parent()
-                                .map(|d| d.display().to_string())
-                                .unwrap_or_default(),
-                        )
-                        .size(11.5)
-                        .color(TEXT_FAINT),
-                    );
+        let rows = self.visible_rows();
+        let narrow = ui.available_width() < 720.0;
+        let actions_w = 200.0;
+        let height = ui.available_height();
+        if narrow {
+            ui.horizontal_wrapped(|ui| self.project_actions(ui, true));
+            ui.add_space(8.0);
+        }
+        ui.horizontal_top(|ui| {
+            let list_w = if narrow {
+                ui.available_width()
+            } else {
+                ui.available_width() - actions_w - 12.0
+            };
+            egui::Frame::new()
+                .fill(rgb(12, 23, 41))
+                .stroke(egui::Stroke::new(1.0_f32, BORDER))
+                .corner_radius(egui::CornerRadius::same(8))
+                .show(ui, |ui| {
+                    // The list stacks top to bottom inside the horizontal row.
+                    ui.with_layout(Layout::top_down(Align::Min), |ui| {
+                        ui.set_width(list_w);
+                        ui.set_height(height - if narrow { 60.0 } else { 0.0 });
+                        if rows.is_empty() {
+                            self.no_projects(ui);
+                        } else {
+                            egui::ScrollArea::vertical()
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    for row in &rows {
+                                        self.project_row(ui, row);
+                                    }
+                                });
+                        }
+                    });
                 });
+            if !narrow {
+                ui.vertical(|ui| {
+                    ui.set_width(actions_w);
+                    self.project_actions(ui, false);
+                });
+            }
+        });
+    }
+
+    fn no_projects(&mut self, ui: &mut Ui) {
+        ui.vertical_centered(|ui| {
+            ui.add_space((ui.available_height() / 2.0 - 120.0).max(20.0));
+            let cell = ((ui.available_width() - 40.0) / 72.0).clamp(2.0, 4.0);
+            widgets::wordmark(ui, cell);
+            ui.add_space(16.0);
+            ui.label(RichText::new("You don't have any projects yet.").size(17.0).color(TEXT));
+            hint(ui, "Import a game you own (folder, .app, .exe, .zip, .deb or .dmg) to start porting it.");
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                let w = 320.0;
+                ui.add_space(((ui.available_width() - w) / 2.0).max(0.0));
+                self.command_button(ui, Command::ImportGame, "⬇  Import Game", true);
+                self.command_button(ui, Command::NewProject, "+  Create Empty Project", false);
             });
-            if let Some(p) = open {
-                self.open_project(&p);
-                self.view = View::Project;
+        });
+    }
+
+    fn project_row(&mut self, ui: &mut Ui, row: &crate::app::ProjectRow) {
+        let width = ui.available_width();
+        let (rect, response) = ui.allocate_exact_size(vec2(width, 70.0), egui::Sense::click());
+        let selected = self.selected.as_deref() == Some(row.path.as_path());
+        let p = ui.painter();
+        if selected {
+            p.rect_filled(rect.shrink(3.0), egui::CornerRadius::same(6), SELECTION);
+        } else if response.hovered() {
+            p.rect_filled(
+                rect.shrink(3.0),
+                egui::CornerRadius::same(6),
+                HOVER.gamma_multiply(0.6),
+            );
+        }
+        // Favorite star.
+        let star =
+            egui::Rect::from_center_size(rect.left_center() + vec2(24.0, 0.0), vec2(26.0, 26.0));
+        let star_resp = ui.interact(
+            star,
+            ui.id().with(("star", &row.path)),
+            egui::Sense::click(),
+        );
+        let fav = self.state.favorites.contains(&row.path);
+        widgets::centered_text(
+            ui,
+            star,
+            if fav { "★" } else { "☆" },
+            17.0,
+            if fav {
+                YELLOW
+            } else if star_resp.hovered() {
+                TEXT
+            } else {
+                TEXT_FAINT
+            },
+        );
+        // Engine icon.
+        let icon = egui::Rect::from_min_size(rect.min + vec2(46.0, 11.0), vec2(48.0, 48.0));
+        widgets::project_icon(ui, icon, row.engine.as_deref(), row.missing);
+        let text_x = icon.max.x + 14.0;
+        let name_color = if row.missing {
+            TEXT_FAINT
+        } else {
+            Color32::WHITE
+        };
+        p.text(
+            egui::pos2(text_x, rect.min.y + 22.0),
+            egui::Align2::LEFT_CENTER,
+            &row.name,
+            egui::FontId::proportional(15.5),
+            name_color,
+        );
+        // Leave room for the date on the right; elide long paths in the middle.
+        let room = ((rect.max.x - 120.0 - text_x) / 7.2).max(12.0) as usize;
+        p.text(
+            egui::pos2(text_x, rect.min.y + 48.0),
+            egui::Align2::LEFT_CENTER,
+            format!(
+                "{}  {}",
+                if row.missing { "⚠" } else { "🗀" },
+                widgets::elide_middle(&widgets::display_path(&row.path), room)
+            ),
+            egui::FontId::proportional(12.5),
+            if row.missing {
+                ERROR.gamma_multiply(0.8)
+            } else {
+                TEXT_WEAK
+            },
+        );
+        // Right side: engine and when it changed.
+        let right = rect.max.x - 16.0;
+        let when = row
+            .modified
+            .map(widgets::relative_time)
+            .unwrap_or_else(|| "missing".into());
+        p.text(
+            egui::pos2(right, rect.min.y + 48.0),
+            egui::Align2::RIGHT_CENTER,
+            when,
+            egui::FontId::proportional(12.5),
+            TEXT_FAINT,
+        );
+        if let Some(title) = &row.title {
+            let engine = row.engine.clone().unwrap_or_else(|| "not scanned".into());
+            p.text(
+                egui::pos2(right, rect.min.y + 22.0),
+                egui::Align2::RIGHT_CENTER,
+                format!("{title} · {engine}"),
+                egui::FontId::proportional(12.5),
+                LIGHT_BLUE,
+            );
+        }
+        if star_resp.clicked() {
+            self.toggle_favorite(&row.path);
+        } else if response.double_clicked() && !row.missing {
+            self.open_project(&row.path);
+            self.view = View::Overview;
+        } else if response.clicked() {
+            self.selected = Some(row.path.clone());
+        }
+    }
+
+    /// The action column (or row, when narrow) for the selected project.
+    fn project_actions(&mut self, ui: &mut Ui, compact: bool) {
+        let sel = self.selected.clone();
+        let row = sel
+            .as_ref()
+            .and_then(|p| self.rows.iter().find(|r| &r.path == p))
+            .cloned();
+        let ok = row.as_ref().is_some_and(|r| !r.missing);
+        let any_missing = self.rows.iter().any(|r| r.missing);
+        let busy = self.busy.is_some();
+        let actions: [(&str, &str, bool, u8); 7] = [
+            ("✏", "Open", ok, 0),
+            ("📦", "Export", ok, 1),
+            ("🔍", "Scan Game", ok && !busy, 2),
+            ("✔", "Verify Game", ok && !busy, 3),
+            ("🗀", "Show in Finder", row.is_some(), 4),
+            ("✖", "Remove", row.is_some(), 5),
+            ("⚠", "Remove Missing", any_missing, 6),
+        ];
+        let mut picked = None;
+        for (icon, label, enabled, id) in actions {
+            let clicked = if compact {
+                ui.add_enabled(enabled, egui::Button::new(format!("{icon} {label}")))
+                    .clicked()
+            } else {
+                let r = widgets::action_button(ui, icon, label, enabled).clicked();
+                ui.add_space(4.0);
+                r
+            };
+            if clicked && enabled {
+                picked = Some(id);
             }
         }
+        if !compact {
+            ui.with_layout(Layout::bottom_up(Align::Min), |ui| {
+                if widgets::action_button(ui, "🔌", "Marketplace", true).clicked() {
+                    picked = Some(7);
+                }
+            });
+        }
+        let Some(id) = picked else { return };
+        let ctx = ui.ctx().clone();
+        match (id, row) {
+            (7, _) => self.go(View::Marketplace, &ctx),
+            (6, _) => self.forget_missing(),
+            (5, Some(r)) => self.forget_project(&r.path),
+            (4, Some(r)) => {
+                let _ = std::process::Command::new(if cfg!(target_os = "macos") {
+                    "open"
+                } else {
+                    "xdg-open"
+                })
+                .arg(&r.path)
+                .spawn();
+            }
+            (n, Some(r)) => {
+                self.open_project(&r.path);
+                match n {
+                    0 => self.view = View::Overview,
+                    1 => self.view = View::Export,
+                    2 => self.run_command(Command::ScanGame, &ctx),
+                    3 => self.run_command(Command::VerifyGame, &ctx),
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
 
+    // =========================================================== marketplace
+
+    fn marketplace_page(&mut self, ui: &mut Ui) {
+        page_header(
+            ui,
+            "Marketplace",
+            "Community plugins and SDKs: importers, exporters and new platforms. Everything is checked by SHA-256 and asks before installing.",
+        );
+        widgets::segmented(
+            ui,
+            &mut self.market_tab,
+            &[
+                (MarketTab::Browse, "Browse", FOCUS),
+                (MarketTab::Installed, "Installed", FOCUS),
+                (MarketTab::Publish, "Publish", FOCUS),
+            ],
+        );
+        ui.add_space(14.0);
+        match self.market_tab {
+            MarketTab::Browse => self.market_browse(ui),
+            MarketTab::Installed => {
+                split(ui, 0.5, 880.0, |ui, col| {
+                    if col == 0 {
+                        self.installed_plugins(ui);
+                        ui.add_space(14.0);
+                        self.installed_sdks(ui);
+                    } else {
+                        self.plugin_tools(ui);
+                    }
+                });
+            }
+            MarketTab::Publish => self.market_publish(ui),
+        }
+    }
+
+    fn market_browse(&mut self, ui: &mut Ui) {
+        let mut go_publish = false;
+        let mut refresh = false;
+        let mut install = None;
+        card(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(RichText::new("🔌").size(30.0).color(TEAL));
+                ui.vertical(|ui| {
+                    ui.label(RichText::new("Built by the community").size(18.0).strong().color(Color32::WHITE));
+                    hint(ui, "Import plugins read engines, export plugins build for platforms, and SDKs add new platforms (with their exporters).");
+                });
+            });
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                go_publish = primary(ui, true, "Publish yours").clicked();
+                if ui.button("Open the marketplace repository").clicked() {
+                    let _ = std::process::Command::new(if cfg!(target_os = "macos") {
+                        "open"
+                    } else {
+                        "xdg-open"
+                    })
+                    .arg(ptk_core::market::MARKETPLACE_REPO)
+                    .spawn();
+                }
+            });
+        });
+        ui.add_space(14.0);
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.market_search)
+                    .hint_text("🔍  Search plugins and SDKs")
+                    .desired_width((ui.available_width() - 260.0).max(160.0)),
+            );
+            egui::ComboBox::from_id_salt("market-kind")
+                .width(120.0)
+                .selected_text(self.market_kind.map(|k| k.label()).unwrap_or("Everything"))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut self.market_kind, None, "Everything");
+                    for k in [EntryKind::Plugin, EntryKind::Sdk, EntryKind::Project] {
+                        ui.selectable_value(&mut self.market_kind, Some(k), k.label());
+                    }
+                });
+            refresh = ui
+                .add_enabled(self.busy.is_none(), egui::Button::new("⟳ Refresh"))
+                .clicked();
+        });
+        ui.add_space(12.0);
+        match &self.market {
+            None => {
+                card(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label("Loading the marketplace…");
+                    });
+                });
+            }
+            Some(Err(e)) => {
+                let e = e.clone();
+                card(ui, |ui| {
+                    card_title(ui, "The marketplace could not be loaded");
+                    widgets::message(ui, WARN, &e);
+                    hint(
+                        ui,
+                        &format!(
+                            "The index is read from {}. Until it is published, you can still install plugins and SDKs from a folder (Installed tab) and prepare your own (Publish tab).",
+                            ptk_core::market::index_url()
+                        ),
+                    );
+                });
+            }
+            Some(Ok(index)) => {
+                let entries: Vec<_> = index
+                    .entries
+                    .iter()
+                    .filter(|e| e.matches(&self.market_search))
+                    .filter(|e| self.market_kind.is_none_or(|k| e.kind == k))
+                    .cloned()
+                    .collect();
+                if entries.is_empty() {
+                    empty_state(
+                        ui,
+                        "🔌",
+                        "Nothing here yet",
+                        "Be the first: publish a plugin or an SDK from the Publish tab.",
+                    );
+                } else {
+                    let cols = columns_for(ui, 300.0, 3);
+                    card_grid(ui, entries.len(), cols, |ui, i| {
+                        let e = &entries[i];
+                        card(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                let icon = match e.kind {
+                                    EntryKind::Plugin => "🔌",
+                                    EntryKind::Sdk => "🧩",
+                                    EntryKind::Project => "📦",
+                                };
+                                ui.label(RichText::new(icon).size(22.0).color(TEAL));
+                                ui.vertical(|ui| {
+                                    ui.label(
+                                        RichText::new(&e.name)
+                                            .size(15.0)
+                                            .strong()
+                                            .color(Color32::WHITE),
+                                    );
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "{} · v{}",
+                                            if e.author.is_empty() {
+                                                "community"
+                                            } else {
+                                                &e.author
+                                            },
+                                            e.version
+                                        ))
+                                        .size(11.5)
+                                        .color(TEXT_WEAK),
+                                    );
+                                });
+                            });
+                            if !e.description.is_empty() {
+                                hint(ui, &e.description);
+                            }
+                            ui.horizontal_wrapped(|ui| {
+                                badge(ui, e.kind.label(), FOCUS);
+                                if e.reviewed {
+                                    badge(ui, "✔ reviewed", GREEN);
+                                } else {
+                                    badge(ui, "not reviewed", TEXT_FAINT);
+                                }
+                                for t in e.engines.iter().chain(&e.targets).take(4) {
+                                    badge(ui, t, LIGHT_BLUE);
+                                }
+                            });
+                            ui.add_space(4.0);
+                            if primary(
+                                ui,
+                                self.busy.is_none(),
+                                if e.kind == EntryKind::Project {
+                                    "Download"
+                                } else {
+                                    "Install…"
+                                },
+                            )
+                            .clicked()
+                            {
+                                install = Some(e.clone());
+                            }
+                        });
+                    });
+                }
+            }
+        }
+        if go_publish {
+            self.market_tab = MarketTab::Publish;
+        }
+        if refresh {
+            self.refresh_market(ui.ctx());
+        }
+        if let Some(e) = install {
+            self.market_install(ui.ctx(), e);
+        }
+    }
+
+    fn installed_sdks(&mut self, ui: &mut Ui) {
+        let sdks = ptk_core::sdk::installed();
+        card(ui, |ui| {
+            card_title(ui, "SDKs");
+            if sdks.is_empty() {
+                hint(
+                    ui,
+                    "No SDKs installed. An SDK adds platforms (targets) and their exporters.",
+                );
+            }
+            for s in &sdks {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("🧩").color(TEAL));
+                    ui.label(RichText::new(&s.name).strong().color(Color32::WHITE));
+                    ui.label(RichText::new(format!("v{}", s.version)).color(TEXT_WEAK));
+                });
+            }
+        });
+    }
+
+    fn market_publish(&mut self, ui: &mut Ui) {
+        let busy = self.busy.is_some();
+        let cols = columns_for(ui, 320.0, 3);
+        card_grid(ui, 3, cols, |ui, i| match i {
+            0 => {
+                card(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        badge(ui, "1", FOCUS);
+                        card_title(ui, "Create");
+                    });
+                    hint(
+                        ui,
+                        "Start from a template. An SDK holds ptk-sdk.toml, targets/*.toml (your platforms) and plugins/ (their exporters).",
+                    );
+                    ui.label(RichText::new("New SDK").color(TEXT_WEAK));
+                    widgets::path_field(
+                        ui,
+                        &mut self.sdk_new_dir,
+                        "new folder, e.g. nova-sdk",
+                        Pick::Folder,
+                    );
+                    if ui
+                        .add_enabled(!busy, egui::Button::new("Create SDK"))
+                        .clicked()
+                    {
+                        self.create_sdk(ui.ctx());
+                    }
+                    ui.add_space(6.0);
+                    ui.label(RichText::new("New plugin").color(TEXT_WEAK));
+                    widgets::path_field(ui, &mut self.plugin_new_dir, "new folder", Pick::Folder);
+                    ui.horizontal(|ui| {
+                        ui.radio_value(&mut self.plugin_kind_export, false, "Import");
+                        ui.radio_value(&mut self.plugin_kind_export, true, "Export");
+                        if ui
+                            .add_enabled(!busy, egui::Button::new("Create plugin"))
+                            .clicked()
+                        {
+                            self.create_plugin(ui.ctx());
+                        }
+                    });
+                });
+            }
+            1 => {
+                card(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        badge(ui, "2", FOCUS);
+                        card_title(ui, "Validate & package");
+                    });
+                    hint(
+                        ui,
+                        "Checks the folder, zips it with fixed timestamps and computes its SHA-256. Also accepts a .ptk project.",
+                    );
+                    widgets::path_field(
+                        ui,
+                        &mut self.publish_path,
+                        "SDK or plugin folder, or .ptk",
+                        Pick::Folder,
+                    );
+                    if primary(ui, !busy, "Validate & package").clicked() {
+                        self.publish(ui.ctx());
+                    }
+                });
+            }
+            _ => {
+                card(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        badge(ui, "3", FOCUS);
+                        card_title(ui, "Submit");
+                    });
+                    hint(
+                        ui,
+                        "Upload the zip (for example to a GitHub release of your repository), put its URL in \"download\", and open a pull request that adds the entry to index.json. Reviewed entries get a ✔.",
+                    );
+                    if ui.button("Open the marketplace repository").clicked() {
+                        let _ = std::process::Command::new(if cfg!(target_os = "macos") {
+                            "open"
+                        } else {
+                            "xdg-open"
+                        })
+                        .arg(ptk_core::market::MARKETPLACE_REPO)
+                        .spawn();
+                    }
+                });
+            }
+        });
+        match self.published.clone() {
+            None => {}
+            Some(Err(e)) => widgets::message(ui, ERROR, &e),
+            Some(Ok(p)) => {
+                card(ui, |ui| {
+                    card_title(ui, &format!("✔ {} {} is ready", p.kind.label(), p.entry.id));
+                    egui::Grid::new("published")
+                        .num_columns(2)
+                        .spacing([14.0, 4.0])
+                        .show(ui, |ui| {
+                            kv(ui, "File", p.archive.display().to_string());
+                            kv(
+                                ui,
+                                "SHA-256",
+                                RichText::new(&p.entry.sha256).monospace().size(11.5),
+                            );
+                        });
+                    for w in &p.warnings {
+                        ui.label(RichText::new(format!("▲ {w}")).color(WARN));
+                    }
+                    let mut json = serde_json::to_string_pretty(&p.entry).unwrap_or_default();
+                    ui.add_space(4.0);
+                    ui.label(RichText::new("Entry for index.json").color(TEXT_WEAK));
+                    ui.add(
+                        egui::TextEdit::multiline(&mut json)
+                            .code_editor()
+                            .desired_width(f32::INFINITY)
+                            .interactive(false),
+                    );
+                    if ui.button("Copy entry").clicked() {
+                        ui.ctx().copy_text(json);
+                    }
+                });
+            }
+        }
+    }
+
+    // ================================================================ export
+
+    fn export_page(&mut self, ui: &mut Ui) {
+        page_header(
+            ui,
+            "Export & share",
+            "Build for another platform with an export plugin, or share the project as a .ptk file.",
+        );
+        let engine = self
+            .project
+            .as_ref()
+            .and_then(|p| p.saved.game.engine.clone());
+        let targets = self
+            .project
+            .as_ref()
+            .map(|p| p.saved.targets.clone())
+            .unwrap_or_default();
+        let exporters: Vec<(String, Vec<String>)> = match &self.plugins {
+            Some(Ok(list)) => list
+                .iter()
+                .filter(|p| p.kind == "export" && p.valid)
+                .map(|p| (p.id.clone(), Vec::new()))
+                .collect(),
+            _ => Vec::new(),
+        };
+        let mut find = None;
+        split(ui, 0.55, 900.0, |ui, col| {
+            if col == 0 {
+                card(ui, |ui| {
+                    card_title(ui, "Porting route");
+                    match ptk_core::routes::route_for(engine.as_deref()) {
+                        Some(r) => {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(RichText::new(r.name).size(18.0).strong().color(TEAL));
+                                let c = match r.kind {
+                                    ptk_core::routes::RouteKind::Retarget
+                                    | ptk_core::routes::RouteKind::Native => GREEN,
+                                    ptk_core::routes::RouteKind::Partial => WARN,
+                                    ptk_core::routes::RouteKind::NeedsSource => ERROR,
+                                };
+                                badge(ui, r.kind.label(), c);
+                            });
+                            ui.label(r.how);
+                        }
+                        None => hint(
+                            ui,
+                            "Scan your game first (Scan tab) to see what exporting it takes.",
+                        ),
+                    }
+                });
+                ui.add_space(14.0);
+                card(ui, |ui| {
+                    card_title(ui, "Export to");
+                    if targets.is_empty() {
+                        hint(ui, "Choose targets in Overview.");
+                    }
+                    for t in &targets {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(RichText::new(t).monospace().color(LIGHT_BLUE));
+                            if exporters.is_empty() {
+                                badge(ui, "no exporter installed", TEXT_FAINT);
+                                if ui.small_button("Find one").clicked() {
+                                    find = Some(t.clone());
+                                }
+                            } else {
+                                badge(
+                                    ui,
+                                    &format!("{} exporter(s) installed", exporters.len()),
+                                    GREEN,
+                                );
+                            }
+                        });
+                    }
+                    ui.add_space(4.0);
+                    widgets::message(
+                        ui,
+                        FOCUS,
+                        "Exporting runs export plugins, which arrive in phase 3. Until then you can prepare everything: scan, record hashes, choose the advanced options and install exporters.",
+                    );
+                });
+            } else {
+                card(ui, |ui| {
+                    card_title(ui, "Without source code?");
+                    egui::Grid::new("routes")
+                        .num_columns(2)
+                        .spacing([12.0, 6.0])
+                        .show(ui, |ui| {
+                            for r in ptk_core::routes::ROUTES
+                                .iter()
+                                .filter(|r| r.engine != "macos")
+                            {
+                                ui.label(RichText::new(r.name).color(Color32::WHITE));
+                                let (text, c) = match r.kind {
+                                    ptk_core::routes::RouteKind::Retarget => ("yes", GREEN),
+                                    ptk_core::routes::RouteKind::Partial => ("depends", WARN),
+                                    ptk_core::routes::RouteKind::NeedsSource => {
+                                        ("needs source", ERROR)
+                                    }
+                                    ptk_core::routes::RouteKind::Native => ("native", GREEN),
+                                };
+                                ui.label(RichText::new(text).color(c)).on_hover_text(r.how);
+                                ui.end_row();
+                            }
+                        });
+                    hint(ui, "Hover a row for details.");
+                });
+            }
+        });
+        if let Some(t) = find {
+            self.market_search = t;
+            self.market_tab = MarketTab::Browse;
+            self.go(View::Marketplace, ui.ctx());
+        }
+        ui.add_space(14.0);
         ui.label(
-            RichText::new("How it works")
+            RichText::new("Share")
                 .size(17.0)
                 .strong()
                 .color(Color32::WHITE),
         );
         ui.add_space(6.0);
-        let steps = [
-            (
-                "1",
-                "Bring your own game",
-                "Porting Toolkit works on game files you own.",
-            ),
-            (
-                "2",
-                "Scan and record",
-                "Detect the engine and record SHA-256 hashes of your copy.",
-            ),
-            (
-                "3",
-                "Choose what is lost",
-                "Keep, drop or recompress each asset category.",
-            ),
-            (
-                "4",
-                "Share the recipe",
-                "Pack recipes and patches; others verify their own copy.",
-            ),
-        ];
-        let cols = columns_for(ui, 230.0, 4);
-        card_grid(ui, steps.len(), cols, |ui, i| {
-            let (n, title, text) = steps[i];
-            card(ui, |ui| {
-                badge(ui, n, FOCUS);
-                ui.label(RichText::new(title).strong().color(Color32::WHITE));
-                hint(ui, text);
-            });
+        let cols = columns_for(ui, 330.0, 3);
+        card_grid(ui, 3, cols, |ui, i| match i {
+            0 => self.pack_card(ui),
+            1 => self.unpack_card(ui),
+            _ => self.verify_card(ui),
         });
+    }
+
+    // ============================================================== settings
+
+    fn settings_page(&mut self, ui: &mut Ui) {
+        page_header(
+            ui,
+            "Settings",
+            "This Mac, the platforms Porting Toolkit knows, and about the app.",
+        );
+        widgets::segmented(
+            ui,
+            &mut self.settings_tab,
+            &[
+                (SettingsTab::Environment, "Environment", FOCUS),
+                (SettingsTab::Targets, "Targets", FOCUS),
+                (SettingsTab::About, "About", FOCUS),
+            ],
+        );
+        ui.add_space(14.0);
+        match self.settings_tab {
+            SettingsTab::Environment => self.doctor_page(ui),
+            SettingsTab::Targets => self.targets_page(ui),
+            SettingsTab::About => self.about_page(ui),
+        }
     }
 
     // ============================================================= project
@@ -287,7 +928,8 @@ impl App {
             );
             ui.add_space(10.0);
             ui.horizontal(|ui| {
-                self.command_button(ui, Command::NewProject, "+  New Project…", true);
+                self.command_button(ui, Command::ImportGame, "⬇  Import Game…", true);
+                self.command_button(ui, Command::NewProject, "+  New Project…", false);
                 self.command_button(ui, Command::OpenProject, "🗀  Open Project…", false);
             });
             return;
@@ -487,7 +1129,7 @@ impl App {
                     } else {
                         "Pack a .ptk for others".into()
                     },
-                    View::Share,
+                    View::Export,
                 ),
             ];
             for (i, (done, title, detail, view)) in steps.into_iter().enumerate() {
@@ -949,20 +1591,6 @@ impl App {
 
     // =============================================================== share
 
-    fn share_page(&mut self, ui: &mut Ui) {
-        page_header(
-            ui,
-            "Share",
-            "A .ptk file carries recipes, settings, patches and hashes. Never game files: others bring their own copy and verify it.",
-        );
-        let cols = columns_for(ui, 330.0, 3);
-        card_grid(ui, 3, cols, |ui, i| match i {
-            0 => self.pack_card(ui),
-            1 => self.unpack_card(ui),
-            _ => self.verify_card(ui),
-        });
-    }
-
     fn pack_card(&mut self, ui: &mut Ui) {
         let mut pack = false;
         card(ui, |ui| {
@@ -1063,7 +1691,7 @@ impl App {
         }
         if let Some(d) = open {
             self.open_project(&d);
-            self.view = View::Project;
+            self.view = View::Overview;
         }
     }
 
@@ -1138,21 +1766,6 @@ impl App {
     }
 
     // ============================================================= plugins
-
-    fn plugins_page(&mut self, ui: &mut Ui) {
-        page_header(
-            ui,
-            "Plugins",
-            "Import and export plugins are Python packages with a plugin.toml. They are validated and installed now; running them arrives in phase 3.",
-        );
-        split(ui, 0.45, 880.0, |ui, col| {
-            if col == 0 {
-                self.installed_plugins(ui);
-            } else {
-                self.plugin_tools(ui);
-            }
-        });
-    }
 
     fn installed_plugins(&mut self, ui: &mut Ui) {
         let mut pick = None;
@@ -1279,42 +1892,17 @@ impl App {
                         install = primary(ui, v.valid && !busy, "Install…").clicked();
                     });
                     if install {
-                        self.confirm_install = true;
+                        self.install_plugin();
                     }
                     ui.add_space(14.0);
                 }
             }
-        }
-        let mut create = false;
-        card(ui, |ui| {
-            card_title(ui, "New plugin");
-            widgets::path_field(
-                ui,
-                &mut self.plugin_new_dir,
-                "new plugin folder",
-                Pick::Folder,
-            );
-            ui.horizontal(|ui| {
-                ui.radio_value(&mut self.plugin_kind_export, false, "Import");
-                ui.radio_value(&mut self.plugin_kind_export, true, "Export");
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    create = ui.add_enabled(!busy, egui::Button::new("Create")).clicked();
-                });
-            });
-        });
-        if create {
-            self.create_plugin(ui.ctx());
         }
     }
 
     // ============================================================= targets
 
     fn targets_page(&mut self, ui: &mut Ui) {
-        page_header(
-            ui,
-            "Targets",
-            "Platforms a project can be ported to. macOS comes first; SDKs can register more.",
-        );
         let host = self.registry.host().map(|t| t.id.clone());
         let targets: Vec<_> = self.registry.iter().cloned().collect();
         let cols = columns_for(ui, 300.0, 3);
@@ -1374,11 +1962,6 @@ impl App {
     // ============================================================== doctor
 
     fn doctor_page(&mut self, ui: &mut Ui) {
-        page_header(
-            ui,
-            "Doctor",
-            "Checks Xcode Command Line Tools, clang, rustup and uv, and sets up the Python engine.",
-        );
         ui.horizontal(|ui| {
             self.command_button(ui, Command::RunDoctor, "Run checks", true);
             self.command_button(ui, Command::SetUpEngine, "Set up / update engine", false);
