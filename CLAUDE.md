@@ -6,7 +6,8 @@ Read this first in every new session. The owner (Hallel133) writes in Hebrew: **
 A community tool to manage, convert, export and import game projects between platforms. macOS first. Not part of Grand-V (it lives next to it, in `~/porting-toolkit`).
 
 - Rust workspace: `crates/ptk-core` (manifest, targets, `.ptk` pack/unpack, verify, hashing, engine RPC client, plus shared operations `scan`/`project`/`doctor`/`plugins`/`banner`), `crates/ptk-cli` (binary `ptk`, clap), `crates/ptk-gui` (binary `ptk-gui`, egui 0.33 desktop app).
-- Python engine: `engine/ptk_engine` (uv + pytest, standard library only, Python 3.11+). Detection, plugins; Rust runs it as a subprocess over JSON-RPC on stdin/stdout.
+- Python engine: `engine/ptk_engine` (uv + pytest, standard library only, Python 3.11+). Detection, plugin validation and the plugin runtime (`runtime.py` → `host.py`, API in `api.py`, format readers in `formats/`); Rust runs it as a subprocess over JSON-RPC on stdin/stdout.
+- Built-in plugins: `engine/plugins/{godot,html5}-{import,export}` (macOS + web targets).
 - Docs: `README.md`, `ARCHITECTURE.md` (protocol, layout), `docs/project-format.md`, `docs/plugins.md`, `docs/legal.md`.
 - Fixtures: `fixtures/games/*` are fake game folders of **empty files** with the right names.
 
@@ -16,7 +17,7 @@ A community tool to manage, convert, export and import game projects between pla
 - NoVA (owner's RISC-V SoC) is out of scope until the owner's NoVA SDK exists. It plugs in via `[[target]]` TOML in `<data>/targets/` with `export_backend` = an export plugin id. Keep that path working.
 - `LICENSE` is MIT (owner's choice, 2026-11-09).
 
-## Git / release state (2026-11-09)
+## Git / release state (2026-11-10)
 - Remote `origin` = https://github.com/Hallel133/Porting-Toolkit (public; the owner created it with a one-line README). Work on `main`.
 - Phase 1 (commit 4c21302) was pushed to `origin/main` on 2026-11-09; pushing works despite the account flag.
 - The owner said their GitHub account is "flagged" (Grand-V notes: GitHub Actions is disabled for the Hallel133 account, `HTTP 422`). So `.github/workflows/ci.yml` (macos-14 + ubuntu: fmt, clippy -D warnings, cargo test, uv run pytest) has probably never run. Run the same commands locally.
@@ -24,10 +25,11 @@ A community tool to manage, convert, export and import game projects between pla
 ## Commands
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"          # cargo is not on the default PATH on the owner's Mac
-cargo test --workspace                        # 64 Rust tests, starts the real Python engine
+cargo test --workspace                        # 70 Rust tests, starts the real Python engine
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-(cd engine && uv run pytest)                  # 38 Python tests
+(cd engine && uv run pytest)                  # 62 Python tests (compiles the Swift wrapper on macOS)
+(cd engine && PTK_GUI_TESTS=1 uv run pytest -k macos_app)   # also opens the wrapper app and checks the page loaded
 cargo run -q -p ptk-cli -- scan fixtures/games/unity-windows
 python3 tools/gen_banner.py                   # regenerate banner art (then update ptk-core/src/banner.rs + ptk-cli/tests/snapshots/banner.txt)
 cargo run -p ptk-gui                          # the desktop app
@@ -59,10 +61,20 @@ Owner asked for a Godot-Project-Manager-inspired GUI (same dark blue colors; do 
 - docs/marketplace.md written.
 - The marketplace repo content is ready locally in `~/ptk-marketplace` (index.json with no entries, README with the publish flow, PR template, MIT license; one commit on `main`). Creating the public GitHub repo from Claude's session was blocked by the permission system, so **the owner must run** `cd ~/ptk-marketplace && gh repo create Hallel133/ptk-marketplace --public --source . --remote origin --push`. Until then Browse shows "could not be loaded" (404).
 
+## Done (2026-11-10, phase 3 start: export/import plugins for macOS and web)
+Owner asked: "add the export and import plugins for Mac and Web".
+- Plugin runtime: `plugin.find` / `plugin.run` RPC; each plugin runs in `python -m ptk_engine.host` (own process, temp cwd, stdout kept clean). `ctx` helpers enforce declared write folders, network hosts (https only, system curl) and `subprocess`. `ctx.clean_dir` only wipes folders with a `.ptk-output` marker.
+- Godot: `.pck` reader for formats 1/2/3 (Godot 3, 4.0–4.3, 4.4+), embedded pck extraction (v1 absolute offsets rewritten). Export: macOS `.app` (template, Info.plist, lipo thin, ad-hoc codesign), web (nothreads template by default, `threads=true` adds the service worker). Templates: `--set templates=`, then the Godot editor folder, then cache, then HTTP-range download of only the needed `.tpz` members from GitHub (4.7.2 tpz is 1.28 GB; macos.zip 123 MB, web 10 MB). Refuses encrypted pcks and C#.
+- HTML5: RPG Maker MV/MZ, NW.js (folder or package.nw), Electron (app.asar reader). New engine signature `html5`. Export: web folder; macOS `.app` with `wrapper.swift` (WKWebView + `app://` scheme handler with ranges, menus, full screen, icon via sips/iconutil, ad-hoc sign), compiled once per arch into `<data>/cache/html5-export/wrapper/`.
+- Core `convert.rs` (find/run plugins, `plugins.lock`, `.ptk-local.json` remembers the game per machine), `serve.rs` (127.0.0.1 static server, COOP/COEP, ranges). Web target is now Active. Titles drop platform suffixes (`Game-windows.zip` → `Game`).
+- CLI: `ptk export [-p P] [-t ID]… [-o DIR] [--set k=v] [--plugin ID] [--open]`, `ptk serve DIR [--open]`; `ptk import` runs the import plugin.
+- GUI: Export page has Export per target / Export all, output folder (shown with `~`), plugin settings, a Builds card (Open, Play in browser via the built-in server, Show in Finder); status bar shows plugin progress. Import Game runs the import plugin. `--view export --run` exports (screenshot `docs/images/gui-export.png`).
+- Verified on the owner's Mac: the real Godot 4.7.2 web template booted a test pck in the browser pane (label "Ported with Porting Toolkit (Web)"); the macOS Godot app was built, thinned, signed and passes `codesign --verify --strict`, but **was not launched** (running the downloaded Godot binary was blocked for the session). The HTML5 wrapper app was launched in self-test mode and loaded its page (`PTK_WRAPPER_LOADED loaded:Quest`).
+
 ## Next task
-1. Owner: try `cargo run --release -p ptk-gui` (Projects, Import Game, Marketplace), check the macOS menu bar, create the ptk-marketplace repo.
-2. Phase 3: first exporter (Godot: .pck + export template), plugin runtime (separate process, restricted cwd, declared folders only), recipe format, marketplace with reviewed flag, AI-assisted advanced options. Phase 4: Windows/Linux.
-3. Not tested: Linux/Windows builds (CI adds `libgtk-3-dev` etc. for rfd/egui but Actions is blocked on the account), app bundling (`.app`, icon), real games (only fixtures and a sparse fake).
+1. Owner: try a real Godot game and a real RPG Maker MV/MZ game (`ptk import <build>` then `ptk export`, or the app's Export tab); open the Godot `.app` on the Mac (not done by Claude). Check the macOS menu bar. Create the ptk-marketplace repo (see above).
+2. Next plugins: Ren'Py (needs the Ren'Py SDK runtime), Godot C#, Windows/Linux targets (phase 4), AI-assisted advanced options; applying advanced options (recompress) is not implemented by any plugin yet.
+3. Not tested: real games (only synthetic pcks and fake HTML5 games), Godot 3 templates, threaded web builds in a browser, Electron games, Intel Macs, Linux/Windows builds (CI blocked on the account).
 
 ## Working agreement (after every change)
 1. Run the tests (Rust and Python); for CLI output changes, take screenshots and show them.

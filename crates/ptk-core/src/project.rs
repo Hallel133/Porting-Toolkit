@@ -10,10 +10,9 @@ use crate::pack::PluginsLock;
 use crate::targets::{TargetRegistry, TargetStatus};
 
 const PROJECT_README: &str = "# {title}\n\nA [Porting Toolkit](https://github.com/Hallel133/Porting-Toolkit) project.\n\n- `ptk.json`: the manifest (game, targets, advanced options, source hashes)\n- `recipes/`: conversion recipes\n- `patches/`: community-written patches and code\n- `plugins.lock`: exact plugin versions\n\nBring your own copy of the game, then:\n\n```bash\nptk verify /path/to/your/game -p .\n```\n\nThis project never contains original game files.\n";
-const RECIPES_README: &str =
-    "# Recipes\n\nConversion recipes for this project (format arrives with plugins in phase 3).\n";
+const RECIPES_README: &str = "# Recipes\n\nWhat import plugins learned about the game (for example `godot.json`). Plain JSON, no game files.\n";
 const PATCHES_README: &str = "# Patches\n\nCommunity-written patches and code. Never put original or decompiled game files here.\n";
-const GITIGNORE: &str = "# Never commit game files.\n/game/\n*.ptk\n.DS_Store\n._*\n";
+const GITIGNORE: &str = "# Never commit game files or builds.\n/game/\n/build/\n*.ptk\n.ptk-local.json\n.DS_Store\n._*\n";
 
 /// Paths `init` creates, for display.
 pub const CREATED: &[&str] = &[

@@ -13,6 +13,7 @@ use eframe::egui::{
     self, Align, Color32, CornerRadius, Frame, Key, KeyboardShortcut, Layout, Margin, Modifiers,
     RichText, Stroke, vec2,
 };
+use ptk_core::convert::{self, Event, RunResult};
 use ptk_core::doctor::Check;
 use ptk_core::engine::EngineClient;
 use ptk_core::manifest::{Issue, MANIFEST_FILE, Manifest};
@@ -227,6 +228,9 @@ pub struct PackSummary {
 }
 
 /// Results coming back from background jobs.
+/// A finished import: project folder, scan, and what the import plugin found.
+pub type ImportDone = (PathBuf, ScanResult, Option<Result<RunResult, String>>);
+
 pub enum Msg {
     ScanProgress(u64),
     Scanned(Result<ScanResult, String>),
@@ -239,7 +243,7 @@ pub enum Msg {
     Validated(Result<Validation, String>),
     PluginCreated(Result<CreatedPlugin, String>),
     Installed(Result<(PathBuf, usize), String>),
-    Imported(Result<(PathBuf, ScanResult), String>),
+    Imported(Result<ImportDone, String>),
     Market(Result<(MarketIndex, Vec<String>), String>),
     /// A marketplace download, ready for consent (or a project to unpack).
     Downloaded(Result<Downloaded, String>),
@@ -247,6 +251,9 @@ pub enum Msg {
     SdkCreated(Result<PathBuf, String>),
     Published(Result<Published, String>),
     FoundProjects(Vec<PathBuf>),
+    /// Progress of a running plugin: fraction (if known) and a status line.
+    PluginProgress(Option<f64>, String),
+    Exported(Vec<(String, Result<RunResult, String>)>),
 }
 
 pub enum Downloaded {
@@ -324,6 +331,16 @@ pub struct App {
     pub sdk_new_dir: String,
 
     pub busy: Option<String>,
+    /// Plugin progress while a job runs plugins.
+    pub plugin_progress: Option<(Option<f64>, String)>,
+    pub export_output: String,
+    /// Plugin settings, one `key=value` per line.
+    pub export_settings: String,
+    pub export_results: Vec<(String, Result<RunResult, String>)>,
+    /// What the import plugin found, for the open project.
+    pub import_result: Option<Result<RunResult, String>>,
+    /// The local web server behind "Play in browser".
+    pub server: Option<ptk_core::serve::Server>,
     pub toast: Option<(String, ToastKind, Instant)>,
     tx: Sender<Msg>,
     rx: Receiver<Msg>,
@@ -404,6 +421,12 @@ impl App {
             published: None,
             sdk_new_dir: String::new(),
             busy: None,
+            plugin_progress: None,
+            export_output: String::new(),
+            export_settings: String::new(),
+            export_results: Vec::new(),
+            import_result: None,
+            server: None,
             toast: None,
             tx,
             rx,
@@ -502,6 +525,7 @@ impl App {
     pub fn open_project(&mut self, dir: &Path) {
         match Manifest::load(dir) {
             Ok(m) => {
+                let same = self.project.as_ref().is_some_and(|p| p.dir == dir);
                 let contents = ptk_core::project::contents(dir).unwrap_or_default();
                 self.pack_output = dir
                     .parent()
@@ -521,6 +545,11 @@ impl App {
                 self.selected = dir.canonicalize().ok().or(Some(dir.to_owned()));
                 self.pack_result = None;
                 self.verify_result = None;
+                if !same {
+                    self.export_results.clear();
+                    self.import_result = None;
+                }
+                self.export_output = widgets::display_path(&convert::default_output(dir));
                 if !View::WORKSPACE.contains(&self.view) {
                     self.view = View::Overview;
                 }
@@ -808,12 +837,13 @@ impl App {
             Some(PathBuf::from(self.import_dest.trim())).filter(|d| !d.as_os_str().is_empty());
         let registry = self.registry.clone();
         self.import_open = false;
-        self.spawn(ctx, "Importing game", move |_| {
-            let run = || -> ptk_core::Result<(PathBuf, ScanResult)> {
+        let repaint = ctx.clone();
+        self.spawn(ctx, "Importing game", move |tx| {
+            let tx = tx.clone();
+            let run = || -> ptk_core::Result<ImportDone> {
                 let prepared = ptk_core::import::prepare(&build)?;
                 let mut engine = EngineClient::start()?;
                 let (scan, _) = ptk_core::scan::scan(&mut engine, &prepared.game, &mut |_| {})?;
-                let _ = engine.shutdown();
                 let project = dest.unwrap_or_else(|| default_project_dir(&prepared.title));
                 if !project.join(MANIFEST_FILE).exists() {
                     ptk_core::project::init(
@@ -826,10 +856,89 @@ impl App {
                     )?;
                 }
                 ptk_core::scan::record(&project, &prepared.game, &scan)?;
-                Ok((project, scan))
+                if prepared.extracted.is_some() {
+                    convert::LocalState::remember_game(&project, &prepared.game, Some(&build))?;
+                }
+                let plugin = convert::import(&mut engine, &project, &prepared.game, &mut |e| {
+                    if let Event::Progress { fraction, message } = e {
+                        let _ = tx.send(Msg::PluginProgress(fraction, message));
+                        repaint.request_repaint();
+                    }
+                })
+                .map_err(|e| e.to_string())
+                .transpose();
+                let _ = engine.shutdown();
+                Ok((project, scan, plugin))
             };
             Msg::Imported(run().map_err(|e| e.to_string()))
         });
+    }
+
+    /// Exports the open project for `targets`, one after the other.
+    pub fn export_targets(&mut self, ctx: &egui::Context, targets: Vec<String>) {
+        let Some(p) = &self.project else { return };
+        if targets.is_empty() {
+            return self.notify("Choose a target in Overview first".into(), ToastKind::Error);
+        }
+        let lines: Vec<String> = self
+            .export_settings
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .map(str::to_owned)
+            .collect();
+        let settings = match convert::parse_settings(&lines) {
+            Ok(s) => s,
+            Err(e) => return self.notify(e.to_string(), ToastKind::Error),
+        };
+        let opts = convert::ExportOptions {
+            output: Some(expand_tilde(self.export_output.trim()))
+                .filter(|o| !o.as_os_str().is_empty()),
+            settings,
+            ..Default::default()
+        };
+        let dir = p.dir.clone();
+        self.export_results.clear();
+        self.plugin_progress = Some((Some(0.0), "Starting".into()));
+        let repaint = ctx.clone();
+        self.spawn(ctx, "Exporting", move |tx| {
+            let tx = tx.clone();
+            let mut out = Vec::new();
+            match EngineClient::start() {
+                Err(e) => {
+                    for t in targets {
+                        out.push((t, Err(e.to_string())));
+                    }
+                }
+                Ok(mut engine) => {
+                    for t in &targets {
+                        let r = convert::export(&mut engine, &dir, t, &opts, &mut |e| {
+                            if let Event::Progress { fraction, message } = e {
+                                let _ = tx
+                                    .send(Msg::PluginProgress(fraction, format!("{t}: {message}")));
+                                repaint.request_repaint();
+                            }
+                        });
+                        out.push((t.clone(), r.map_err(|e| e.to_string())));
+                    }
+                    let _ = engine.shutdown();
+                }
+            }
+            Msg::Exported(out)
+        });
+    }
+
+    /// Serves a web build on this computer and opens it in the browser.
+    pub fn play_in_browser(&mut self, dir: &Path) {
+        self.server = None;
+        match ptk_core::serve::start(dir, 0) {
+            Ok(s) => {
+                open_url(&s.url());
+                self.notify(format!("Serving at {}", s.url()), ToastKind::Info);
+                self.server = Some(s);
+            }
+            Err(e) => self.notify(e.to_string(), ToastKind::Error),
+        }
     }
 
     pub fn refresh_market(&mut self, ctx: &egui::Context) {
@@ -934,11 +1043,26 @@ impl App {
     /// Applies finished job results.
     pub fn poll(&mut self, ctx: &egui::Context) {
         while let Ok(msg) = self.rx.try_recv() {
-            if !matches!(msg, Msg::ScanProgress(_)) {
+            if !matches!(msg, Msg::ScanProgress(_) | Msg::PluginProgress(..)) {
                 self.busy = None;
             }
             match msg {
                 Msg::ScanProgress(n) => self.scan_progress = Some(n),
+                Msg::PluginProgress(f, text) => self.plugin_progress = Some((f, text)),
+                Msg::Exported(results) => {
+                    self.plugin_progress = None;
+                    let ok = results.iter().filter(|(_, r)| r.is_ok()).count();
+                    let (text, kind) = if ok == results.len() {
+                        (format!("Exported {ok} build(s)"), ToastKind::Ok)
+                    } else {
+                        (
+                            format!("{} of {} exports failed", results.len() - ok, results.len()),
+                            ToastKind::Error,
+                        )
+                    };
+                    self.export_results = results;
+                    self.notify(text, kind);
+                }
                 Msg::Scanned(r) => {
                     self.scan_progress = None;
                     match r {
@@ -990,12 +1114,18 @@ impl App {
                     Err(e) => self.notify(e, ToastKind::Error),
                 },
                 Msg::Imported(r) => match r {
-                    Ok((dir, scan)) => {
+                    Ok((dir, scan, plugin)) => {
+                        self.plugin_progress = None;
                         self.game_input = scan.path.clone();
                         self.scan = Some(scan);
                         self.open_project(&dir);
                         self.view = View::Overview;
-                        self.notify(format!("Imported into {}", dir.display()), ToastKind::Ok);
+                        let text = match &plugin {
+                            Some(Ok(r)) => r.summary.clone(),
+                            _ => format!("Imported into {}", dir.display()),
+                        };
+                        self.import_result = plugin;
+                        self.notify(text, ToastKind::Ok);
                     }
                     Err(e) => self.notify(e, ToastKind::Error),
                 },
@@ -1083,6 +1213,14 @@ impl App {
             View::Marketplace => self.refresh_market(ctx),
             View::Export if !self.verify_game.is_empty() && self.project.is_some() => {
                 self.start_verify(ctx)
+            }
+            View::Export if self.project.is_some() => {
+                let targets = self
+                    .project
+                    .as_ref()
+                    .map(|p| p.saved.targets.clone())
+                    .unwrap_or_default();
+                self.export_targets(ctx, targets)
             }
             _ => {}
         }
@@ -1474,6 +1612,17 @@ impl App {
                         _ => String::new(),
                     };
                     ui.label(small(format!("{label}…{extra}"), TEXT));
+                    if let Some((fraction, text)) = &self.plugin_progress {
+                        if let Some(f) = fraction {
+                            ui.add(
+                                egui::ProgressBar::new(*f as f32)
+                                    .desired_width(140.0)
+                                    .desired_height(8.0)
+                                    .fill(FOCUS),
+                            );
+                        }
+                        ui.label(small(widgets::elide_middle(text, 70), TEXT_WEAK));
+                    }
                 }
                 None => {
                     let text = match &self.project {
@@ -1647,7 +1796,7 @@ impl App {
             widgets::message(
                 ui,
                 WARN,
-                "Python plugins can do anything your user account can. The permissions above are what the author declares. Plugins do not run until phase 3.",
+                "Python plugins can do anything your user account can. The permissions above are what the author declares.",
             );
             ui.add_space(8.0);
             ui.horizontal(|ui| {
@@ -1749,8 +1898,31 @@ pub fn default_project_dir(title: &str) -> PathBuf {
         .join(format!("{}-port", ptk_core::manifest::slugify(title)))
 }
 
-/// Shows a folder in Finder (or the system file manager).
-fn reveal(path: &Path) {
+/// `~/x` → `$HOME/x` (fields show home paths with a tilde).
+pub(crate) fn expand_tilde(text: &str) -> PathBuf {
+    match (text.strip_prefix("~/"), std::env::var_os("HOME")) {
+        (Some(rest), Some(home)) => PathBuf::from(home).join(rest),
+        _ if text == "~" => std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_default(),
+        _ => PathBuf::from(text),
+    }
+}
+
+/// Selects a file or app in Finder without opening it.
+pub(crate) fn show_in_finder(path: &Path) {
+    if cfg!(target_os = "macos") {
+        let _ = std::process::Command::new("open")
+            .arg("-R")
+            .arg(path)
+            .spawn();
+    } else {
+        reveal(path.parent().unwrap_or(path));
+    }
+}
+
+/// Shows a folder in Finder (or the system file manager); opens files and apps.
+pub(crate) fn reveal(path: &Path) {
     let opener = if cfg!(target_os = "macos") {
         "open"
     } else if cfg!(windows) {
@@ -1762,7 +1934,7 @@ fn reveal(path: &Path) {
 }
 
 /// Opens a web page in the default browser.
-fn open_url(url: &str) {
+pub(crate) fn open_url(url: &str) {
     let (prog, args): (&str, Vec<&str>) = if cfg!(target_os = "macos") {
         ("open", vec![url])
     } else if cfg!(windows) {
@@ -1975,6 +2147,62 @@ mod tests {
         assert_eq!(app.rows.len(), 2);
         app.forget_project(&beta);
         assert_eq!(app.rows.len(), 1);
+    }
+
+    fn wait(app: &mut App, ctx: &egui::Context) {
+        let start = Instant::now();
+        while app.busy.is_some() {
+            assert!(start.elapsed() < Duration::from_secs(60), "job timed out");
+            std::thread::sleep(Duration::from_millis(20));
+            app.poll(ctx);
+        }
+    }
+
+    #[test]
+    fn import_runs_the_plugin_and_export_builds_for_the_web() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = egui::Context::default();
+        let mut app = app(tmp.path());
+        let game = tmp.path().join("NwGame");
+        std::fs::create_dir_all(game.join("data")).unwrap();
+        std::fs::write(game.join("index.html"), "<title>hi</title>").unwrap();
+        std::fs::write(game.join("data/info.json"), "{}").unwrap();
+        std::fs::write(game.join("package.json"), r#"{"main": "index.html"}"#).unwrap();
+        std::fs::write(game.join("package.nw"), b"").unwrap();
+        std::fs::write(game.join("nw.dll"), b"MZ").unwrap();
+        app.import_build = game.display().to_string();
+        app.import_dest = tmp.path().join("nw-port").display().to_string();
+        app.import_game(&ctx);
+        wait(&mut app, &ctx);
+        let summary = match &app.import_result {
+            Some(Ok(r)) => r.summary.clone(),
+            other => panic!(
+                "import plugin did not run: {:?}",
+                other.as_ref().map(|r| r.is_ok())
+            ),
+        };
+        assert!(summary.contains("NW.js"), "{summary}");
+        let dir = app.project.as_ref().unwrap().dir.clone();
+        assert!(dir.join("recipes/html5.json").is_file());
+        assert!(app.export_output.ends_with("build"));
+        assert_eq!(
+            expand_tilde("~/x"),
+            PathBuf::from(std::env::var("HOME").unwrap()).join("x")
+        );
+        app.export_targets(&ctx, vec!["web".into()]);
+        wait(&mut app, &ctx);
+        let (target, r) = &app.export_results[0];
+        assert_eq!(target, "web");
+        let r = r.as_ref().expect("export works");
+        assert_eq!(r.plugin_id, "html5-export");
+        assert!(dir.join("build/web/index.html").is_file());
+        assert!(dir.join("build/web/data/info.json").is_file());
+        assert!(r.serve.is_some());
+        app.view = View::Export;
+        crate::theme::install(&ctx);
+        for _ in 0..3 {
+            frame(&mut app, &ctx);
+        }
     }
 
     #[test]

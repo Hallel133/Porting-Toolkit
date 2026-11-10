@@ -64,7 +64,22 @@ Porting Toolkit has two halves:
 | `plugin.validate` | `path`, `known_targets?` | `valid`, `errors`, `warnings`, `plugin`, `permissions`, `risk` |
 | `plugin.list` | `dirs`, `known_targets?` | summaries of plugin folders |
 | `plugin.new` | `path`, `kind`, `id?` | created files |
+| `plugin.find` | `kind`, `engine?`, `target?`, `dirs`, `prefer?` | valid plugins for the job, best first (`builtin` flag) |
+| `plugin.run` | `plugin`, `kind`, `folders`, `target?`, `manifest`, `settings`, `cache_root` | `{plugin, result, log}`; sends `progress` and `log` notifications |
 | `shutdown` | – | `{}`, then the engine exits |
+
+### Running plugins
+
+`plugin.run` starts `python -m ptk_engine.host` with the plugin folder on
+`sys.path` and a fresh temporary working directory, writes one JSON request
+on its stdin, and relays the JSON lines it prints (`progress`, `log`, then
+`result` or `error`). The plugin API lives in `ptk_engine/api.py`; shared
+format readers (Godot `.pck`, HTML5 containers, `.asar`) in
+`ptk_engine/formats/`. On the Rust side, `ptk_core::convert` finds and runs
+plugins, records them in `plugins.lock`, and remembers where the game is in
+the project's `.ptk-local.json` (per machine, never packed).
+`ptk_core::serve` is the local web server behind `ptk serve` and the app's
+"Play in browser".
 
 ### Finding the engine
 

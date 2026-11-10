@@ -124,7 +124,7 @@ impl TargetRegistry {
                     "macos",
                     "arm64",
                     Active,
-                    "Phase 1 focus. Apple M-series Macs.",
+                    "Apple M-series Macs.",
                 ),
                 builtin(
                     "macos-x64",
@@ -136,11 +136,11 @@ impl TargetRegistry {
                 ),
                 builtin(
                     "web",
-                    "Web (WebAssembly + WebGPU)",
+                    "Web (HTML5 / WebAssembly)",
                     "web",
                     "wasm32",
-                    Planned,
-                    "Runs in a browser, like the GrandV Web Edition.",
+                    Active,
+                    "Runs in a browser; upload the folder to any static host.",
                 ),
                 builtin(
                     "windows-x64",

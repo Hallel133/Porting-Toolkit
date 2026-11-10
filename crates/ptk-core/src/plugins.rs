@@ -1,8 +1,8 @@
 //! Plugin operations shared by the CLI and GUI.
 //!
 //! Validation and templates live in the Python engine (it owns plugins);
-//! installing is a plain copy into the data folder. Phase 1/2 never run
-//! plugin code.
+//! installing is a plain copy into the data folder. Running plugins is in
+//! `convert.rs`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -53,6 +53,15 @@ pub struct ListedPlugin {
     #[serde(default)]
     pub permissions: Vec<String>,
     pub reviewed: bool,
+    /// Ships with Porting Toolkit (`engine/plugins`).
+    #[serde(default)]
+    pub builtin: bool,
+    #[serde(default)]
+    pub inputs: Vec<String>,
+    #[serde(default)]
+    pub targets: Vec<String>,
+    #[serde(default)]
+    pub description: String,
 }
 
 /// Result of `plugin.new`.

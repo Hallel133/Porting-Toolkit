@@ -95,10 +95,50 @@ pub fn title_of(path: &Path) -> String {
     let is_deb = path
         .extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("deb"));
-    if is_deb {
+    let base = if is_deb {
         stem.split('_').next().unwrap_or(&stem).to_owned()
     } else {
         stem
+    };
+    strip_platform_suffix(&base)
+}
+
+/// `MyGame-windows`, `MyGame_Win64`, `MyGame (Mac)` → `MyGame`.
+fn strip_platform_suffix(name: &str) -> String {
+    const SUFFIXES: &[&str] = &[
+        "windows",
+        "win64",
+        "win32",
+        "win",
+        "x86_64",
+        "x64",
+        "amd64",
+        "macos",
+        "mac",
+        "osx",
+        "linux",
+        "universal",
+        "web",
+        "html5",
+        "pc",
+        "desktop",
+    ];
+    let mut s = name.trim().to_owned();
+    loop {
+        let lower = s.to_ascii_lowercase();
+        let cut = SUFFIXES.iter().find_map(|suf| {
+            let paren = format!("({suf})");
+            if lower.ends_with(&paren) {
+                return Some(s.len() - paren.len());
+            }
+            let n = s.len().checked_sub(suf.len() + 1)?;
+            (lower.ends_with(suf) && matches!(s.as_bytes()[n], b'-' | b'_' | b' ' | b'.'))
+                .then_some(n)
+        });
+        match cut {
+            Some(n) if n > 0 => s = s[..n].trim_end_matches([' ', '-', '_', '.']).to_owned(),
+            _ => return s,
+        }
     }
 }
 

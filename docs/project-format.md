@@ -75,8 +75,21 @@ Before porting, the user decides what may be lost. Categories:
 | `max_resolution` | 16–16384 pixels, longest edge |
 | `format` | Preferred output format, e.g. `astc`, `bc7`, `opus` |
 
-`ptk options set CATEGORY …` edits them; `ptk info` shows them. Phase 3 adds
-smart suggestions (AI-assisted) on top of the same fields.
+`ptk options set CATEGORY …` edits them; `ptk info` shows them. Smart
+(AI-assisted) suggestions will build on the same fields.
+
+### `recipes/`
+
+What import plugins learned, as JSON: `recipes/godot.json` (where the
+`.pck` is, its Godot version, flags) or `recipes/html5.json` (container,
+web root, entry page, window size). Recipes never hold game data and are
+packed into `.ptk` files.
+
+### `.ptk-local.json`
+
+Per-machine state, written by `ptk import`, `ptk scan --record` and
+`ptk export`: where the game is on this computer and the last output
+folder. It is in the project's `.gitignore` and never packed.
 
 ### `plugins.lock`
 
@@ -84,10 +97,10 @@ smart suggestions (AI-assisted) on top of the same fields.
 version = 1
 
 [[plugin]]
-id = "unity-import"
-version = "0.3.1"
+id = "godot-export"
+version = "1.0.0"
 sha256 = "…"      # optional, of the plugin archive
-source = "…"      # optional, where it came from
+source = "built-in"   # optional: built-in, installed, or a URL
 ```
 
 ## `.ptk` files

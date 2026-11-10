@@ -2,6 +2,7 @@
 
 mod banner;
 mod community;
+mod convert;
 mod doctor;
 mod plugin;
 mod project;
@@ -121,6 +122,42 @@ enum Command {
         /// Project folder (created if missing; default: NAME-port)
         #[arg(short, long)]
         project: Option<PathBuf>,
+    },
+    /// Build the game for other platforms with export plugins (macOS, web, ...)
+    Export {
+        /// Project folder
+        #[arg(short, long, default_value = ".")]
+        project: PathBuf,
+        /// Target id (repeatable; default: the project's targets)
+        #[arg(short, long = "target", value_name = "ID")]
+        targets: Vec<String>,
+        /// Output folder; each target gets a subfolder (default: PROJECT/build)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Game folder (default: the one the project was imported from)
+        #[arg(long)]
+        game: Option<PathBuf>,
+        /// Use this plugin id instead of the best match
+        #[arg(long)]
+        plugin: Option<String>,
+        /// Plugin setting, e.g. --set templates=PATH (repeatable)
+        #[arg(long = "set", value_name = "KEY=VALUE")]
+        set: Vec<String>,
+        /// Open the result when done
+        #[arg(long)]
+        open: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Serve a web build on this computer (with the headers WebAssembly games need)
+    Serve {
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+        #[arg(long, default_value_t = 8000)]
+        port: u16,
+        /// Open it in the browser
+        #[arg(long)]
+        open: bool,
     },
     /// Create, validate and install SDKs (new targets + their plugins)
     Sdk {
@@ -323,6 +360,19 @@ fn run(cli: Cli, style: &Style) -> anyhow::Result<ExitCode> {
         } => project::verify(style, &game_dir, &project, json),
         Command::Plugin { action } => plugin::run(style, action),
         Command::Import { build, project } => scan::import(style, &build, project.as_deref()),
+        Command::Export {
+            project,
+            targets,
+            output,
+            game,
+            plugin,
+            set,
+            open,
+            json,
+        } => convert::export(
+            style, &project, targets, output, game, plugin, set, json, open,
+        ),
+        Command::Serve { dir, port, open } => convert::serve(style, &dir, port, open),
         Command::Sdk { action } => community::sdk(style, action),
         Command::Market { action } => community::market(style, action),
         Command::Publish { path, output } => community::publish(style, &path, &output),

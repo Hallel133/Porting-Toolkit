@@ -50,13 +50,13 @@ pub fn about(style: &Style) -> anyhow::Result<ExitCode> {
         (
             "1",
             "macOS + CLI infrastructure, banner, project format",
-            true,
+            false,
         ),
         ("2", "Desktop GUI", false),
         (
             "3",
-            "Import/export plugins and smart (AI-assisted) advanced options",
-            false,
+            "Import/export plugins (Godot, HTML5 → macOS, web), then AI-assisted options",
+            true,
         ),
         (
             "4",

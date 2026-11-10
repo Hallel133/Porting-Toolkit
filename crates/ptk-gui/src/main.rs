@@ -1,4 +1,4 @@
-//! Porting Toolkit desktop GUI (phase 2), built with egui on `ptk-core`.
+//! Porting Toolkit desktop GUI, built with egui on `ptk-core`.
 //!
 //! ```text
 //! ptk-gui [--view NAME] [--project DIR] [--game DIR] [--run]

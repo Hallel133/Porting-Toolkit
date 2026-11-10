@@ -1,0 +1,371 @@
+"""The plugin runtime and the built-in Godot and HTML5 plugins."""
+
+from __future__ import annotations
+
+import json
+import os
+import plistlib
+import shutil
+import struct
+import subprocess
+import sys
+import zipfile
+from pathlib import Path
+
+import pytest
+
+from ptk_engine.formats import godot, html5
+from ptk_engine.runtime import BUILTIN_DIR, find_plugins, run_plugin
+
+MACOS = {"id": "macos-arm64", "name": "macOS (Apple Silicon)", "os": "macos", "arch": "arm64"}
+WEB = {"id": "web", "name": "Web", "os": "web", "arch": "wasm32"}
+GAME_FILES = {"project.godot": b"config_version=5\n", "main.tscn": b"[gd_scene]\n", "main.gd": b"extends Node\n"}
+
+
+def run(tmp: Path, plugin: str, game: Path, project: Path, kind: str, target=None, settings=None, output=None):
+    events: list[tuple[str, dict]] = []
+    out = run_plugin(
+        {
+            "plugin": str(BUILTIN_DIR / plugin),
+            "kind": kind,
+            "engine": "godot" if plugin.startswith("godot") else "html5",
+            "target": target,
+            "manifest": {"name": "demo-port", "version": "1.2.0", "game": {"title": "Ptk Demo"}},
+            "settings": settings or {},
+            "folders": {"$GAME": str(game), "$PROJECT": str(project), "$OUTPUT": str(output) if output else None},
+            "cache_root": str(tmp / "cache"),
+        },
+        lambda m, p: events.append((m, p)),
+    )
+    return out, events
+
+
+# -- pck format ------------------------------------------------------------
+
+
+@pytest.mark.parametrize("fmt,version", [(1, (3, 5, 3)), (2, (4, 2, 2)), (3, (4, 7, 2))])
+@pytest.mark.parametrize("embedded", [False, True])
+def test_pck_read_and_extract(tmp_path, fmt, version, embedded):
+    exe = b"MZ" + b"\x90" * 1000 if embedded else None
+    path = godot.write_pck(tmp_path / ("game.exe" if embedded else "game.pck"), GAME_FILES, version, fmt, exe)
+    pck = godot.read(path)
+    assert pck.version == version and pck.format == fmt and pck.embedded == embedded
+    assert sorted(pck.paths()) == sorted(GAME_FILES)
+    with open(path, "rb") as f:
+        for e in pck.files:
+            f.seek(e.offset)
+            assert f.read(e.size) == GAME_FILES[e.path]
+    alone = godot.read(godot.extract(pck, tmp_path / "out.pck"))
+    assert not alone.embedded
+    data = (tmp_path / "out.pck").read_bytes()
+    for e in alone.files:
+        assert data[e.offset:e.offset + e.size] == GAME_FILES[e.path]
+
+
+def test_godot3_absolute_offsets_are_rewritten(tmp_path):
+    path = godot.write_pck(tmp_path / "g.exe", GAME_FILES, (3, 4, 0), 1, b"\x7fELF" + b"\0" * 500, v1_absolute=True)
+    pck = godot.read(path)
+    assert pck.v1_absolute
+    alone = godot.read(godot.extract(pck, tmp_path / "g.pck"))
+    data = (tmp_path / "g.pck").read_bytes()
+    assert all(data[e.offset:e.offset + e.size] == GAME_FILES[e.path] for e in alone.files)
+
+
+def test_find_prefers_standalone_pck(tmp_path):
+    godot.write_pck(tmp_path / "Game.exe", GAME_FILES, embed_into=b"MZ" + b"\0" * 100)
+    assert godot.find(tmp_path) == [tmp_path / "Game.exe"]
+    godot.write_pck(tmp_path / "Game.pck", GAME_FILES)
+    assert godot.find(tmp_path)[0] == tmp_path / "Game.pck"
+    assert godot.find(tmp_path / "Game.exe") == [tmp_path / "Game.exe"]
+
+
+# -- fake Godot templates ------------------------------------------------------
+
+SHELL = """<html><head><title>$GODOT_PROJECT_NAME</title>$GODOT_HEAD_INCLUDE
+<style>body{background:$GODOT_SPLASH_COLOR}</style></head><body>
+<img class="$GODOT_SPLASH_CLASSES" src="$GODOT_SPLASH">
+<script src="$GODOT_URL"></script><script>
+const GODOT_CONFIG = $GODOT_CONFIG;
+const GODOT_THREADS_ENABLED = $GODOT_THREADS_ENABLED;
+</script></body></html>"""
+
+PLIST = """<plist><dict>
+<key>CFBundleExecutable</key><string>$binary</string>
+<key>CFBundleName</key><string>$name</string>
+<key>CFBundleIdentifier</key><string>$bundle_identifier</string>
+$liquid_glass_icon
+<key>CFBundleShortVersionString</key><string>$short_version</string>
+<key>LSApplicationCategoryType</key><string>public.app-category.$app_category</string>
+<key>NSHighResolutionCapable</key>
+$highres
+$additional_plist_content
+<key>DTXcode</key><string>$xcodever</string>
+</dict></plist>"""
+
+
+def fake_templates(root: Path) -> Path:
+    d = root / "templates"
+    d.mkdir()
+    for name in ("web_nothreads_release.zip", "web_release.zip"):
+        with zipfile.ZipFile(d / name, "w") as z:
+            z.writestr("godot.html", SHELL)
+            z.writestr("godot.js", "// engine")
+            z.writestr("godot.wasm", b"\0asm" + b"\0" * 60)
+            z.writestr("godot.audio.worklet.js", "// worklet")
+            z.writestr("godot.service.worker.js", "const CACHE_VERSION = '___GODOT_VERSION___';\nconst CACHED = ___GODOT_CACHE___;")
+            z.writestr("godot.offline.html", "<p>offline</p>")
+    with zipfile.ZipFile(d / "macos.zip", "w") as z:
+        z.writestr("macos_template.app/Contents/Info.plist", PLIST)
+        z.writestr("macos_template.app/Contents/PkgInfo", "APPL????")
+        z.writestr("macos_template.app/Contents/Resources/icon.icns", b"icns")
+        z.writestr("macos_template.app/Contents/MacOS/godot_macos_release.universal", b"release")
+        z.writestr("macos_template.app/Contents/MacOS/godot_macos_debug.universal", b"debug")
+    return d
+
+
+@pytest.fixture
+def godot_game(tmp_path):
+    game = tmp_path / "game"
+    godot.write_pck(game / "PtkDemo.exe", GAME_FILES, (4, 7, 2), 3, b"MZ" + b"\0" * 4000)
+    project = tmp_path / "project"
+    project.mkdir()
+    return game, project
+
+
+def test_godot_import_writes_a_recipe(tmp_path, godot_game):
+    game, project = godot_game
+    out, events = run(tmp_path, "godot-import", game, project, "import")
+    recipe = json.loads((project / "recipes" / "godot.json").read_text())
+    assert recipe["pck"] == "PtkDemo.exe" and recipe["godot_version"] == "4.7.2" and recipe["embedded"]
+    assert "Godot 4.7.2" in out["result"]["summary"]
+    assert any(m == "progress" for m, _ in events)
+    assert not any((project / "recipes").glob("*.pck")), "no game data in the project"
+
+
+def test_godot_export_web(tmp_path, godot_game):
+    game, project = godot_game
+    templates = fake_templates(tmp_path)
+    run(tmp_path, "godot-import", game, project, "import")
+    out, _ = run(tmp_path, "godot-export", game, project, "export", WEB, {"templates": str(templates)}, tmp_path / "web")
+    web = tmp_path / "web"
+    page = (web / "index.html").read_text()
+    assert "$GODOT" not in page and "<title>Ptk Demo</title>" in page
+    config = json.loads(page.split("const GODOT_CONFIG = ")[1].split(";\n")[0])
+    assert config["executable"] == "index"
+    assert config["fileSizes"]["index.pck"] == (web / "index.pck").stat().st_size
+    assert "GODOT_THREADS_ENABLED = false" in page and "serviceWorker" not in config
+    assert {p.name for p in web.iterdir()} >= {"index.html", "index.js", "index.wasm", "index.pck", "index.audio.worklet.js"}
+    assert not (web / "index.service.worker.js").exists()
+    assert sorted(godot.read(web / "index.pck").paths()) == sorted(GAME_FILES)
+    assert out["result"]["serve"] == str(web)
+
+
+def test_godot_export_web_threads_adds_service_worker(tmp_path, godot_game):
+    game, project = godot_game
+    templates = fake_templates(tmp_path)
+    run(tmp_path, "godot-export", game, project, "export", WEB,
+        {"templates": str(templates), "threads": "true"}, tmp_path / "web")
+    page = (tmp_path / "web" / "index.html").read_text()
+    assert "GODOT_THREADS_ENABLED = true" in page and '"serviceWorker": "index.service.worker.js"' in page
+    sw = (tmp_path / "web" / "index.service.worker.js").read_text()
+    assert "___" not in sw and "index.offline.html" in sw
+
+
+def test_godot_export_macos(tmp_path, godot_game):
+    game, project = godot_game
+    templates = fake_templates(tmp_path)
+    out, _ = run(tmp_path, "godot-export", game, project, "export", MACOS,
+                 {"templates": str(templates), "sign": "false", "thin": "false"}, tmp_path / "mac")
+    app = tmp_path / "mac" / "Ptk Demo.app"
+    assert out["result"]["outputs"] == [str(app)]
+    exe = app / "Contents" / "MacOS" / "Ptk Demo"
+    assert exe.read_bytes() == b"release" and os.access(exe, os.X_OK)
+    assert [p.name for p in (app / "Contents" / "MacOS").iterdir()] == ["Ptk Demo"]
+    plist = (app / "Contents" / "Info.plist").read_text()
+    assert "$" not in plist
+    assert "<string>Ptk Demo</string>" in plist and "org.portingtoolkit.ptk-demo" in plist
+    assert "<string>1.2.0</string>" in plist and "public.app-category.games" in plist and "<true/>" in plist
+    assert godot.read(app / "Contents" / "Resources" / "Ptk Demo.pck").version == (4, 7, 2)
+
+
+def test_godot_export_refuses_encrypted(tmp_path, godot_game):
+    game, project = godot_game
+    pck = game / "PtkDemo.exe"
+    data = bytearray(pck.read_bytes())
+    start = godot.read(pck).start
+    struct.pack_into("<I", data, start + 20, godot.DIR_ENCRYPTED | godot.REL_FILEBASE)
+    pck.write_bytes(data)
+    with pytest.raises(Exception, match="encrypted"):
+        run(tmp_path, "godot-export", game, project, "export", WEB, {"templates": str(fake_templates(tmp_path))}, tmp_path / "w")
+
+
+def test_output_folder_is_never_wiped_unless_ptk_made_it(tmp_path, godot_game):
+    game, project = godot_game
+    mine = tmp_path / "web"
+    mine.mkdir()
+    (mine / "precious.txt").write_text("keep me")
+    with pytest.raises(Exception, match="not made by Porting Toolkit"):
+        run(tmp_path, "godot-export", game, project, "export", WEB, {"templates": str(fake_templates(tmp_path))}, mine)
+    assert (mine / "precious.txt").read_text() == "keep me"
+
+
+# -- HTML5 ---------------------------------------------------------------------
+
+PAGE = """<!doctype html><title>boot</title><script>
+fetch('data/info.json').then(r => r.json()).then(j => { document.title = 'loaded:' + j.value; });
+</script>"""
+
+
+def nwjs_folder(root: Path) -> Path:
+    (root / "data").mkdir(parents=True)
+    (root / "index.html").write_text(PAGE)
+    (root / "data" / "info.json").write_text('{"value": 42}')
+    (root / "package.json").write_text(json.dumps({"name": "demo", "main": "index.html",
+                                                    "window": {"title": "Nw Demo", "width": 800, "height": 600}}))
+    (root / "nw.dll").write_bytes(b"MZ")
+    return root
+
+
+def write_asar(path: Path, files: dict[str, bytes]) -> Path:
+    tree: dict = {"files": {}}
+    blob = b""
+    for name, data in files.items():
+        node = tree
+        parts = name.split("/")
+        for p in parts[:-1]:
+            node = node["files"].setdefault(p, {"files": {}})
+        node["files"][parts[-1]] = {"size": len(data), "offset": str(len(blob))}
+        blob += data
+    raw = json.dumps(tree).encode()
+    padded = raw + b"\0" * (-len(raw) % 4)
+    header = struct.pack("<II", 4 + len(padded), len(raw)) + padded
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(struct.pack("<II", 4, len(header)) + header + blob)
+    return path
+
+
+def test_detect_nwjs_folder_package_nw_and_asar(tmp_path):
+    g = html5.detect(nwjs_folder(tmp_path / "nw"))
+    assert (g.flavor, g.container, g.root, g.entry, g.title, g.width) == ("nwjs", "folder", "", "index.html", "Nw Demo", 800)
+
+    zipped = tmp_path / "zipped"
+    zipped.mkdir()
+    with zipfile.ZipFile(zipped / "package.nw", "w") as z:
+        z.writestr("package.json", json.dumps({"main": "game/start.html"}))
+        z.writestr("game/start.html", PAGE)
+    g = html5.detect(zipped)
+    assert (g.flavor, g.container, g.root, g.entry) == ("nwjs", "package.nw", "game", "start.html")
+
+    files = {"package.json": b'{"main": "main.js", "productName": "Electro"}', "main.js": b"require('electron')",
+             "app/index.html": PAGE.encode(), "app/data/info.json": b'{"value": 7}'}
+    asar = write_asar(tmp_path / "el" / "resources" / "app.asar", files)
+    g = html5.detect(tmp_path / "el")
+    assert (g.flavor, g.container, g.root, g.title) == ("electron", "asar", "app", "Electro")
+    dest = tmp_path / "unpacked"
+    assert html5.extract_asar(asar, dest) == 4
+    assert (dest / "app" / "data" / "info.json").read_bytes() == b'{"value": 7}'
+
+
+def test_detect_rpgmaker_mv(tmp_path):
+    root = tmp_path / "mv"
+    (root / "www" / "js").mkdir(parents=True)
+    (root / "www" / "js" / "rpg_core.js").write_text("//")
+    (root / "www" / "index.html").write_text(PAGE)
+    (root / "www" / "icon").mkdir()
+    (root / "www" / "icon" / "icon.png").write_bytes(b"png")
+    (root / "package.json").write_text(json.dumps({"main": "www/index.html", "window": {"title": "Quest", "width": 816, "height": 624}}))
+    g = html5.detect(root)
+    assert (g.flavor, g.root, g.title, g.width, g.icon) == ("rpgmaker-mv", "www", "Quest", 816, "icon/icon.png")
+
+
+def test_unsafe_asar_paths_are_refused(tmp_path):
+    asar = write_asar(tmp_path / "bad.asar", {"ok.txt": b"x"})
+    data = asar.read_bytes().replace(b'"ok.txt"', b'"../x.t"')
+    asar.write_bytes(data)
+    with pytest.raises(html5.Html5Error):
+        html5.extract_asar(asar, tmp_path / "out")
+
+
+def test_html5_import_and_web_export(tmp_path):
+    game = nwjs_folder(tmp_path / "game")
+    project = tmp_path / "project"
+    project.mkdir()
+    out, _ = run(tmp_path, "html5-import", game, project, "import")
+    assert "NW.js game" in out["result"]["summary"]
+    out, _ = run(tmp_path, "html5-export", game, project, "export", WEB, output=tmp_path / "web")
+    web = tmp_path / "web"
+    assert (web / "index.html").read_text() == PAGE and (web / "data" / "info.json").is_file()
+    assert not (web / "nw.dll").exists()
+
+
+@pytest.mark.skipif(sys.platform != "darwin" or not shutil.which("swiftc"), reason="needs macOS and swiftc")
+def test_html5_macos_app_builds_and_loads_the_game(tmp_path):
+    game = nwjs_folder(tmp_path / "game")
+    project = tmp_path / "project"
+    project.mkdir()
+    out, _ = run(tmp_path, "html5-export", game, project, "export", MACOS, output=tmp_path / "mac")
+    app = Path(out["result"]["outputs"][0])
+    assert app.name == "Ptk Demo.app"
+    info = plistlib.loads((app / "Contents" / "Info.plist").read_bytes())
+    assert info["CFBundleExecutable"] == "Ptk Demo" and info["CFBundleIdentifier"] == "org.portingtoolkit.ptk-demo"
+    config = json.loads((app / "Contents" / "Resources" / "ptk-app.json").read_text())
+    assert (config["width"], config["height"]) == (800, 600)
+    assert subprocess.run(["codesign", "--verify", "--deep", str(app)], capture_output=True).returncode == 0
+    if os.environ.get("PTK_GUI_TESTS") == "1":
+        r = subprocess.run([str(app / "Contents" / "MacOS" / "Ptk Demo")], capture_output=True, text=True,
+                           timeout=60, env={**os.environ, "PTK_WRAPPER_SELFTEST": "1"})
+        assert "PTK_WRAPPER_LOADED loaded:42" in r.stdout, r.stdout + r.stderr
+
+
+# -- runtime -------------------------------------------------------------------
+
+
+def test_find_plugins_by_engine_and_target():
+    ids = lambda **kw: [r["plugin"]["id"] for r in find_plugins(dirs=[], **kw)]  # noqa: E731
+    assert ids(kind="export", engine="godot", target="web") == ["godot-export"]
+    assert ids(kind="export", engine="rpgmaker", target="macos-arm64") == ["html5-export"]
+    assert ids(kind="import", engine="html5", target=None) == ["html5-import"]
+    assert ids(kind="export", engine="unreal", target="web") == []
+    assert all(r["builtin"] for r in find_plugins("export", "godot", "web", []))
+
+
+def test_permissions_are_enforced(tmp_path):
+    plugin = tmp_path / "plugins" / "sneaky"
+    (plugin / "sneaky").mkdir(parents=True)
+    (plugin / "plugin.toml").write_text("""schema_version = 1
+[plugin]
+id = "sneaky"
+name = "Sneaky"
+version = "0.1.0"
+kind = "export"
+license = "MIT"
+entry = "sneaky:Plugin"
+[formats]
+targets = ["web"]
+[permissions]
+read = ["$GAME"]
+write = ["$OUTPUT"]
+network = false
+subprocess = false
+""")
+    (plugin / "sneaky" / "__init__.py").write_text(f"""
+from pathlib import Path
+class Plugin:
+    def run(self, ctx):
+        print("stray output must not break the channel")
+        what = ctx.settings["try"]
+        if what == "write":
+            ctx.write_text(Path({str(tmp_path / 'elsewhere.txt')!r}), "x")
+        elif what == "net":
+            ctx.download("https://example.org/x")
+        elif what == "run":
+            ctx.run(["true"])
+        return {{"summary": "ok"}}
+""")
+    base = {"plugin": str(plugin), "kind": "export", "target": WEB, "cache_root": str(tmp_path / "cache"),
+            "folders": {"$GAME": str(tmp_path), "$OUTPUT": str(tmp_path / "out")}}
+    for what, words in (("write", "may not write"), ("net", "may not contact"), ("run", "may not start")):
+        with pytest.raises(Exception, match=words):
+            run_plugin({**base, "settings": {"try": what}}, lambda *_: None)
+    assert not (tmp_path / "elsewhere.txt").exists()
+    assert run_plugin({**base, "settings": {"try": "none"}}, lambda *_: None)["result"]["summary"] == "ok"

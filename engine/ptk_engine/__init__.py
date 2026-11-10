@@ -1,7 +1,6 @@
 """Porting Toolkit engine.
 
-Detects game engines and formats, and (from phase 3) runs import/export
-pipelines and plugins. The Rust ``ptk`` binary drives it over JSON-RPC.
+Detects game engines and formats, and runs import/export plugins. The Rust ``ptk`` binary drives it over JSON-RPC.
 """
 
 __version__ = "0.1.0"

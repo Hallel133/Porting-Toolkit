@@ -2,7 +2,7 @@
 //!
 //! Plugins are Python packages and get full access to the computer once
 //! they run, so installing shows the declared permissions and asks first.
-//! Nothing is executed yet; running plugins arrives in phase 3.
+//! `ptk export` and `ptk import` run them.
 
 use std::io::{BufRead, IsTerminal, Write};
 use std::process::ExitCode;
@@ -197,10 +197,6 @@ pub fn run(style: &Style, action: PluginAction) -> anyhow::Result<ExitCode> {
                 "{} Installed {id} ({n} files) in {}",
                 style.ok(),
                 dest.display()
-            );
-            println!(
-                "  {}",
-                style.dim("Plugins are not run yet: running them arrives in phase 3.")
             );
             ExitCode::SUCCESS
         }

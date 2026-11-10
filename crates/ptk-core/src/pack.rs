@@ -161,7 +161,7 @@ pub struct LockedPlugin {
 
 impl PluginsLock {
     /// The text `ptk init` writes.
-    pub const TEMPLATE: &'static str = "# Exact plugin versions this project was made with.\n# Filled in by `ptk` when plugins run (phase 3).\nversion = 1\n\n# [[plugin]]\n# id = \"example-import\"\n# version = \"0.1.0\"\n# sha256 = \"...\"\n";
+    pub const TEMPLATE: &'static str = "# Exact plugin versions this project was made with.\n# Filled in by `ptk` when plugins run.\nversion = 1\n\n# [[plugin]]\n# id = \"example-import\"\n# version = \"0.1.0\"\n# sha256 = \"...\"\n";
 
     pub fn parse(text: &str) -> Result<Self, PackError> {
         let lock: PluginsLock =

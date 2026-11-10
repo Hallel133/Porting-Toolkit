@@ -1,0 +1,23 @@
+schema_version = 1
+
+[plugin]
+id = "godot-import"
+name = "Godot import"
+version = "1.0.0"
+kind = "import"
+description = "Finds the game's .pck (standalone, inside the .exe or inside a .app) and records its Godot version, so it can be exported to other platforms without source code."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "godot_import:Plugin"
+api = 1
+homepage = "https://github.com/Hallel133/Porting-Toolkit"
+
+[formats]
+inputs = ["godot"]
+outputs = ["godot-pck"]
+
+[permissions]
+read = ["$GAME"]
+write = ["$PROJECT/recipes"]
+network = false
+subprocess = false

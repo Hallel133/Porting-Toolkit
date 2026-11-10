@@ -232,7 +232,6 @@ pub fn import(style: &Style, build: &Path, project: Option<&Path>) -> anyhow::Re
     }
     let mut engine = EngineClient::start()?;
     let (result, _) = scan(&mut engine, &prepared.game, &mut |_| {})?;
-    engine.shutdown()?;
     let project = project.map(Path::to_path_buf).unwrap_or_else(|| {
         std::path::PathBuf::from(format!(
             "{}-port",
@@ -261,11 +260,16 @@ pub fn import(style: &Style, build: &Path, project: Option<&Path>) -> anyhow::Re
             .map(|e| format!(" and the engine ({e})"))
             .unwrap_or_default()
     );
+    if prepared.extracted.is_some() {
+        ptk_core::convert::LocalState::remember_game(&project, &prepared.game, Some(build))?;
+    }
+    crate::convert::import_step(style, &mut engine, &project, &prepared.game);
+    engine.shutdown()?;
     print_route(style, &result);
     println!();
     println!(
         "  Next: {}",
-        style.bold(format!("ptk info {}", project.display()))
+        style.bold(format!("ptk export -p {}", project.display()))
     );
     Ok(ExitCode::SUCCESS)
 }

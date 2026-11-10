@@ -135,6 +135,7 @@ pub fn record(project: &Path, game_dir: &Path, scan: &ScanResult) -> Result<Reco
     let count = files.len();
     m.source_files = files;
     let manifest_path = m.save(project)?;
+    crate::convert::LocalState::remember_game(project, game_dir, None)?;
     Ok(RecordReport {
         manifest_path,
         files: count,

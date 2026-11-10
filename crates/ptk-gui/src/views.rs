@@ -774,15 +774,39 @@ impl App {
             .as_ref()
             .map(|p| p.saved.targets.clone())
             .unwrap_or_default();
-        let exporters: Vec<(String, Vec<String>)> = match &self.plugins {
-            Some(Ok(list)) => list
-                .iter()
-                .filter(|p| p.kind == "export" && p.valid)
-                .map(|p| (p.id.clone(), Vec::new()))
-                .collect(),
-            _ => Vec::new(),
+        if self.plugins.is_none() && self.busy.is_none() {
+            self.refresh_plugins(ui.ctx());
+        }
+        let exporter_for = |t: &str| -> Option<(String, bool)> {
+            let Some(Ok(list)) = &self.plugins else {
+                return None;
+            };
+            list.iter()
+                .filter(|p| p.kind == "export" && p.valid && p.targets.iter().any(|x| x == t))
+                .filter(|p| {
+                    p.inputs.is_empty()
+                        || engine
+                            .as_deref()
+                            .is_some_and(|e| p.inputs.iter().any(|i| i == e))
+                })
+                .min_by_key(|p| p.builtin)
+                .map(|p| (p.name.clone(), p.builtin))
         };
+        type Row = (String, String, Option<(String, bool)>);
+        let rows: Vec<Row> = targets
+            .iter()
+            .map(|t| {
+                let name = self
+                    .registry
+                    .get(t)
+                    .map(|x| x.name.clone())
+                    .unwrap_or_else(|| t.clone());
+                (t.clone(), name, exporter_for(t))
+            })
+            .collect();
+        let idle = self.busy.is_none();
         let mut find = None;
+        let mut export: Option<Vec<String>> = None;
         split(ui, 0.55, 900.0, |ui, col| {
             if col == 0 {
                 card(ui, |ui| {
@@ -806,36 +830,96 @@ impl App {
                             "Scan your game first (Scan tab) to see what exporting it takes.",
                         ),
                     }
+                    match &self.import_result {
+                        Some(Ok(r)) => {
+                            ui.add_space(6.0);
+                            ui.label(RichText::new(format!("✔ {}", r.summary)).color(GREEN));
+                            for w in &r.warnings {
+                                ui.label(RichText::new(format!("⚠ {w}")).color(WARN));
+                            }
+                        }
+                        Some(Err(e)) => {
+                            ui.add_space(6.0);
+                            ui.label(RichText::new(format!("⚠ Import plugin: {e}")).color(WARN));
+                        }
+                        None => {}
+                    }
                 });
                 ui.add_space(14.0);
                 card(ui, |ui| {
                     card_title(ui, "Export to");
-                    if targets.is_empty() {
+                    if rows.is_empty() {
                         hint(ui, "Choose targets in Overview.");
                     }
-                    for t in &targets {
-                        ui.horizontal_wrapped(|ui| {
-                            ui.label(RichText::new(t).monospace().color(LIGHT_BLUE));
-                            if exporters.is_empty() {
-                                badge(ui, "no exporter installed", TEXT_FAINT);
-                                if ui.small_button("Find one").clicked() {
-                                    find = Some(t.clone());
+                    egui::Grid::new("export-targets")
+                        .num_columns(3)
+                        .spacing([14.0, 8.0])
+                        .show(ui, |ui| {
+                            for (id, name, plugin) in &rows {
+                                ui.label(RichText::new(name).color(Color32::WHITE))
+                                    .on_hover_text(id);
+                                match plugin {
+                                    Some((pname, builtin)) => {
+                                        let tag = if *builtin { "built-in" } else { "installed" };
+                                        badge(ui, &format!("{pname} · {tag}"), GREEN);
+                                    }
+                                    None => {
+                                        ui.horizontal(|ui| {
+                                            badge(ui, "no exporter", TEXT_FAINT);
+                                            if ui.small_button("Find one").clicked() {
+                                                find = Some(id.clone());
+                                            }
+                                        });
+                                    }
                                 }
-                            } else {
-                                badge(
-                                    ui,
-                                    &format!("{} exporter(s) installed", exporters.len()),
-                                    GREEN,
-                                );
+                                if ui
+                                    .add_enabled(
+                                        idle && plugin.is_some(),
+                                        egui::Button::new("Export"),
+                                    )
+                                    .clicked()
+                                {
+                                    export = Some(vec![id.clone()]);
+                                }
+                                ui.end_row();
                             }
                         });
-                    }
-                    ui.add_space(4.0);
-                    widgets::message(
+                    ui.add_space(10.0);
+                    ui.label(RichText::new("Output folder").color(TEXT_WEAK));
+                    widgets::path_field(
                         ui,
-                        FOCUS,
-                        "Exporting runs export plugins, which arrive in phase 3. Until then you can prepare everything: scan, record hashes, choose the advanced options and install exporters.",
+                        &mut self.export_output,
+                        "each target gets a subfolder",
+                        Pick::Folder,
                     );
+                    egui::CollapsingHeader::new(
+                        RichText::new("Plugin settings").color(TEXT_WEAK),
+                    )
+                    .id_salt("export-settings")
+                    .show(ui, |ui| {
+                        ui.add(
+                            egui::TextEdit::multiline(&mut self.export_settings)
+                                .hint_text("templates=/path/to/godot/templates\nthreads=true\nbundle_id=com.you.game")
+                                .desired_rows(3)
+                                .desired_width(f32::INFINITY)
+                                .font(egui::TextStyle::Monospace),
+                        );
+                        hint(ui, "One key=value per line, passed to the export plugin.");
+                    });
+                    ui.add_space(6.0);
+                    let ready: Vec<String> = rows
+                        .iter()
+                        .filter(|r| r.2.is_some())
+                        .map(|r| r.0.clone())
+                        .collect();
+                    let label = if ready.len() > 1 {
+                        format!("Export all ({})", ready.len())
+                    } else {
+                        "Export".to_owned()
+                    };
+                    if primary(ui, idle && !ready.is_empty(), &label).clicked() {
+                        export = Some(ready);
+                    }
                 });
             } else {
                 card(ui, |ui| {
@@ -870,6 +954,10 @@ impl App {
             self.market_tab = MarketTab::Browse;
             self.go(View::Marketplace, ui.ctx());
         }
+        if let Some(t) = export {
+            self.export_targets(ui.ctx(), t);
+        }
+        self.export_results_card(ui);
         ui.add_space(14.0);
         ui.label(
             RichText::new("Share")
@@ -884,6 +972,75 @@ impl App {
             1 => self.unpack_card(ui),
             _ => self.verify_card(ui),
         });
+    }
+
+    fn export_results_card(&mut self, ui: &mut Ui) {
+        if self.export_results.is_empty() {
+            return;
+        }
+        ui.add_space(14.0);
+        let mut play = None;
+        card(ui, |ui| {
+            card_title(ui, "Builds");
+            for (i, (target, r)) in self.export_results.iter().enumerate() {
+                if i > 0 {
+                    ui.separator();
+                }
+                match r {
+                    Ok(r) => {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(RichText::new("✔").color(GREEN));
+                            ui.label(RichText::new(&r.summary).strong().color(Color32::WHITE));
+                            badge(ui, target, LIGHT_BLUE);
+                        });
+                        ui.label(
+                            RichText::new(format!("{} {}", r.plugin_name, r.plugin_version))
+                                .size(12.0)
+                                .color(TEXT_FAINT),
+                        );
+                        for w in &r.warnings {
+                            ui.label(RichText::new(format!("⚠ {w}")).color(WARN));
+                        }
+                        for n in &r.notes {
+                            ui.label(RichText::new(n).color(TEXT_WEAK));
+                        }
+                        ui.horizontal(|ui| {
+                            if let Some(dir) = &r.serve {
+                                if ui.button("▶  Play in browser").clicked() {
+                                    play = Some(dir.clone());
+                                }
+                            } else if let Some(app) = &r.open
+                                && ui.button("▶  Open").clicked()
+                            {
+                                crate::app::reveal(app);
+                            }
+                            if let Some(p) = r.open.as_ref().or(r.outputs.first())
+                                && ui.button("Show in Finder").clicked()
+                            {
+                                crate::app::show_in_finder(p);
+                            }
+                        });
+                    }
+                    Err(e) => {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(RichText::new("✖").color(ERROR));
+                            badge(ui, target, LIGHT_BLUE);
+                        });
+                        ui.label(RichText::new(e).color(ERROR));
+                    }
+                }
+            }
+            if let Some(s) = &self.server {
+                ui.add_space(6.0);
+                hint(
+                    ui,
+                    &format!("Serving {} at {}", widgets::display_path(&s.root), s.url()),
+                );
+            }
+        });
+        if let Some(dir) = play {
+            self.play_in_browser(&dir);
+        }
     }
 
     // ============================================================== settings
@@ -2035,11 +2192,11 @@ impl App {
                     "macOS + CLI infrastructure, banner, project format",
                     false,
                 ),
-                ("2", "Desktop app", true),
+                ("2", "Desktop app", false),
                 (
                     "3",
-                    "Import/export plugins and smart (AI-assisted) advanced options",
-                    false,
+                    "Import/export plugins (Godot, HTML5 → macOS, web), then AI-assisted options",
+                    true,
                 ),
                 (
                     "4",

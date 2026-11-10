@@ -15,6 +15,7 @@
 
 pub mod banner;
 pub mod category;
+pub mod convert;
 pub mod doctor;
 pub mod engine;
 pub mod error;
@@ -30,6 +31,7 @@ pub mod project;
 pub mod routes;
 pub mod scan;
 pub mod sdk;
+pub mod serve;
 pub mod targets;
 pub mod verify;
 

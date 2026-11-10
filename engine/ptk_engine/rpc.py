@@ -8,6 +8,7 @@ cannot corrupt the stream.
 from __future__ import annotations
 
 import json
+import os
 import platform
 import sys
 import traceback
@@ -17,6 +18,7 @@ from typing import BinaryIO
 from . import PROTOCOL_VERSION, EngineError, __version__
 from .categories import CATEGORY_IDS
 from .plugins import list_plugins, new_plugin, validate_plugin
+from .runtime import builtin_dir, find_plugins, run_plugin
 from .scan import scan
 from .signatures import ENGINE_IDS
 
@@ -62,6 +64,8 @@ class Server:
             "plugin.validate": self.plugin_validate,
             "plugin.list": self.plugin_list,
             "plugin.new": self.plugin_new,
+            "plugin.find": self.plugin_find,
+            "plugin.run": self.plugin_run,
             "shutdown": self.shutdown,
         }
 
@@ -152,7 +156,26 @@ class Server:
 
     def plugin_list(self, params: dict) -> list:
         dirs = _optional_list(params, "dirs") or []
+        if params.get("builtin", True) and (b := builtin_dir()) is not None:
+            dirs = [*dirs, str(b)]
         return list_plugins(dirs, _optional_list(params, "known_targets"))
+
+    def plugin_find(self, params: dict) -> list:
+        kind = _require(params, "kind")
+        return find_plugins(
+            kind,
+            params.get("engine"),
+            params.get("target"),
+            _optional_list(params, "dirs") or [],
+            _optional_list(params, "known_targets"),
+            params.get("prefer"),
+        )
+
+    def plugin_run(self, params: dict) -> dict:
+        _require(params, "plugin")
+        if not isinstance(params.get("folders"), dict):
+            raise RpcError(INVALID_PARAMS, "missing or invalid parameter 'folders'")
+        return run_plugin(params, self.notify)
 
     def plugin_new(self, params: dict) -> dict:
         plugin_id = params.get("id")
@@ -168,4 +191,11 @@ class Server:
 def main() -> None:
     out = sys.stdout.buffer
     sys.stdout = sys.stderr
-    Server(out).serve(sys.stdin.buffer)
+    try:
+        Server(out).serve(sys.stdin.buffer)
+    except (BrokenPipeError, KeyboardInterrupt):
+        # ptk went away mid-answer (for example the app quit): nothing to report.
+        try:
+            sys.stderr.close()
+        finally:
+            os._exit(0)

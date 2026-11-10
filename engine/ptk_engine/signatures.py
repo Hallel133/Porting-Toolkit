@@ -149,6 +149,22 @@ ENGINES: tuple[EngineSignature, ...] = (
         ),
     ),
     EngineSignature(
+        "html5",
+        "HTML5 (NW.js / Electron)",
+        "engine",
+        (
+            (0.8, "name", "package.nw"),
+            (0.5, "name", "nw.dll"),
+            (0.4, "name", "nw_elf.dll"),
+            (0.4, "path", "*/resources/app.nw/*"),
+            (0.6, "path", "*/resources/app.asar"),
+            (0.5, "path", "*/resources/app/package.json"),
+            (0.4, "path", "*/contents/resources/app.nw/package.json"),
+            (0.2, "name", "package.json"),
+            (0.1, "name", "index.html"),
+        ),
+    ),
+    EngineSignature(
         "macos",
         "macOS app / Mach-O",
         "format",
@@ -233,6 +249,11 @@ def _variant(engine_id: str, index: GameIndex) -> str | None:
             return "Mono"
     if engine_id == "godot" and index.embedded_pck:
         return "embedded .pck"
+    if engine_id == "html5":
+        if f("name", "package.nw") or f("name", "nw.dll") or f("path", "*/resources/app.nw/*"):
+            return "NW.js"
+        if f("path", "*/resources/app.asar") or f("path", "*/resources/app/package.json"):
+            return "Electron"
     if engine_id == "unreal" and (f("name", "*.utoc") or f("name", "*.ucas")):
         return "IoStore (UE 4.26+ / UE5)"
     if engine_id == "rpgmaker":

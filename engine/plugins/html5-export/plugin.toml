@@ -1,0 +1,24 @@
+schema_version = 1
+
+[plugin]
+id = "html5-export"
+name = "HTML5 export"
+version = "1.0.0"
+kind = "export"
+description = "Publishes an HTML5 game (RPG Maker MV/MZ, NW.js, Electron) as a web folder, or wraps it in a small native macOS app built with WebKit."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "html5_export:Plugin"
+api = 1
+homepage = "https://github.com/Hallel133/Porting-Toolkit"
+
+[formats]
+inputs = ["rpgmaker", "html5"]
+outputs = ["app", "html5"]
+targets = ["macos-arm64", "macos-x64", "web"]
+
+[permissions]
+read = ["$GAME", "$PROJECT"]
+write = ["$OUTPUT"]
+network = false
+subprocess = true   # swiftc, sips, iconutil and codesign, for the macOS app

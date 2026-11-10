@@ -1,8 +1,8 @@
 """Plugin format: definition, validation and templates.
 
-A plugin is a Python package with a ``plugin.toml`` next to it. Phase 1
-defines and validates the format; running plugins comes in phase 3. See
-``docs/plugins.md`` for the full description and the security model.
+A plugin is a Python package with a ``plugin.toml`` next to it. This module
+validates the format without running plugin code; ``runtime.py`` runs them.
+See ``docs/plugins.md`` for the full description and the security model.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from .signatures import ENGINE_IDS
 
 PLUGIN_FILE = "plugin.toml"
 SCHEMA_VERSION = 1
-#: Version of the API a plugin is written against (phase 3 defines it).
+#: Version of the API a plugin is written against (see api.py).
 PLUGIN_API = 1
 KINDS = ("import", "export")
 
@@ -237,6 +237,12 @@ def validate_plugin(path: str, known_targets: list[str] | None = None) -> dict:
     return report
 
 
+def _is_builtin(path: Path) -> bool:
+    from .runtime import is_builtin
+
+    return is_builtin(path)
+
+
 def list_plugins(dirs: list[str], known_targets: list[str] | None = None) -> list[dict]:
     """Every plugin folder (containing plugin.toml) directly inside ``dirs``."""
     out = []
@@ -248,6 +254,7 @@ def list_plugins(dirs: list[str], known_targets: list[str] | None = None) -> lis
             if child.is_dir() and (child / PLUGIN_FILE).is_file():
                 r = validate_plugin(str(child), known_targets)
                 info = r["plugin"] or {}
+                builtin = _is_builtin(child)
                 out.append(
                     {
                         "id": info.get("id") or child.name,
@@ -259,8 +266,13 @@ def list_plugins(dirs: list[str], known_targets: list[str] | None = None) -> lis
                         "errors": len(r["errors"]),
                         "risk": r["risk"],
                         "permissions": r["permissions"],
-                        # The marketplace (phase 3) marks reviewed plugins.
-                        "reviewed": False,
+                        "inputs": info.get("inputs") or [],
+                        "targets": info.get("targets") or [],
+                        "description": info.get("description") or "",
+                        "builtin": builtin,
+                        # Built-in plugins ship with ptk; the marketplace
+                        # marks reviewed community plugins.
+                        "reviewed": builtin,
                     }
                 )
     return out
@@ -311,18 +323,21 @@ packages = ["{module}"]
 MODULE = '''\
 """{name}: a Porting Toolkit {kind} plugin.
 
-Phase 1 of Porting Toolkit only validates plugins; the API they implement
-arrives in phase 3. Keep the class name in sync with plugin.toml `entry`.
+Keep the class name in sync with plugin.toml `entry`. The context API is
+described in docs/plugins.md ("Writing a plugin").
 """
 
 
 class Plugin:
     """Entry point named in plugin.toml."""
 
-    def run(self, context):
-        # `context` will give access to the folders declared in
-        # [permissions] and to the project's advanced options.
-        raise NotImplementedError("plugins run from Porting Toolkit phase 3")
+    def run(self, ctx):
+        # ctx.game, ctx.project, ctx.output, ctx.cache, ctx.temp: folders
+        # ctx.target: the target being built (export plugins)
+        # ctx.manifest, ctx.settings: the project and `--set key=value`
+        # ctx.progress(0.5, "..."), ctx.log("..."), ctx.fail("...")
+        ctx.progress(1.0, "Nothing to do yet")
+        return {{"outputs": [], "summary": "{name} ran"}}
 '''
 
 README = """\

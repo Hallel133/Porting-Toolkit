@@ -25,9 +25,9 @@ SHA-256 hashes, never original game files or decompiled game code. See
 
 ![ptk scan on a fake Unity game](docs/images/scan.png)
 
-> Status: **phase 2** (CLI + desktop GUI). Detection, project files, advanced
-> options, packing, verifying and plugin validation work. Converting and
-> exporting arrive with plugins in phase 3.
+> Status: **phase 3** (CLI + desktop GUI + plugins). Built-in plugins export
+> **Godot** and **HTML5** games (RPG Maker MV/MZ, NW.js, Electron) to **macOS**
+> and the **web**, without source code. Other engines need community plugins.
 
 ## Install from source (macOS)
 
@@ -101,8 +101,29 @@ logic lives:
 | Unity, GameMaker | Depends: Unity Mono yes, IL2CPP no; GameMaker needs a runner for the target |
 | Unreal, RAGE, Source | No: native code. Needs the source, or a compatibility layer (Wine-style) |
 
-Exporting runs **export plugins**, which arrive in phase 3; today you can
-import, scan, choose the advanced options, install exporters and share.
+## Export to macOS and the web
+
+```bash
+ptk export -p space-hopper-port                 # every target of the project
+ptk export -p space-hopper-port -t web --open   # one target
+ptk serve space-hopper-port/build/web --open    # play the web build locally
+```
+
+Builds go to `PROJECT/build/<target>/` (`-o` changes it). In the app:
+**Export → Export all**, then **Open**, **Play in browser** or **Show in Finder**.
+
+| Plugin (built in) | Reads | macOS | Web |
+|---|---|---|---|
+| Godot | `.pck`, standalone or inside the `.exe` / `.app` (Godot 3 and 4) | `.app` from the official template of the same Godot version, thinned and ad-hoc signed | `index.html` + `.wasm` + `.pck` (single-threaded, any static host) |
+| HTML5 | RPG Maker MV/MZ, NW.js (`package.nw`), Electron (`app.asar`) | `.app` with a small WebKit wrapper (needs the Xcode command line tools) | the game's web root |
+
+Godot templates come from the Godot editor's folder when installed;
+otherwise only the needed files (about 10 MB for the web, 120 MB for macOS)
+are fetched from Godot's GitHub release, not the whole 1.3 GB archive.
+`--set templates=PATH` uses your own. Encrypted `.pck` files and C# (.NET)
+Godot games are refused with an explanation. Ad-hoc signed apps run on your
+Mac; to give them to others, sign and notarize them with your Apple
+Developer ID. See [docs/plugins.md](docs/plugins.md).
 
 ## Marketplace and SDKs
 
@@ -124,8 +145,10 @@ See [docs/marketplace.md](docs/marketplace.md).
 | `ptk scan <game-dir>` | Engine and contents from file names only (`--json`, `--record`) |
 | `ptk pack` / `ptk unpack` | Create / check-and-extract a `.ptk` community project file |
 | `ptk verify <game-dir>` | Compare your game files with a project's recorded hashes |
-| `ptk plugin list\|new\|validate\|install` | Import/export plugins (format only in phase 1) |
-| `ptk import <build>` | Project from a folder, .app, .exe, .zip, .deb or .dmg |
+| `ptk plugin list\|new\|validate\|install` | Import/export plugins (built-in and installed) |
+| `ptk import <build>` | Project from a folder, .app, .exe, .zip, .deb or .dmg (runs the import plugin) |
+| `ptk export [-t ID]` | Build for macOS / the web with export plugins (`--set key=value`) |
+| `ptk serve <dir>` | Serve a web build on this computer, with the headers WebAssembly needs |
 | `ptk sdk new\|validate\|install` | SDKs: new platforms and their exporters |
 | `ptk market list\|install` | Community marketplace |
 | `ptk publish <path>` | Package a plugin, SDK or .ptk for the marketplace |
@@ -139,15 +162,15 @@ Colors are off when output is not a terminal, with `NO_COLOR=1` or `--no-color`.
 ## Roadmap
 
 1. macOS + CLI infrastructure + banner + file structure (done)
-2. **Desktop GUI (egui)** (now)
-3. Import/export plugins and smart, AI-assisted advanced options
+2. Desktop GUI (egui) (done)
+3. **Import/export plugins** (now: Godot and HTML5 to macOS and the web), then smart, AI-assisted advanced options
 4. Windows/Linux and the full community marketplace
 
 ## Documentation
 
 - [ARCHITECTURE.md](ARCHITECTURE.md): Rust app + Python engine, JSON-RPC protocol
 - [docs/project-format.md](docs/project-format.md): `ptk.json` and `.ptk` files
-- [docs/plugins.md](docs/plugins.md): plugin format and security model
+- [docs/plugins.md](docs/plugins.md): plugin format, API, built-in plugins and security model
 - [docs/marketplace.md](docs/marketplace.md): marketplace, SDKs and publishing
 - [docs/legal.md](docs/legal.md): why the toolkit never distributes games
 
@@ -184,6 +207,7 @@ MIT. See [LICENSE](LICENSE).
 - `ptk options set textures --action recompress --quality 80` קובע מה נשמר, נמחק או נדחס מחדש לפני ההמרה.
 - `ptk pack` / `ptk unpack` / `ptk verify` לשיתוף פרויקטים.
 - `ptk plugin new|validate|install|list` לתוספי ייבוא/ייצוא (ב-Python, עם הצהרת הרשאות).
+- `ptk export -p my-port` בונה את המשחק ל-macOS ולווב, ו-`ptk serve` מגיש build של ווב במחשב שלכם.
 
 ### אפליקציה גרפית
 
@@ -197,7 +221,14 @@ MIT. See [LICENSE](LICENSE).
 - **Unity ו-GameMaker:** תלוי ב-build.
 - **Unreal,‏ RAGE,‏ Source:** צריך קוד מקור, או שכבת תאימות בסגנון Wine.
 
-Export מתבצע דרך export plugins שמגיעים בשלב 3.
+### ייצוא ל-macOS ולווב
+
+התוספים המובנים מייצאים בלי קוד מקור:
+
+- **Godot** (גרסאות 3 ו-4): ה-‎.pck של המשחק, גם כשהוא ארוז בתוך ‎.exe או ‎.app, יחד עם ה-export template הרשמי של אותה גרסה. התוצאה היא ‎.app חתום (ad-hoc), או גרסת ווב (`index.html` + ‏‎.wasm + ‏‎.pck). ה-templates נלקחים מהתיקייה של עורך Godot אם הם מותקנים, ואם לא, מורידים מ-GitHub רק את הקבצים הדרושים.
+- **HTML5** (RPG Maker MV/MZ,‏ NW.js,‏ Electron): תיקיית ווב, או ‎.app עם עטיפת WebKit קטנה (דורש Xcode Command Line Tools).
+
+באפליקציה: Export ואז **Export all**, ואחריו Open,‏ Play in browser או Show in Finder.
 
 ### Marketplace ו-SDK
 
@@ -206,8 +237,8 @@ Export מתבצע דרך export plugins שמגיעים בשלב 3.
 ### מפת דרכים
 
 1. ‏macOS + תשתית CLI + באנר + מבנה קבצים (הושלם)
-2. ממשק גרפי (עכשיו)
-3. תוספי ייבוא/ייצוא ואפשרויות מתקדמות חכמות (בעזרת AI)
+2. ממשק גרפי (הושלם)
+3. תוספי ייבוא/ייצוא (עכשיו: Godot ו-HTML5 ל-macOS ולווב), ואחר כך אפשרויות מתקדמות חכמות (בעזרת AI)
 4. ‏Windows/Linux וקהילה מלאה
 
 רישיון: MIT.
