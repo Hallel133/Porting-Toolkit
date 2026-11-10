@@ -144,6 +144,9 @@ pub fn market(style: &Style, action: MarketAction) -> anyhow::Result<ExitCode> {
                     style.bold("ptk publish <folder>")
                 );
             }
+            if list.is_empty() {
+                return Ok(ExitCode::SUCCESS);
+            }
             let mut t = Table::new(&["ID", "KIND", "VERSION", "REVIEWED", "DESCRIPTION"]);
             for e in list {
                 t.row(vec![
