@@ -17,7 +17,7 @@ A community tool to manage, convert, export and import game projects between pla
 - NoVA (owner's RISC-V SoC) is out of scope until the owner's NoVA SDK exists. It plugs in via `[[target]]` TOML in `<data>/targets/` with `export_backend` = an export plugin id. Keep that path working.
 - `LICENSE` is MIT (owner's choice, 2026-11-09).
 
-## Git / release state (2026-11-10)
+## Git / release state (2026-11-11)
 - Remote `origin` = https://github.com/Hallel133/Porting-Toolkit (public; the owner created it with a one-line README). Work on `main`.
 - Phase 1 (commit 4c21302) was pushed to `origin/main` on 2026-11-09; pushing works despite the account flag.
 - The owner said their GitHub account is "flagged" (Grand-V notes: GitHub Actions is disabled for the Hallel133 account, `HTTP 422`). So `.github/workflows/ci.yml` (macos-14 + ubuntu: fmt, clippy -D warnings, cargo test, uv run pytest) has probably never run. Run the same commands locally.
@@ -25,10 +25,10 @@ A community tool to manage, convert, export and import game projects between pla
 ## Commands
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"          # cargo is not on the default PATH on the owner's Mac
-cargo test --workspace                        # 70 Rust tests, starts the real Python engine
+cargo test --workspace                        # 73 Rust tests, starts the real Python engine
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-(cd engine && uv run pytest)                  # 62 Python tests (compiles the Swift wrapper on macOS)
+(cd engine && uv run pytest)                  # 68 Python tests (compiles the Swift wrapper on macOS)
 (cd engine && PTK_GUI_TESTS=1 uv run pytest -k macos_app)   # also opens the wrapper app and checks the page loaded
 cargo run -q -p ptk-cli -- scan fixtures/games/unity-windows
 python3 tools/gen_banner.py                   # regenerate banner art (then update ptk-core/src/banner.rs + ptk-cli/tests/snapshots/banner.txt)
@@ -71,8 +71,18 @@ Owner asked: "add the export and import plugins for Mac and Web".
 - GUI: Export page has Export per target / Export all, output folder (shown with `~`), plugin settings, a Builds card (Open, Play in browser via the built-in server, Show in Finder); status bar shows plugin progress. Import Game runs the import plugin. `--view export --run` exports (screenshot `docs/images/gui-export.png`).
 - Verified on the owner's Mac: the real Godot 4.7.2 web template booted a test pck in the browser pane (label "Ported with Porting Toolkit (Web)"); the macOS Godot app was built, thinned, signed and passes `codesign --verify --strict`, but **was not launched** (running the downloaded Godot binary was blocked for the session). The HTML5 wrapper app was launched in self-test mode and loaded its page (`PTK_WRAPPER_LOADED loaded:Quest`).
 
+## Done (2026-11-11, owner feedback on the first exports)
+Owner exported Buckshot Roulette (Godot 4.6.3, a macOS `.app` with GodotSteam) to Mac and web: Mac worked except a gray screen; web had effects stuck on screen. Asked: advanced options on the game's page (and app-level options such as default algorithms), an icon and poster per game, and game ports in the marketplace (paid games must not become free; no payments or identity checks for now).
+- Cause of the gray screen: the export did not copy `Contents/Frameworks` (libgodotsteam), so the `GlobalSteam` autoload failed. Fixed: Godot export copies the source app's Frameworks (or matching libraries in the game folder) and warns when a macOS library is missing; keeps the source app's icon. Re-exported the owner's game into the scratchpad: Frameworks present, original icon, `codesign --verify --strict` passes. **Not launched by Claude** (owner must check the gray screen is gone).
+- Web: the game uses Forward+ (renderer unset); browsers only have Compatibility. Now a clear warning, plus a GodotSteam "no web version" warning; the loading screen uses the game's boot splash + bg color and the page gets the game icon.
+- `formats/godot.py` reads `project.binary` (ECFG) and `.gdextension` library lists; godot-import records title/renderer/icon/autoloads and caches the game icon (per machine, `.ptk-local.json` `game_icon`); `convert::import` replaces a file-derived title with the real one.
+- GUI: the Options tab is gone (⌘1–⌘5 now). The Game page (formerly Overview) has Game, Targets, Advanced options (compact editor with format/algorithm per category), folded Project details, and an Icon & poster card. Settings → Defaults (first tab) edits `<data>/settings.json` (`ptk_core::settings::AppSettings`: default targets, default options, projects folder); `InitOptions::with_defaults` applies it in `ptk init`, `ptk import` and the app.
+- Art: `ptk_core::art` (`art/icon.*`, `art/poster.*`, ≤ 8 MB, in `ptk.json` `game.icon/poster`), `art/` is now a pack dir, `ptk art` CLI, exports use it (`ctx.art`). Project rows show the icon.
+- Marketplace: kind `project` is labelled "Game port"; entries gain `game`, `poster`, `store`. Browse shows ports first as poster cards (posters cached in `<data>/cache/posters`), "Get port" unpacks into the projects folder, opens it and asks for the user's own copy (Scan). `ptk publish` of a `.ptk` writes the poster next to it and placeholders for `poster`/`store`. `~/ptk-marketplace` README updated (local commit c19825d; still no GitHub repo).
+
 ## Next task
-1. Owner: try a real Godot game and a real RPG Maker MV/MZ game (`ptk import <build>` then `ptk export`, or the app's Export tab); open the Godot `.app` on the Mac (not done by Claude). Check the macOS menu bar. Create the ptk-marketplace repo (see above).
+1. Owner: re-export Buckshot Roulette for macOS and check the gray screen is gone and Steam features work; check the web build's loading screen. Try the Game page, Settings → Defaults, Icon & poster.
+2. Owner: try a real Godot game and a real RPG Maker MV/MZ game (`ptk import <build>` then `ptk export`, or the app's Export tab); open the Godot `.app` on the Mac (not done by Claude). Check the macOS menu bar. Create the ptk-marketplace repo (see above).
 2. Next plugins: Ren'Py (needs the Ren'Py SDK runtime), Godot C#, Windows/Linux targets (phase 4), AI-assisted advanced options; applying advanced options (recompress) is not implemented by any plugin yet.
 3. Not tested: real games (only synthetic pcks and fake HTML5 games), Godot 3 templates, threaded web builds in a browser, Electron games, Intel Macs, Linux/Windows builds (CI blocked on the account).
 

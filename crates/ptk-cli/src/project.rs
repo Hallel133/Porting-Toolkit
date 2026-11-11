@@ -90,10 +90,13 @@ pub fn init(
     let reg = registry(style);
     let m = ptk_core::project::init(
         dir,
-        InitOptions {
-            name,
-            title,
-            targets,
+        {
+            let mut o = InitOptions::with_defaults(title);
+            o.name = name;
+            if !targets.is_empty() {
+                o.targets = targets;
+            }
+            o
         },
         &reg,
     )?;

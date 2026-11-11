@@ -24,6 +24,28 @@ refused. Plugins and SDKs are then validated, their declared permissions are
 shown, and nothing is installed without your consent. Reviewed entries carry
 a ✔ (see [plugins.md](plugins.md) for what review does and does not mean).
 
+## Game ports
+
+A game port is a project (`.ptk`): recipes, settings, community patches and
+the SHA-256 hashes of the game files it was made for. **It never contains the
+game.** Players need their own copy; after **Get port** the app unpacks the
+project and asks them to scan their copy, which is checked against the
+hashes. A port of a paid game therefore does not make the game free: link
+where to buy it in `store`.
+
+Port entries have three extra fields:
+
+| Field | Meaning |
+|---|---|
+| `game` | The game's title |
+| `poster` | https URL of the poster image (upload the one `ptk publish` writes next to your `.ptk`) |
+| `store` | https URL of a page where players get the game |
+
+Give the project a poster and icon first: `ptk art --poster cover.png
+--icon icon.png -p my-port` (or the Icon & poster card on the Game page).
+Use images you made or may share. For now the marketplace asks for no
+payment and no identity checks; reviewed entries are marked by maintainers.
+
 ## Index format
 
 ```json

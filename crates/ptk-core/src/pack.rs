@@ -46,7 +46,7 @@ pub const PACK_FILES: &[&str] = &[
     PLUGINS_LOCK,
 ];
 /// Folders that are packed recursively when present.
-pub const PACK_DIRS: &[&str] = &["recipes", "patches", "extra"];
+pub const PACK_DIRS: &[&str] = &["recipes", "patches", "extra", "art"];
 
 /// File extensions of engine archives. Such files are game content, so a
 /// pack treats them as third-party even when nobody marked them.

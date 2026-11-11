@@ -423,6 +423,19 @@ pub fn action_button(ui: &mut Ui, icon: &str, label: &str, enabled: bool) -> egu
 }
 
 /// Color and letter of an engine's project icon.
+/// Paints a texture into `rect` (cropped to fill it), with rounded corners.
+pub fn image_in(ui: &Ui, rect: Rect, tex: &egui::TextureHandle, radius: u8) {
+    let [w, h] = tex.size().map(|v| v.max(1) as f32);
+    let (tw, th) = (rect.width(), rect.height());
+    let scale = (tw / w).max(th / h);
+    let (cw, ch) = (tw / (w * scale), th / (h * scale));
+    let uv = Rect::from_center_size(egui::pos2(0.5, 0.5), egui::vec2(cw, ch));
+    egui::Image::new((tex.id(), rect.size()))
+        .uv(uv)
+        .corner_radius(radius)
+        .paint_at(ui, rect);
+}
+
 pub fn engine_badge(engine: Option<&str>) -> (Color32, &'static str) {
     match engine {
         Some("godot") => (rgb(71, 140, 191), "G"),

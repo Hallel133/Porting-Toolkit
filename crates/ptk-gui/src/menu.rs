@@ -66,12 +66,11 @@ pub enum Command {
 }
 
 /// Views in navigation order, with their ⌘-number.
-pub const NAV: [View; 6] = [
+pub const NAV: [View; 5] = [
     View::Projects,
     View::Marketplace,
     View::Overview,
     View::Scan,
-    View::Options,
     View::Export,
 ];
 

@@ -99,3 +99,32 @@ pub fn category(id: &str) -> Option<&'static AssetCategory> {
 pub fn category_ids() -> Vec<&'static str> {
     CATEGORIES.iter().map(|c| c.id).collect()
 }
+
+/// Output formats ("algorithms") offered for recompressing a category,
+/// first = the usual choice. Empty: the category has no format choice.
+pub fn formats(id: &str) -> &'static [(&'static str, &'static str)] {
+    match id {
+        "textures" => &[
+            ("astc", "ASTC (Apple GPUs, phones)"),
+            ("bc7", "BC7 (desktop GPUs)"),
+            ("etc2", "ETC2 (WebGL, Android)"),
+            ("webp", "WebP (web, smallest download)"),
+            ("png", "PNG (lossless)"),
+        ],
+        "audio" => &[
+            ("opus", "Opus"),
+            ("vorbis", "Ogg Vorbis"),
+            ("aac", "AAC"),
+            ("mp3", "MP3"),
+        ],
+        "video" => &[
+            ("h264", "H.264"),
+            ("hevc", "HEVC (H.265)"),
+            ("av1", "AV1"),
+            ("vp9", "VP9 (WebM)"),
+        ],
+        "models" => &[("meshopt", "meshoptimizer"), ("draco", "Draco")],
+        "fonts" => &[("woff2", "WOFF2")],
+        _ => &[],
+    }
+}

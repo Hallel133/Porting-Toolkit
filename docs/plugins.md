@@ -39,6 +39,22 @@ cache. The `.pck` does not record rc/beta builds; use
 - Web: the single-threaded template (Godot 4.3+) is used, so the build runs
   on any static host such as itch.io. `--set threads=true` uses the threaded
   template and adds Godot's service worker for the COOP/COEP headers.
+- Import reads the game's `project.binary` (its Godot project settings):
+  the real title (replacing a title guessed from a file name), the
+  renderer, the icon and boot splash, and the autoloads. The game's icon is
+  cached for this computer only, never put in the project.
+- GDExtension libraries (GodotSteam and similar): when the game is a macOS
+  `.app`, its `Contents/Frameworks` is copied into the new app, which is
+  where Godot looks for them. A Windows or Linux build has no macOS
+  libraries, so the export warns that features needing them will not work
+  (a game that requires one at startup can stop on a blank screen).
+- Icon: `--set icon=`, then the project's icon (`ptk art --icon`), then the
+  source `.app`'s icon, then the game's own icon from the pck.
+- Web: the loading screen uses the game's boot splash and background
+  color, the page icon is the project's or the game's. Browsers only have
+  Godot's Compatibility renderer, so games made for Forward+ or Mobile get a
+  warning: lighting, glow, fog, some particles and screen shaders can look
+  different. Only the game's developer can change the renderer.
 - Refused, with an explanation: encrypted pcks (they need templates built
   with the game's key), C# (.NET) games. GDExtension libraries produce a
   warning: the target needs its own build of them.
@@ -75,6 +91,7 @@ class Plugin:
 | `manifest`, `title` | The project's `ptk.json` (a dict) and the game title |
 | `settings`, `setting(k, default)`, `flag(k, default)` | `--set key=value` from the command line or the app |
 | `recipe(name)`, `save_recipe(name, dict)` | `recipes/<name>.json` in the project |
+| `art("icon")`, `art("poster")` | The project's chosen images (a `Path`), or `None` |
 | `progress(fraction, message)`, `log(msg)`, `warn(msg)`, `fail(msg)` | Reporting; `fail` stops with a clear message |
 | `write_text`, `write_bytes`, `copy_tree`, `clean_dir`, `check_write` | File helpers that check `[permissions] write` |
 | `download(url, sha256=None)`, `remote_zip(url)` | https only, hosts from `[permissions] network`; uses the system `curl` |
@@ -82,6 +99,8 @@ class Plugin:
 
 Result keys: `outputs` (paths), `summary`, `notes`, `warnings`, `open` (the
 main file, e.g. the `.app`), `serve` (a folder to serve for web builds).
+Import plugins may also return `title` (the game's real title) and `icon`
+(a cached image of the game's icon, kept per machine).
 
 The plugin runs in its own Python process (`python -m ptk_engine.host`)
 with a fresh temporary folder as working directory; anything it prints goes

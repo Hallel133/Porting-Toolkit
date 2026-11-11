@@ -6,6 +6,7 @@ the pck's location (relative to the game folder) and its header facts.
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from ptk_engine.formats import godot
@@ -36,10 +37,36 @@ class Plugin:
             ctx.warn("This is a C# (.NET) Godot game. The built-in exporter supports GDScript games only.")
         if pck.extensions():
             ctx.warn("Uses GDExtension native libraries (" + ", ".join(Path(e).stem for e in pck.extensions())
-                     + "): other platforms need their own builds of these.")
+                     + "): every platform needs its own build of these.")
         if len(candidates) > 1:
             ctx.log("Other pcks: " + ", ".join(p.name for p in candidates[1:4]))
-        recipe = {"engine": "godot", "pck": rel, **info}
+        settings = godot.project_settings(pck)
+        major = pck.version[0]
+        title = str(settings.get("application/config/name") or "").strip() or None
+        icon_res = str(settings.get("application/config/icon") or "")
+        recipe = {
+            "engine": "godot",
+            "pck": rel,
+            **info,
+            "title": title,
+            "renderer": godot.renderer(settings, major) if settings else None,
+            "icon": icon_res or None,
+            "boot_splash": str(settings.get("application/boot_splash/image") or "") or None,
+            "autoloads": sorted(k.split("/", 1)[1] for k in settings if k.startswith("autoload/")),
+        }
         saved = ctx.save_recipe("godot", recipe)
+        # The game's own icon, for this computer only (never in the project).
+        icon = None
+        data = godot.read_file(pck, icon_res) if icon_res.lower().endswith((".png", ".jpg", ".jpeg", ".webp")) else None
+        if data:
+            key = hashlib.sha256(f"{path.resolve()}|{pck.size}".encode()).hexdigest()[:16]
+            icon = ctx.cache / "icons" / f"{key}{Path(icon_res).suffix.lower()}"
+            ctx.write_bytes(icon, data)
         ctx.progress(1.0, "Done")
-        return {"summary": describe(pck), "recipe": recipe, "outputs": [str(saved)]}
+        return {
+            "summary": describe(pck),
+            "recipe": recipe,
+            "outputs": [str(saved)],
+            "title": title,
+            "icon": str(icon) if icon else None,
+        }

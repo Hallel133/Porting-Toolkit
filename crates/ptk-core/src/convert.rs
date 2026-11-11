@@ -36,6 +36,9 @@ pub struct LocalState {
     pub source: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<PathBuf>,
+    /// The game's own icon, found by the import plugin (a cached copy).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub game_icon: Option<PathBuf>,
 }
 
 impl LocalState {
@@ -131,6 +134,12 @@ pub struct RunResult {
     /// The target, for exports.
     #[serde(default)]
     pub target: Option<String>,
+    /// The game's real title, when an import plugin found it.
+    #[serde(default)]
+    pub title: Option<String>,
+    /// A cached copy of the game's own icon (import plugins).
+    #[serde(default)]
+    pub icon: Option<PathBuf>,
 }
 
 fn search_dirs() -> Vec<String> {
@@ -367,10 +376,15 @@ pub fn export(
 
 /// Runs the import plugin for the project's engine, if there is one.
 /// `Ok(None)` means no import plugin handles this engine.
+///
+/// `file_title` is the title ptk guessed from the build's file name; when
+/// the project still has it, the game's real title (if the plugin found
+/// one) replaces it.
 pub fn import(
     engine: &mut EngineClient,
     project: &Path,
     game: &Path,
+    file_title: Option<&str>,
     on_event: &mut dyn FnMut(Event),
 ) -> Result<Option<RunResult>> {
     let manifest = Manifest::load(project)?;
@@ -394,7 +408,36 @@ pub fn import(
         on_event,
     )?;
     lock_plugin(project, &result)?;
+    apply_import(project, game, file_title, &result)?;
     Ok(Some(result))
+}
+
+/// Uses what the import plugin found: the game's real title (unless you
+/// named the game yourself) and its icon (kept per machine).
+fn apply_import(
+    project: &Path,
+    game: &Path,
+    file_title: Option<&str>,
+    result: &RunResult,
+) -> Result<()> {
+    if let Some(title) = result.title.as_ref().filter(|t| !t.trim().is_empty()) {
+        let mut m = Manifest::load(project)?;
+        let guessed = [
+            Some(crate::import::title_of(game)),
+            file_title.map(str::to_owned),
+        ];
+        let current = m.game.title.clone().unwrap_or_default();
+        if current.is_empty() || guessed.iter().flatten().any(|g| *g == current) {
+            m.game.title = Some(title.trim().to_owned());
+            m.save(project)?;
+        }
+    }
+    if let Some(icon) = result.icon.as_ref().filter(|i| i.is_file()) {
+        let mut s = LocalState::load(project);
+        s.game_icon = Some(icon.clone());
+        s.save(project)?;
+    }
+    Ok(())
 }
 
 /// Parses `key=value` settings.

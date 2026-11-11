@@ -286,3 +286,120 @@ def write_pck(dest: Path, files: dict[str, bytes], version=(4, 4, 0), fmt: int =
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(body)
     return dest
+
+
+# -- project settings ----------------------------------------------------------
+
+#: Variant type ids (Godot 4 / Godot 3) that project settings use.
+_STRING = 4
+_COLOR = {4: 20, 3: 14}
+
+
+def read_file(pck: Pck, path: str) -> bytes | None:
+    """One unencrypted file from the pck (``res://`` optional), or None."""
+    path = path.removeprefix("res://")
+    entry = next((e for e in pck.files if e.path == path), None)
+    if entry is None or entry.flags & FILE_ENCRYPTED or entry.size > 64 << 20:
+        return None
+    with open(pck.container, "rb") as f:
+        f.seek(entry.offset)
+        return f.read(entry.size)
+
+
+def parse_settings(data: bytes, major: int = 4) -> dict:
+    """Decodes ``project.binary`` (``ECFG``): strings, numbers, bools and
+    colors; other values are skipped (each one is length-prefixed)."""
+    if data[:4] != b"ECFG":
+        raise PckError("project.binary has no ECFG header")
+    out: dict = {}
+    count = _u32(data, 4)
+    o = 8
+    for _ in range(count):
+        klen = _u32(data, o)
+        key = data[o + 4:o + 4 + klen].decode("utf-8", "replace")
+        o += 4 + klen
+        vlen = _u32(data, o)
+        v = data[o + 4:o + 4 + vlen]
+        o += 4 + vlen
+        if len(v) < 4:
+            continue
+        header = _u32(v, 0)
+        kind, wide = header & 0xFFFF, bool(header & (1 << 16))
+        try:
+            if kind == 1:
+                out[key] = bool(_u32(v, 4))
+            elif kind == 2:
+                out[key] = struct.unpack_from("<q" if wide else "<i", v, 4)[0]
+            elif kind == 3:
+                out[key] = struct.unpack_from("<d" if wide else "<f", v, 4)[0]
+            elif kind == _STRING:
+                n = _u32(v, 4)
+                out[key] = v[8:8 + n].decode("utf-8", "replace")
+            elif kind == _COLOR.get(major, 20):
+                out[key] = list(struct.unpack_from("<ffff", v, 4))
+        except struct.error:
+            continue
+    return out
+
+
+def project_settings(pck: Pck) -> dict:
+    """The game's project settings (empty if they cannot be read)."""
+    raw = read_file(pck, "project.binary")
+    if raw:
+        try:
+            return parse_settings(raw, pck.version[0])
+        except PckError:
+            return {}
+    text = read_file(pck, "project.godot")
+    return _parse_text_settings(text.decode("utf-8", "replace")) if text else {}
+
+
+def _parse_text_settings(text: str) -> dict:
+    out: dict = {}
+    section = ""
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1]
+        elif "=" in line and not line.startswith(";"):
+            k, _, v = line.partition("=")
+            v = v.strip()
+            if v.startswith('"') and v.endswith('"'):
+                v = v[1:-1]
+            out[f"{section}/{k.strip()}" if section else k.strip()] = v
+    return out
+
+
+def renderer(settings: dict, major: int) -> str:
+    """The renderer the game asked for (Godot's default when unset)."""
+    if major >= 4:
+        return str(settings.get("rendering/renderer/rendering_method") or "forward_plus")
+    return "GLES2" if str(settings.get("rendering/quality/driver/driver_name", "GLES3")) == "GLES2" else "GLES3"
+
+
+def color_hex(rgba, default: str = "#000000") -> str:
+    try:
+        r, g, b = (max(0, min(255, round(float(c) * 255))) for c in list(rgba)[:3])
+    except (TypeError, ValueError):
+        return default
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def extension_libraries(pck: Pck, platform: str = "macos") -> dict[str, list[str]]:
+    """``{extension.gdextension: [library paths for platform]}``."""
+    out: dict[str, list[str]] = {}
+    tags = {"macos": ("macos", "osx"), "web": ("web", "wasm32")}[platform]
+    for ext in pck.extensions():
+        raw = read_file(pck, ext)
+        libs: list[str] = []
+        section = ""
+        for line in (raw or b"").decode("utf-8", "replace").splitlines():
+            line = line.strip()
+            if line.startswith("["):
+                section = line.strip("[]")
+            elif section == "libraries" and "=" in line:
+                k, _, v = line.partition("=")
+                if k.strip().split(".")[0] in tags:
+                    libs.append(v.strip().strip('"'))
+        out[ext] = libs
+    return out

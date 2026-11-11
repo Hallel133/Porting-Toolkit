@@ -369,3 +369,137 @@ class Plugin:
             run_plugin({**base, "settings": {"try": what}}, lambda *_: None)
     assert not (tmp_path / "elsewhere.txt").exists()
     assert run_plugin({**base, "settings": {"try": "none"}}, lambda *_: None)["result"]["summary"] == "ok"
+
+
+# -- project settings, native libraries, icons -------------------------------------
+
+
+def ecfg(values: dict) -> bytes:
+    out = b"ECFG" + struct.pack("<I", len(values))
+    for k, v in values.items():
+        if isinstance(v, bool):
+            enc = struct.pack("<II", 1, int(v))
+        elif isinstance(v, str):
+            raw = v.encode()
+            enc = struct.pack("<II", 4, len(raw)) + raw + b"\0" * (-len(raw) % 4)
+        elif isinstance(v, tuple):
+            enc = struct.pack("<I", 20) + struct.pack("<ffff", *v)
+        else:
+            enc = struct.pack("<Ii", 2, v)
+        key = k.encode()
+        out += struct.pack("<I", len(key)) + key + struct.pack("<I", len(enc)) + enc
+    return out
+
+
+PNG_1PX = bytes.fromhex(
+    "89504e470d0a1a0a0000000d4948445200000001000000010806000000"
+    "1f15c4890000000d49444154789c6360f8cf00000301010018dd8db40000000049454e44ae426082")
+
+GDEXT = b"""[configuration]
+entry_symbol = "steam_init"
+[libraries]
+macos.debug = "res://addons/steam/osx/libsteam.framework"
+windows.x86_64 = "res://addons/steam/win64/steam.dll"
+"""
+
+
+def mac_game(tmp_path: Path) -> Path:
+    """A fake macOS Godot build with an extension in Contents/Frameworks."""
+    files = {
+        **GAME_FILES,
+        "project.binary": ecfg({
+            "application/config/name": "Real Title",
+            "application/config/icon": "res://icon.png",
+            "application/boot_splash/image": "res://splash.png",
+            "application/boot_splash/bg_color": (0.0, 0.0, 0.0, 1.0),
+            "autoload/Steam": "*res://steam.gd",
+        }),
+        "icon.png": PNG_1PX,
+        "splash.png": PNG_1PX,
+        "addons/steam/steam.gdextension": GDEXT,
+    }
+    app = tmp_path / "Real Title.app"
+    godot.write_pck(app / "Contents/Resources/Real Title.pck", files, (4, 6, 3), 3)
+    fw = app / "Contents/Frameworks/libsteam.framework"
+    fw.mkdir(parents=True)
+    (fw / "libsteam").write_bytes(b"\xcf\xfa\xed\xfe")
+    (app / "Contents/Resources/icon.icns").write_bytes(b"icns-original")
+    return app
+
+
+def test_project_settings_are_read(tmp_path):
+    app = mac_game(tmp_path)
+    pck = godot.read(app / "Contents/Resources/Real Title.pck")
+    s = godot.project_settings(pck)
+    assert s["application/config/name"] == "Real Title"
+    assert s["application/boot_splash/bg_color"] == [0.0, 0.0, 0.0, 1.0]
+    assert godot.renderer(s, 4) == "forward_plus"
+    assert godot.color_hex(s["application/boot_splash/bg_color"]) == "#000000"
+    assert godot.extension_libraries(pck, "macos") == {
+        "addons/steam/steam.gdextension": ["res://addons/steam/osx/libsteam.framework"]}
+
+
+def test_import_finds_title_icon_and_autoloads(tmp_path):
+    app = mac_game(tmp_path)
+    project = tmp_path / "project"
+    project.mkdir()
+    out, _ = run(tmp_path, "godot-import", app, project, "import")
+    r = out["result"]
+    assert r["title"] == "Real Title"
+    assert Path(r["icon"]).read_bytes() == PNG_1PX
+    recipe = json.loads((project / "recipes/godot.json").read_text())
+    assert recipe["renderer"] == "forward_plus" and recipe["autoloads"] == ["Steam"]
+    assert not list(project.rglob("*.png")), "the game's icon stays out of the project"
+
+
+def test_macos_export_keeps_native_libraries_and_icon(tmp_path):
+    app = mac_game(tmp_path)
+    project = tmp_path / "project"
+    project.mkdir()
+    out, _ = run(tmp_path, "godot-export", app, project, "export", MACOS,
+                 {"templates": str(fake_templates(tmp_path)), "sign": "false", "thin": "false"}, tmp_path / "mac")
+    built = Path(out["result"]["outputs"][0])
+    assert (built / "Contents/Frameworks/libsteam.framework/libsteam").is_file()
+    assert (built / "Contents/Resources/icon.icns").read_bytes() == b"icns-original"
+    assert not any("steam" in w for w in out["result"]["warnings"])
+
+
+def test_macos_export_warns_when_a_library_is_missing(tmp_path):
+    app = mac_game(tmp_path)
+    shutil.rmtree(app / "Contents/Frameworks")
+    project = tmp_path / "project"
+    project.mkdir()
+    out, _ = run(tmp_path, "godot-export", app, project, "export", MACOS,
+                 {"templates": str(fake_templates(tmp_path)), "sign": "false", "thin": "false"}, tmp_path / "mac")
+    assert any("steam" in w and "blank screen" in w for w in out["result"]["warnings"])
+
+
+def test_web_export_uses_splash_icon_and_warns_about_renderer(tmp_path):
+    app = mac_game(tmp_path)
+    project = tmp_path / "project"
+    project.mkdir()
+    out, _ = run(tmp_path, "godot-export", app, project, "export", WEB,
+                 {"templates": str(fake_templates(tmp_path))}, tmp_path / "web")
+    web = tmp_path / "web"
+    page = (web / "index.html").read_text()
+    assert 'src="index.png"' in page and "show-image--true" in page
+    assert 'rel="icon" href="index.icon.png"' in page and "background:#000000" in page
+    assert (web / "index.png").read_bytes() == PNG_1PX
+    warnings = " ".join(out["result"]["warnings"])
+    assert "Compatibility renderer" in warnings and "no web version" in warnings
+
+
+def test_project_icon_wins(tmp_path):
+    app = mac_game(tmp_path)
+    project = tmp_path / "project"
+    (project / "art").mkdir(parents=True)
+    (project / "art/icon.png").write_bytes(b"\x89PNG mine")
+    events = []
+    out = run_plugin({
+        "plugin": str(BUILTIN_DIR / "godot-export"), "kind": "export", "engine": "godot", "target": WEB,
+        "manifest": {"game": {"title": "X", "icon": "art/icon.png"}},
+        "settings": {"templates": str(fake_templates(tmp_path))},
+        "folders": {"$GAME": str(app), "$PROJECT": str(project), "$OUTPUT": str(tmp_path / "w")},
+        "cache_root": str(tmp_path / "cache")}, lambda m, p: events.append(p))
+    assert (tmp_path / "w/index.icon.png").read_bytes() == b"\x89PNG mine"
+    assert out["result"]["outputs"]

@@ -138,7 +138,7 @@ SDK is the owner's separate project and is not part of phase 1.
   system UI font is loaded from `/System/Library/Fonts` at runtime (never
   bundled); `PTK_GUI_FONTS=builtin` uses egui's fonts.
 - Layout (`app.rs`): a tab bar (logo, Projects, Marketplace, the open
-  project's Overview/Scan/Options/Export tabs, Settings) and a status bar.
+  project's Game/Scan/Export tabs, Settings) and a status bar. The Game page holds the advanced options; Settings → Defaults edits `<data>/settings.json` (`ptk_core::settings`), which `InitOptions::with_defaults` applies to new projects.
   Projects is a project manager: toolbar (Create, Import Game, Open, Find,
   filter, sort), a list of projects (favorites first, missing ones greyed)
   and an action column. Other pages are centred columns of cards that

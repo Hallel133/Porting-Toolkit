@@ -135,8 +135,10 @@ class Plugin:
         return cached
 
     def icon(self, ctx, root: Path, info: dict, resources: Path) -> bool:
+        """--set icon=, then the project's icon, then the game's own."""
         rel = info.get("icon")
-        src = root / rel if rel else None
+        chosen = ctx.setting("icon")
+        src = Path(chosen).expanduser() if chosen else ctx.art("icon") or (root / rel if rel else None)
         if not src or not src.is_file() or src.suffix.lower() not in (".png", ".jpg", ".jpeg"):
             return False
         if not (ctx.which("sips") and ctx.which("iconutil")):

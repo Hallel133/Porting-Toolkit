@@ -149,6 +149,22 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Set or remove the port's icon and poster (images you may share)
+    Art {
+        /// Project folder
+        #[arg(short, long, default_value = ".")]
+        project: PathBuf,
+        /// PNG, JPEG or WebP for the app icon
+        #[arg(long)]
+        icon: Option<PathBuf>,
+        /// PNG, JPEG or WebP poster (cover art) for the marketplace
+        #[arg(long)]
+        poster: Option<PathBuf>,
+        #[arg(long)]
+        clear_icon: bool,
+        #[arg(long)]
+        clear_poster: bool,
+    },
     /// Serve a web build on this computer (with the headers WebAssembly games need)
     Serve {
         #[arg(default_value = ".")]
@@ -373,6 +389,13 @@ fn run(cli: Cli, style: &Style) -> anyhow::Result<ExitCode> {
             style, &project, targets, output, game, plugin, set, json, open,
         ),
         Command::Serve { dir, port, open } => convert::serve(style, &dir, port, open),
+        Command::Art {
+            project,
+            icon,
+            poster,
+            clear_icon,
+            clear_poster,
+        } => convert::art(style, &project, icon, poster, clear_icon, clear_poster),
         Command::Sdk { action } => community::sdk(style, action),
         Command::Market { action } => community::market(style, action),
         Command::Publish { path, output } => community::publish(style, &path, &output),

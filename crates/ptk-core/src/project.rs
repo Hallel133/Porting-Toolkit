@@ -32,6 +32,29 @@ pub struct InitOptions {
     pub title: Option<String>,
     /// Target ids (default: this machine, if it is an active target).
     pub targets: Vec<String>,
+    /// Advanced options to start with (usually the app's defaults).
+    pub options: std::collections::BTreeMap<String, crate::manifest::CategoryOptions>,
+}
+
+impl InitOptions {
+    /// Options for a new project with the app's saved defaults
+    /// (`settings.json`): default targets and advanced options.
+    pub fn with_defaults(title: Option<String>) -> Self {
+        let s = crate::settings::AppSettings::load();
+        // A default may name a target from an SDK that was removed since.
+        let registry = TargetRegistry::load_default().0;
+        InitOptions {
+            title,
+            targets: s
+                .default_targets
+                .iter()
+                .filter(|t| registry.get(t).is_some())
+                .cloned()
+                .collect(),
+            options: s.new_project_options(),
+            ..Default::default()
+        }
+    }
 }
 
 /// Creates a project in `dir` (created if needed). Refuses a folder that
@@ -78,6 +101,7 @@ pub fn init(dir: &Path, opts: InitOptions, registry: &TargetRegistry) -> Result<
     let mut m = Manifest::new(&name);
     m.game.title = opts.title.clone();
     m.targets = targets;
+    m.options.extend(opts.options);
     m.save(dir)?;
     let title = opts.title.unwrap_or_else(|| name.clone());
     let files = [

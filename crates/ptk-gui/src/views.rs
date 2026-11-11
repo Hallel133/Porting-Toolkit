@@ -109,7 +109,6 @@ impl App {
             View::Settings => self.settings_page(ui),
             View::Overview => self.project_page(ui),
             View::Scan => self.scan_page(ui),
-            View::Options => self.options_page(ui),
             View::Export => self.export_page(ui),
         }
     }
@@ -247,6 +246,8 @@ impl App {
     }
 
     fn project_row(&mut self, ui: &mut Ui, row: &crate::app::ProjectRow) {
+        let ctx = ui.ctx().clone();
+        let art = row.icon.as_deref().and_then(|p| self.image(&ctx, p));
         let width = ui.available_width();
         let (rect, response) = ui.allocate_exact_size(vec2(width, 70.0), egui::Sense::click());
         let selected = self.selected.as_deref() == Some(row.path.as_path());
@@ -284,7 +285,10 @@ impl App {
         );
         // Engine icon.
         let icon = egui::Rect::from_min_size(rect.min + vec2(46.0, 11.0), vec2(48.0, 48.0));
-        widgets::project_icon(ui, icon, row.engine.as_deref(), row.missing);
+        match &art {
+            Some(tex) => widgets::image_in(ui, icon, tex, 10),
+            None => widgets::project_icon(ui, icon, row.engine.as_deref(), row.missing),
+        }
         let text_x = icon.max.x + 14.0;
         let name_color = if row.missing {
             TEXT_FAINT
@@ -423,7 +427,7 @@ impl App {
         page_header(
             ui,
             "Marketplace",
-            "Community plugins and SDKs: importers, exporters and new platforms. Everything is checked by SHA-256 and asks before installing.",
+            "Community game ports, plugins and SDKs. Everything is checked by SHA-256 and asks before installing.",
         );
         widgets::segmented(
             ui,
@@ -461,7 +465,8 @@ impl App {
                 ui.label(RichText::new("🔌").size(30.0).color(TEAL));
                 ui.vertical(|ui| {
                     ui.label(RichText::new("Built by the community").size(18.0).strong().color(Color32::WHITE));
-                    hint(ui, "Import plugins read engines, export plugins build for platforms, and SDKs add new platforms (with their exporters).");
+                    hint(ui, "Game ports are ready-made porting projects: settings, recipes and patches for a game. Import plugins read engines, export plugins build for platforms, and SDKs add new platforms.");
+                    hint(ui, "A port never contains the game. You play it with your own copy, which the port checks against its SHA-256 hashes.");
                 });
             });
             ui.add_space(6.0);
@@ -482,7 +487,7 @@ impl App {
         ui.horizontal(|ui| {
             ui.add(
                 egui::TextEdit::singleline(&mut self.market_search)
-                    .hint_text("🔍  Search plugins and SDKs")
+                    .hint_text("🔍  Search games, plugins and SDKs")
                     .desired_width((ui.available_width() - 260.0).max(160.0)),
             );
             egui::ComboBox::from_id_salt("market-kind")
@@ -490,7 +495,7 @@ impl App {
                 .selected_text(self.market_kind.map(|k| k.label()).unwrap_or("Everything"))
                 .show_ui(ui, |ui| {
                     ui.selectable_value(&mut self.market_kind, None, "Everything");
-                    for k in [EntryKind::Plugin, EntryKind::Sdk, EntryKind::Project] {
+                    for k in [EntryKind::Project, EntryKind::Plugin, EntryKind::Sdk] {
                         ui.selectable_value(&mut self.market_kind, Some(k), k.label());
                     }
                 });
@@ -523,24 +528,38 @@ impl App {
                 });
             }
             Some(Ok(index)) => {
-                let entries: Vec<_> = index
+                let mut entries: Vec<_> = index
                     .entries
                     .iter()
                     .filter(|e| e.matches(&self.market_search))
                     .filter(|e| self.market_kind.is_none_or(|k| e.kind == k))
                     .cloned()
                     .collect();
+                // Game ports first.
+                entries.sort_by_key(|e| e.kind != EntryKind::Project);
+                let ctx = ui.ctx().clone();
+                let posters: Vec<Option<egui::TextureHandle>> = entries
+                    .iter()
+                    .map(|e| e.poster.as_deref().and_then(|u| self.poster(&ctx, u)))
+                    .collect();
+                let idle = self.busy.is_none();
                 if entries.is_empty() {
                     empty_state(
                         ui,
                         "🔌",
                         "Nothing here yet",
-                        "Be the first: publish a plugin or an SDK from the Publish tab.",
+                        "Be the first: publish a game port, a plugin or an SDK from the Publish tab.",
                     );
                 } else {
                     let cols = columns_for(ui, 300.0, 3);
                     card_grid(ui, entries.len(), cols, |ui, i| {
                         let e = &entries[i];
+                        if e.kind == EntryKind::Project {
+                            if let Some(e) = port_card(ui, e, posters[i].as_ref(), idle) {
+                                install = Some(e);
+                            }
+                            return;
+                        }
                         card(ui, |ui| {
                             ui.horizontal(|ui| {
                                 let icon = match e.kind {
@@ -588,7 +607,7 @@ impl App {
                             ui.add_space(4.0);
                             if primary(
                                 ui,
-                                self.busy.is_none(),
+                                idle,
                                 if e.kind == EntryKind::Project {
                                     "Download"
                                 } else {
@@ -1055,6 +1074,7 @@ impl App {
             ui,
             &mut self.settings_tab,
             &[
+                (SettingsTab::Defaults, "Defaults", FOCUS),
                 (SettingsTab::Environment, "Environment", FOCUS),
                 (SettingsTab::Targets, "Targets", FOCUS),
                 (SettingsTab::About, "About", FOCUS),
@@ -1062,10 +1082,91 @@ impl App {
         );
         ui.add_space(14.0);
         match self.settings_tab {
+            SettingsTab::Defaults => self.defaults_page(ui),
             SettingsTab::Environment => self.doctor_page(ui),
             SettingsTab::Targets => self.targets_page(ui),
             SettingsTab::About => self.about_page(ui),
         }
+    }
+
+    /// App-wide defaults for new projects.
+    fn defaults_page(&mut self, ui: &mut Ui) {
+        // Missing categories mean "keep"; filling them in is not an edit.
+        for c in CATEGORIES {
+            for s in [&mut self.app_settings, &mut self.app_settings_saved] {
+                s.default_options.entry(c.id.to_owned()).or_default();
+            }
+        }
+        let dirty = self.app_settings != self.app_settings_saved;
+        ui.horizontal(|ui| {
+            hint(
+                ui,
+                "New projects start with these. Each project keeps its own copy, so changing them never changes existing projects.",
+            );
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if primary(ui, dirty, "Save defaults").clicked() {
+                    self.save_app_settings();
+                }
+                if dirty && ui.button("Revert").clicked() {
+                    self.app_settings = self.app_settings_saved.clone();
+                }
+            });
+        });
+        ui.add_space(10.0);
+        let registry = self.registry.clone();
+        let s = &mut self.app_settings;
+        split(ui, 0.5, 880.0, |ui, col| {
+            if col == 0 {
+                card(ui, |ui| {
+                    card_title(ui, "Targets of new projects");
+                    ui.horizontal_wrapped(|ui| {
+                        for t in registry.iter() {
+                            let mut on = s.default_targets.contains(&t.id);
+                            let text =
+                                RichText::new(format!("{}  {}", if on { "✔" } else { "+" }, t.id));
+                            if ui
+                                .toggle_value(&mut on, text)
+                                .on_hover_text(&t.name)
+                                .changed()
+                            {
+                                if on {
+                                    s.default_targets.push(t.id.clone());
+                                } else {
+                                    s.default_targets.retain(|x| x != &t.id);
+                                }
+                            }
+                        }
+                    });
+                    hint(ui, "None selected: this computer's platform.");
+                });
+            } else {
+                card(ui, |ui| {
+                    card_title(ui, "Projects folder");
+                    let mut text = s
+                        .projects_dir
+                        .as_ref()
+                        .map(|p| widgets::display_path(p))
+                        .unwrap_or_default();
+                    let shown = widgets::display_path(&s.projects_dir());
+                    if widgets::path_field(ui, &mut text, &shown, Pick::Folder) {
+                        s.projects_dir = Some(text.trim())
+                            .filter(|t| !t.is_empty())
+                            .map(crate::app::expand_tilde);
+                    }
+                    hint(ui, "Where Import Game creates new projects.");
+                });
+            }
+        });
+        ui.add_space(14.0);
+        card(ui, |ui| {
+            card_title(ui, "Default advanced options");
+            hint(
+                ui,
+                "What new projects keep, drop or recompress, and the default format (algorithm) for each kind of asset.",
+            );
+            ui.add_space(6.0);
+            options_editor(ui, &mut s.default_options, "defaults");
+        });
     }
 
     // ============================================================= project
@@ -1091,18 +1192,119 @@ impl App {
             });
             return;
         };
-        let title = p.manifest.name.clone();
-        let path = p.dir.display().to_string();
-        page_header(ui, &title, &path);
+        let title = p
+            .manifest
+            .game
+            .title
+            .clone()
+            .unwrap_or_else(|| p.manifest.name.clone());
+        let path = widgets::display_path(&p.dir);
+        let dir = p.dir.clone();
+        let icon = ptk_core::art::resolve(&dir, &p.saved, ptk_core::art::ArtKind::Icon);
+        let tex = icon.and_then(|i| self.image(&ui.ctx().clone(), &i));
+        ui.horizontal(|ui| {
+            if let Some(tex) = &tex {
+                let (rect, _) = ui.allocate_exact_size(vec2(56.0, 56.0), egui::Sense::hover());
+                widgets::image_in(ui, rect, tex, 12);
+                ui.add_space(6.0);
+            }
+            ui.vertical(|ui| page_header(ui, &title, &path));
+        });
         self.unsaved_bar(ui);
         let issues = self.issues();
         split(ui, 0.6, 880.0, |ui, col| {
             if col == 0 {
                 self.project_forms(ui);
+                ui.add_space(14.0);
+                self.options_section(ui);
+                ui.add_space(14.0);
+                self.project_details(ui);
             } else {
+                self.art_card(ui);
+                ui.add_space(14.0);
                 self.project_side(ui, &issues);
             }
         });
+    }
+
+    /// The port's icon and poster: your own images, shared in the .ptk.
+    fn art_card(&mut self, ui: &mut Ui) {
+        use ptk_core::art::ArtKind;
+        let Some(p) = &self.project else { return };
+        let dir = p.dir.clone();
+        let m = p.saved.clone();
+        let ctx = ui.ctx().clone();
+        let icon_path = ptk_core::art::resolve(&dir, &m, ArtKind::Icon);
+        let poster_path = ptk_core::art::resolve(&dir, &m, ArtKind::Poster);
+        let icon = icon_path.as_deref().and_then(|i| self.image(&ctx, i));
+        let poster = poster_path.as_deref().and_then(|i| self.image(&ctx, i));
+        let mut action: Option<(ArtKind, bool)> = None;
+        card(ui, |ui| {
+            card_title(ui, "Icon & poster");
+            ui.horizontal_top(|ui| {
+                for (kind, tex, size, chosen) in [
+                    (
+                        ArtKind::Icon,
+                        &icon,
+                        vec2(96.0, 96.0),
+                        m.game.icon.is_some(),
+                    ),
+                    (
+                        ArtKind::Poster,
+                        &poster,
+                        vec2(96.0, 136.0),
+                        m.game.poster.is_some(),
+                    ),
+                ] {
+                    ui.vertical(|ui| {
+                        let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+                        match tex {
+                            Some(t) => widgets::image_in(ui, rect, t, 10),
+                            None => {
+                                ui.painter().rect(
+                                    rect,
+                                    egui::CornerRadius::same(10),
+                                    INPUT,
+                                    egui::Stroke::new(1.0_f32, BORDER),
+                                    egui::StrokeKind::Inside,
+                                );
+                                widgets::centered_text(ui, rect, "+", 26.0, TEXT_FAINT);
+                            }
+                        }
+                        if resp
+                            .on_hover_text(format!("Choose the {}", kind.name()))
+                            .clicked()
+                        {
+                            action = Some((kind, true));
+                        }
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new(match kind {
+                                    ArtKind::Icon => "Icon",
+                                    ArtKind::Poster => "Poster",
+                                })
+                                .color(TEXT_WEAK),
+                            );
+                            if chosen && ui.small_button("✖").on_hover_text("Remove").clicked() {
+                                action = Some((kind, false));
+                            }
+                        });
+                    });
+                    ui.add_space(10.0);
+                }
+            });
+            let note = if m.game.icon.is_none() && icon.is_some() {
+                "Showing the game's own icon (only on this computer). Choose your own to use it in exports and share it."
+            } else {
+                "Used for the exported app and web page, and shown in the marketplace. Use images you made or may share."
+            };
+            hint(ui, note);
+        });
+        match action {
+            Some((kind, true)) => self.choose_art(kind),
+            Some((kind, false)) => self.set_art(&dir, kind, None),
+            None => {}
+        }
     }
 
     fn project_forms(&mut self, ui: &mut Ui) {
@@ -1111,39 +1313,6 @@ impl App {
             return;
         };
         let m = &mut p.manifest;
-        card(ui, |ui| {
-            card_title(ui, "Details");
-            egui::Grid::new("project-form")
-                .num_columns(2)
-                .spacing([18.0, 8.0])
-                .show(ui, |ui| {
-                    let w = (ui.available_width() - 110.0).max(160.0);
-                    let field = |ui: &mut Ui, label: &str, value: &mut String| {
-                        ui.label(RichText::new(label).color(TEXT_WEAK));
-                        let r = ui.add(egui::TextEdit::singleline(value).desired_width(w));
-                        ui.end_row();
-                        r.changed()
-                    };
-                    field(ui, "Name", &mut m.name);
-                    field(ui, "Version", &mut m.version);
-                    field(ui, "Description", &mut m.description);
-                    if field(ui, "Authors", &mut p.authors_text) {
-                        m.authors = p
-                            .authors_text
-                            .split(',')
-                            .map(|a| a.trim().to_owned())
-                            .filter(|a| !a.is_empty())
-                            .collect();
-                    }
-                    field(ui, "License", &mut m.license);
-                });
-            hint(
-                ui,
-                "The license covers the community work: recipes and patches.",
-            );
-        });
-        ui.add_space(14.0);
-
         card(ui, |ui| {
             card_title(ui, "Game");
             egui::Grid::new("game-form")
@@ -1244,6 +1413,52 @@ impl App {
         });
     }
 
+    /// Name, version, authors and license of the port (rarely changed).
+    fn project_details(&mut self, ui: &mut Ui) {
+        let Some(p) = self.project.as_mut() else {
+            return;
+        };
+        let m = &mut p.manifest;
+        card(ui, |ui| {
+            egui::CollapsingHeader::new(
+                RichText::new("Project details")
+                    .size(15.0)
+                    .color(Color32::WHITE),
+            )
+            .id_salt("project-details")
+            .show(ui, |ui| {
+                egui::Grid::new("project-form")
+                    .num_columns(2)
+                    .spacing([18.0, 8.0])
+                    .show(ui, |ui| {
+                        let w = (ui.available_width() - 110.0).max(160.0);
+                        let field = |ui: &mut Ui, label: &str, value: &mut String| {
+                            ui.label(RichText::new(label).color(TEXT_WEAK));
+                            let r = ui.add(egui::TextEdit::singleline(value).desired_width(w));
+                            ui.end_row();
+                            r.changed()
+                        };
+                        field(ui, "Name", &mut m.name);
+                        field(ui, "Version", &mut m.version);
+                        field(ui, "Description", &mut m.description);
+                        if field(ui, "Authors", &mut p.authors_text) {
+                            m.authors = p
+                                .authors_text
+                                .split(',')
+                                .map(|a| a.trim().to_owned())
+                                .filter(|a| !a.is_empty())
+                                .collect();
+                        }
+                        field(ui, "License", &mut m.license);
+                    });
+                hint(
+                    ui,
+                    "The license covers the community work: recipes and patches.",
+                );
+            });
+        });
+    }
+
     fn project_side(&mut self, ui: &mut Ui, issues: &[ptk_core::manifest::Issue]) {
         let Some(p) = &self.project else { return };
         let hashes = p.saved.source_files.len();
@@ -1276,7 +1491,7 @@ impl App {
                     } else {
                         "Everything is kept for now".into()
                     },
-                    View::Options,
+                    View::Overview,
                 ),
                 (
                     packed,
@@ -1597,22 +1812,8 @@ impl App {
 
     // ============================================================= options
 
-    fn options_page(&mut self, ui: &mut Ui) {
-        page_header(
-            ui,
-            "Advanced options",
-            "Before porting, decide per asset category what is kept, dropped or recompressed, so you control what is lost.",
-        );
-        if self.project.is_none() {
-            empty_state(
-                ui,
-                "⚙",
-                "No project open",
-                "Open a project to edit its options.",
-            );
-            return;
-        }
-        self.unsaved_bar(ui);
+    /// The open game's advanced options, on its Game page.
+    fn options_section(&mut self, ui: &mut Ui) {
         let Some(p) = self.project.as_mut() else {
             return;
         };
@@ -1621,128 +1822,33 @@ impl App {
             p.manifest.options.entry(c.id.to_owned()).or_default();
             p.saved.options.entry(c.id.to_owned()).or_default();
         }
-
-        ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new("Presets").color(TEXT_WEAK));
-            type Preset = (&'static str, fn(&str) -> CategoryOptions);
-            let presets: [Preset; 3] = [
-                ("Keep everything", |_| CategoryOptions::default()),
-                ("Smaller download", |cat| match cat {
-                    "textures" => CategoryOptions {
-                        action: AssetAction::Recompress,
-                        quality: Some(80),
-                        max_resolution: Some(2048),
-                        ..Default::default()
-                    },
-                    "audio" => CategoryOptions {
-                        action: AssetAction::Recompress,
-                        quality: Some(70),
-                        ..Default::default()
-                    },
-                    "video" => CategoryOptions {
-                        action: AssetAction::Recompress,
-                        quality: Some(60),
-                        max_resolution: Some(1024),
-                        ..Default::default()
-                    },
-                    _ => CategoryOptions::default(),
-                }),
-                ("Drop videos", |cat| {
-                    if cat == "video" {
-                        CategoryOptions {
-                            action: AssetAction::Drop,
-                            ..Default::default()
+        card(ui, |ui| {
+            ui.horizontal(|ui| {
+                card_title(ui, "Advanced options");
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if ui
+                        .small_button("Use my defaults")
+                        .on_hover_text("Settings → Defaults")
+                        .clicked()
+                    {
+                        for c in CATEGORIES {
+                            let o = self
+                                .app_settings
+                                .default_options
+                                .get(c.id)
+                                .cloned()
+                                .unwrap_or_default();
+                            p.manifest.options.insert(c.id.to_owned(), o);
                         }
-                    } else {
-                        CategoryOptions::default()
                     }
-                }),
-            ];
-            for (name, f) in presets {
-                if ui.button(name).clicked() {
-                    for c in CATEGORIES {
-                        p.manifest.options.insert(c.id.to_owned(), f(c.id));
-                    }
-                }
-            }
-        });
-        ui.add_space(12.0);
-
-        let cols = columns_for(ui, 400.0, 2);
-        card_grid(ui, CATEGORIES.len(), cols, |ui, i| {
-            let c = &CATEGORIES[i];
-            let o = p.manifest.options.entry(c.id.to_owned()).or_default();
-            card(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("■").color(category_color(c.id)));
-                    ui.label(
-                        RichText::new(c.name)
-                            .size(15.0)
-                            .strong()
-                            .color(Color32::WHITE),
-                    );
                 });
-                hint(ui, c.description);
-                ui.add_space(4.0);
-                widgets::segmented(
-                    ui,
-                    &mut o.action,
-                    &[
-                        (AssetAction::Keep, "Keep", GREEN),
-                        (AssetAction::Drop, "Drop", ERROR),
-                        (AssetAction::Recompress, "Recompress", YELLOW),
-                    ],
-                );
-                if o.action == AssetAction::Recompress {
-                    ui.add_space(4.0);
-                    egui::Grid::new(("opt", c.id))
-                        .num_columns(2)
-                        .spacing([14.0, 6.0])
-                        .show(ui, |ui| {
-                            if c.lossy {
-                                ui.label(RichText::new("Quality").color(TEXT_WEAK));
-                                let mut q = o.quality.unwrap_or(80);
-                                if ui.add(egui::Slider::new(&mut q, 1..=100)).changed() {
-                                    o.quality = Some(q);
-                                }
-                                ui.end_row();
-                            }
-                            if matches!(c.id, "textures" | "video") {
-                                ui.label(RichText::new("Max resolution").color(TEXT_WEAK));
-                                let label = |r: Option<u32>| {
-                                    r.map(|r| format!("{r} px"))
-                                        .unwrap_or_else(|| "Original".into())
-                                };
-                                egui::ComboBox::from_id_salt(("res", c.id))
-                                    .width(120.0)
-                                    .selected_text(label(o.max_resolution))
-                                    .show_ui(ui, |ui| {
-                                        for r in RESOLUTIONS {
-                                            ui.selectable_value(
-                                                &mut o.max_resolution,
-                                                *r,
-                                                label(*r),
-                                            );
-                                        }
-                                    });
-                                ui.end_row();
-                            }
-                            ui.label(RichText::new("Format").color(TEXT_WEAK));
-                            let mut f = o.format.clone().unwrap_or_default();
-                            if ui
-                                .add(
-                                    egui::TextEdit::singleline(&mut f)
-                                        .hint_text("auto")
-                                        .desired_width(120.0),
-                                )
-                                .changed()
-                            {
-                                o.format = Some(f).filter(|f| !f.trim().is_empty());
-                            }
-                            ui.end_row();
-                        });
-                }
             });
+            hint(
+                ui,
+                "Before porting, decide per asset category what is kept, dropped or recompressed, so you control what is lost.",
+            );
+            ui.add_space(6.0);
+            options_editor(ui, &mut p.manifest.options, "project");
         });
     }
 
@@ -2221,4 +2327,221 @@ impl App {
             "A tool, not a distribution channel: you bring your own game. .ptk files hold recipes, settings, community patches and SHA-256 hashes, never original game files or decompiled code.",
         );
     }
+}
+
+/// A game port in the marketplace: poster, game, engine → targets, and
+/// where to get the game. Returns the entry when "Get port" is pressed.
+fn port_card(
+    ui: &mut Ui,
+    e: &ptk_core::market::MarketEntry,
+    poster: Option<&egui::TextureHandle>,
+    idle: bool,
+) -> Option<ptk_core::market::MarketEntry> {
+    let mut get = None;
+    card(ui, |ui| {
+        let w = ui.available_width();
+        let (rect, _) =
+            ui.allocate_exact_size(vec2(w, (w * 0.62).min(220.0)), egui::Sense::hover());
+        match poster {
+            Some(t) => widgets::image_in(ui, rect, t, 8),
+            None => {
+                ui.painter()
+                    .rect_filled(rect, egui::CornerRadius::same(8), INPUT);
+                let initial = e
+                    .game
+                    .as_deref()
+                    .unwrap_or(&e.name)
+                    .chars()
+                    .next()
+                    .unwrap_or('?')
+                    .to_uppercase()
+                    .to_string();
+                widgets::centered_text(ui, rect, &initial, 46.0, TEXT_FAINT);
+            }
+        }
+        ui.add_space(6.0);
+        ui.label(
+            RichText::new(e.game.as_deref().unwrap_or(&e.name))
+                .size(16.0)
+                .strong()
+                .color(Color32::WHITE),
+        );
+        let by = if e.author.is_empty() {
+            "community"
+        } else {
+            &e.author
+        };
+        ui.label(
+            RichText::new(format!("Port by {by} · v{}", e.version))
+                .size(11.5)
+                .color(TEXT_WEAK),
+        );
+        if !e.description.is_empty() {
+            hint(ui, &e.description);
+        }
+        ui.horizontal_wrapped(|ui| {
+            for en in &e.engines {
+                badge(ui, en, TEAL);
+            }
+            if !e.targets.is_empty() {
+                ui.label(RichText::new("→").color(TEXT_FAINT));
+            }
+            for t in e.targets.iter().take(3) {
+                badge(ui, t, LIGHT_BLUE);
+            }
+            if e.reviewed {
+                badge(ui, "✔ reviewed", GREEN);
+            }
+        });
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            if primary(ui, idle, "Get port").clicked() {
+                get = Some(e.clone());
+            }
+            if let Some(store) = &e.store
+                && ui.button("Get the game ↗").on_hover_text(store).clicked()
+            {
+                crate::app::open_url(store);
+            }
+        });
+        ui.label(
+            RichText::new("Needs your own copy of the game.")
+                .size(11.5)
+                .color(TEXT_FAINT),
+        );
+    });
+    get
+}
+
+type Preset = (&'static str, fn(&str) -> CategoryOptions);
+
+const PRESETS: [Preset; 3] = [
+    ("Keep everything", |_| CategoryOptions::default()),
+    ("Smaller download", |cat| match cat {
+        "textures" => CategoryOptions {
+            action: AssetAction::Recompress,
+            quality: Some(80),
+            max_resolution: Some(2048),
+            ..Default::default()
+        },
+        "audio" => CategoryOptions {
+            action: AssetAction::Recompress,
+            quality: Some(70),
+            ..Default::default()
+        },
+        "video" => CategoryOptions {
+            action: AssetAction::Recompress,
+            quality: Some(60),
+            max_resolution: Some(1024),
+            ..Default::default()
+        },
+        _ => CategoryOptions::default(),
+    }),
+    ("Drop videos", |cat| {
+        if cat == "video" {
+            CategoryOptions {
+                action: AssetAction::Drop,
+                ..Default::default()
+            }
+        } else {
+            CategoryOptions::default()
+        }
+    }),
+];
+
+/// Presets plus one compact row per asset category: keep / drop /
+/// recompress, and for recompressing: quality, size and format (algorithm).
+pub fn options_editor(
+    ui: &mut Ui,
+    options: &mut std::collections::BTreeMap<String, CategoryOptions>,
+    salt: &str,
+) {
+    ui.horizontal_wrapped(|ui| {
+        ui.label(RichText::new("Presets").color(TEXT_WEAK));
+        for (name, f) in PRESETS {
+            if ui.button(name).clicked() {
+                for c in CATEGORIES {
+                    options.insert(c.id.to_owned(), f(c.id));
+                }
+            }
+        }
+    });
+    ui.add_space(8.0);
+    egui::Grid::new(("options", salt))
+        .num_columns(3)
+        .spacing([16.0, 10.0])
+        .min_col_width(150.0)
+        .show(ui, |ui| {
+            for c in CATEGORIES {
+                let o = options.entry(c.id.to_owned()).or_default();
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("■").color(category_color(c.id)));
+                    ui.label(RichText::new(c.name).color(Color32::WHITE))
+                        .on_hover_text(c.description);
+                });
+                widgets::segmented(
+                    ui,
+                    &mut o.action,
+                    &[
+                        (AssetAction::Keep, "Keep", GREEN),
+                        (AssetAction::Drop, "Drop", ERROR),
+                        (AssetAction::Recompress, "Recompress", YELLOW),
+                    ],
+                );
+                ui.horizontal_wrapped(|ui| {
+                    if o.action != AssetAction::Recompress {
+                        return;
+                    }
+                    let formats = ptk_core::category::formats(c.id);
+                    if !formats.is_empty() {
+                        let shown = o
+                            .format
+                            .as_deref()
+                            .and_then(|f| formats.iter().find(|(id, _)| *id == f))
+                            .map(|(_, l)| l.to_string())
+                            .or_else(|| o.format.clone())
+                            .unwrap_or_else(|| "Automatic".into());
+                        egui::ComboBox::from_id_salt(("fmt", salt, c.id))
+                            .width(170.0)
+                            .selected_text(shown)
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut o.format, None, "Automatic");
+                                for (id, label) in formats {
+                                    ui.selectable_value(
+                                        &mut o.format,
+                                        Some(id.to_string()),
+                                        *label,
+                                    );
+                                }
+                            })
+                            .response
+                            .on_hover_text("Format (algorithm) to recompress into");
+                    }
+                    if c.lossy {
+                        let mut q = o.quality.unwrap_or(80);
+                        if ui
+                            .add(egui::Slider::new(&mut q, 1..=100).text("quality"))
+                            .changed()
+                        {
+                            o.quality = Some(q);
+                        }
+                    }
+                    if matches!(c.id, "textures" | "video") {
+                        let label = |r: Option<u32>| {
+                            r.map(|r| format!("max {r} px"))
+                                .unwrap_or_else(|| "original size".into())
+                        };
+                        egui::ComboBox::from_id_salt(("res", salt, c.id))
+                            .width(120.0)
+                            .selected_text(label(o.max_resolution))
+                            .show_ui(ui, |ui| {
+                                for r in RESOLUTIONS {
+                                    ui.selectable_value(&mut o.max_resolution, *r, label(*r));
+                                }
+                            });
+                    }
+                });
+                ui.end_row();
+            }
+        });
 }

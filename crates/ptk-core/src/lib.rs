@@ -13,6 +13,7 @@
 //! carries recipes, settings, community patches and hashes, never original
 //! game files. See `docs/legal.md`.
 
+pub mod art;
 pub mod banner;
 pub mod category;
 pub mod convert;
@@ -32,6 +33,7 @@ pub mod routes;
 pub mod scan;
 pub mod sdk;
 pub mod serve;
+pub mod settings;
 pub mod targets;
 pub mod verify;
 

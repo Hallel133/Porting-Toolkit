@@ -23,7 +23,7 @@ use zip::{CompressionMethod, DateTime, ZipWriter};
 
 use crate::engine::EngineClient;
 use crate::error::{Error, Result, io_ctx};
-use crate::hash::{is_junk_file, is_sha256_hex, relative_path, sha256_file};
+use crate::hash::{is_junk_file, is_sha256_hex, relative_path, sha256_bytes, sha256_file};
 use crate::manifest::valid_project_name;
 use crate::pack::read_pack_manifest;
 use crate::paths;
@@ -59,7 +59,7 @@ impl EntryKind {
         match self {
             EntryKind::Plugin => "Plugin",
             EntryKind::Sdk => "SDK",
-            EntryKind::Project => "Project",
+            EntryKind::Project => "Game port",
         }
     }
 }
@@ -89,6 +89,16 @@ pub struct MarketEntry {
     /// Targets an export plugin or SDK builds for.
     #[serde(default)]
     pub targets: Vec<String>,
+    /// Game ports: the game's title.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub game: Option<String>,
+    /// Game ports: an https URL of the poster image.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poster: Option<String>,
+    /// Game ports: where to get the game (a store page). A port never
+    /// contains the game; players need their own copy.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub store: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -118,6 +128,13 @@ impl MarketEntry {
         if !url_ok {
             p.push(format!("{}: download must be an https:// URL", self.id));
         }
+        for (field, url) in [("poster", &self.poster), ("store", &self.store)] {
+            if let Some(u) = url
+                && !(u.starts_with("https://") || (field == "poster" && u.starts_with("file://")))
+            {
+                p.push(format!("{}: {field} must be an https:// URL", self.id));
+            }
+        }
         p
     }
 
@@ -125,6 +142,10 @@ impl MarketEntry {
     pub fn matches(&self, query: &str) -> bool {
         let q = query.trim().to_lowercase();
         q.is_empty()
+            || self
+                .game
+                .as_ref()
+                .is_some_and(|g| g.to_lowercase().contains(&q))
             || [&self.id, &self.name, &self.description, &self.author]
                 .iter()
                 .any(|s| s.to_lowercase().contains(&q))
@@ -275,6 +296,40 @@ pub struct Published {
     pub warnings: Vec<String>,
 }
 
+/// One file from a `.ptk` (a zip), if present and small.
+fn read_pack_member(pack: &Path, name: &str) -> Option<Vec<u8>> {
+    use std::io::Read;
+    let mut z = zip::ZipArchive::new(File::open(pack).ok()?).ok()?;
+    let f = z.by_name(name).ok()?;
+    if f.size() > crate::art::MAX_BYTES {
+        return None;
+    }
+    let mut out = Vec::new();
+    f.take(crate::art::MAX_BYTES).read_to_end(&mut out).ok()?;
+    Some(out)
+}
+
+/// Downloads a poster into the cache (once) and returns the local file.
+pub fn fetch_poster(url: &str) -> Result<PathBuf> {
+    if !url.starts_with("https://") && !url.starts_with("file://") {
+        return Err(Error::Invalid(format!("poster must be https: {url}")));
+    }
+    let dir = crate::paths::data_dir().join("cache").join("posters");
+    fs::create_dir_all(&dir).map_err(io_ctx(dir.display().to_string()))?;
+    let file = dir.join(&sha256_bytes(url.as_bytes())[..24]);
+    if !file.is_file() {
+        let partial = file.with_extension("partial");
+        curl(url, &partial)?;
+        let size = fs::metadata(&partial).map(|m| m.len()).unwrap_or(0);
+        if size > crate::art::MAX_BYTES {
+            let _ = fs::remove_file(&partial);
+            return Err(Error::Invalid(format!("poster {url} is larger than 8 MB")));
+        }
+        fs::rename(&partial, &file).map_err(io_ctx(file.display().to_string()))?;
+    }
+    Ok(file)
+}
+
 /// Validates a plugin folder, an SDK folder or a `.ptk` file and prepares
 /// it for the marketplace: a zip (plugins, SDKs) in `out_dir`, its SHA-256,
 /// and the index entry to submit.
@@ -287,6 +342,31 @@ pub fn package(src: &Path, out_dir: &Path, engine: &mut EngineClient) -> Result<
     if is_ptk {
         let m = read_pack_manifest(src)?;
         let sha256 = sha256_file(src).map_err(io_ctx(src.display().to_string()))?;
+        let mut warnings = vec![
+            "Set \"store\" to a page where players can get the game: a port never contains it."
+                .to_owned(),
+        ];
+        if m.source_files.is_empty() {
+            warnings.push(
+                "No file hashes recorded: players cannot check that their copy matches (ptk scan --record).".into(),
+            );
+        }
+        let mut poster = None;
+        if let Some(rel) = &m.game.poster
+            && let Some(bytes) = read_pack_member(src, rel)
+        {
+            let ext = rel.rsplit('.').next().unwrap_or("png");
+            let out = out_dir.join(format!("{}-poster.{ext}", m.name));
+            fs::write(&out, bytes).map_err(io_ctx(out.display().to_string()))?;
+            warnings.push(format!(
+                "Upload {} next to the .ptk and put its https URL in \"poster\".",
+                out.display()
+            ));
+            poster = Some("REPLACE-with-the-URL-of-the-uploaded-poster".to_owned());
+        } else {
+            warnings
+                .push("No poster: add one (ptk art --poster IMAGE) so the port stands out.".into());
+        }
         return Ok(Published {
             kind: EntryKind::Project,
             archive: src.to_owned(),
@@ -304,8 +384,11 @@ pub fn package(src: &Path, out_dir: &Path, engine: &mut EngineClient) -> Result<
                 reviewed: false,
                 engines: m.game.engine.clone().into_iter().collect(),
                 targets: m.targets.clone(),
+                game: m.game.title.clone(),
+                poster,
+                store: Some("REPLACE-with-a-page-where-players-get-the-game".into()),
             },
-            warnings: Vec::new(),
+            warnings,
         });
     }
     if src.join(SDK_FILE).is_file() {
@@ -337,6 +420,9 @@ pub fn package(src: &Path, out_dir: &Path, engine: &mut EngineClient) -> Result<
                 reviewed: false,
                 engines: Vec::new(),
                 targets: report.targets.iter().map(|t| t.id.clone()).collect(),
+                game: None,
+                poster: None,
+                store: None,
             },
             warnings: report.warnings,
         });
@@ -382,6 +468,9 @@ pub fn package(src: &Path, out_dir: &Path, engine: &mut EngineClient) -> Result<
                 reviewed: false,
                 engines: list("inputs"),
                 targets: list("targets"),
+                game: None,
+                poster: None,
+                store: None,
             },
             warnings: v.warnings,
         });
@@ -395,6 +484,19 @@ pub fn package(src: &Path, out_dir: &Path, engine: &mut EngineClient) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn game_ports_have_https_poster_and_store() {
+        let json = r#"{"id":"quest-port","name":"Quest","kind":"project","version":"1.0.0","license":"MIT",
+            "download":"https://example.org/quest.ptk","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "game":"Quest","poster":"https://example.org/p.png","store":"https://store.example.org/quest"}"#;
+        let mut e: MarketEntry = serde_json::from_str(json).unwrap();
+        assert_eq!(e.kind.label(), "Game port");
+        assert!(e.problems().is_empty(), "{:?}", e.problems());
+        assert!(e.matches("quest"));
+        e.store = Some("http://store.example.org".into());
+        assert!(e.problems().iter().any(|p| p.contains("store")));
+    }
 
     fn entry() -> MarketEntry {
         MarketEntry {
@@ -411,6 +513,9 @@ mod tests {
             reviewed: true,
             engines: vec!["unity".into()],
             targets: vec![],
+            game: None,
+            poster: None,
+            store: None,
         }
     }
 

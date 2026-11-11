@@ -173,9 +173,17 @@ pub fn export(
 }
 
 /// Runs the import plugin after `ptk import` recorded the game.
-pub fn import_step(style: &Style, engine: &mut EngineClient, project: &Path, game: &Path) {
+pub fn import_step(
+    style: &Style,
+    engine: &mut EngineClient,
+    project: &Path,
+    game: &Path,
+    file_title: &str,
+) {
     let mut rep = Reporter::new(style);
-    let r = convert::import(engine, project, game, &mut |e| rep.event(e));
+    let r = convert::import(engine, project, game, Some(file_title), &mut |e| {
+        rep.event(e)
+    });
     rep.done();
     match r {
         Ok(Some(r)) => print_result(style, &r),
@@ -220,4 +228,36 @@ pub fn serve(style: &Style, dir: &Path, port: u16, open: bool) -> anyhow::Result
     loop {
         std::thread::park();
     }
+}
+
+pub fn art(
+    style: &Style,
+    project: &Path,
+    icon: Option<PathBuf>,
+    poster: Option<PathBuf>,
+    clear_icon: bool,
+    clear_poster: bool,
+) -> anyhow::Result<ExitCode> {
+    use ptk_core::art::{self, ArtKind};
+    for (kind, file, clear) in [
+        (ArtKind::Icon, icon, clear_icon),
+        (ArtKind::Poster, poster, clear_poster),
+    ] {
+        if clear {
+            art::clear(project, kind)?;
+            println!("{} Removed the {}", style.ok(), kind.name());
+        }
+        if let Some(f) = file {
+            let rel = art::set(project, kind, &f)?;
+            println!("{} {} → {rel}", style.ok(), kind.name());
+        }
+    }
+    let m = Manifest::load(project)?;
+    for kind in [ArtKind::Icon, ArtKind::Poster] {
+        let shown = art::resolve(project, &m, kind)
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| style.dim("none"));
+        println!("  {:<7} {shown}", kind.name());
+    }
+    Ok(ExitCode::SUCCESS)
 }

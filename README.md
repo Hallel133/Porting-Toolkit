@@ -68,9 +68,12 @@ ptk verify ~/Games/MyGame -p my-port  # is this the same game version?
 **Projects** list (favorites, filter, sort, an action column with Open,
 Export, Scan, Verify, Show in Finder, Remove), a **Marketplace** (Browse,
 Installed, Publish) and **Settings** (environment check, targets, about).
-Opening a project adds its tabs: Overview, Scan, Options and Export. On macOS
+Opening a project adds its tabs: **Game** (title, targets, icon and poster,
+and the advanced options, all on one page), Scan and Export. **Settings →
+Defaults** holds what new projects start with: targets, advanced options and
+the default format (algorithm) per asset type. On macOS
 it has a real menu bar with the usual shortcuts (⌘N, ⌘I import, ⌘O, ⌘S,
-⌘1–⌘6, ⌘, settings). Drop a game, a project or a `.ptk` on the window.
+⌘1–⌘5, ⌘, settings). Drop a game, a project or a `.ptk` on the window.
 
 ```bash
 cargo run --release -p ptk-gui
@@ -80,7 +83,8 @@ cargo run --release -p ptk-gui
 
 | | |
 |---|---|
-| ![Overview](docs/images/gui-overview.png) | ![Export](docs/images/gui-export.png) |
+| ![Game page](docs/images/gui-overview.png) | ![Export](docs/images/gui-export.png) |
+| ![Game ports in the marketplace](docs/images/gui-market.png) | ![Settings: defaults](docs/images/gui-defaults.png) |
 
 ## Import a game (no source code)
 
@@ -127,7 +131,8 @@ Developer ID. See [docs/plugins.md](docs/plugins.md).
 
 ## Marketplace and SDKs
 
-Plugins, SDKs (new platforms + their exporters) and projects are listed in a
+**Game ports** (ready-made porting projects with a poster), plugins and SDKs
+(new platforms + their exporters) are listed in a
 JSON index on GitHub. `ptk market list|install`, `ptk sdk new|validate|install`
 and `ptk publish <folder>` (zip + SHA-256 + index entry for a pull request).
 See [docs/marketplace.md](docs/marketplace.md).
@@ -148,6 +153,7 @@ See [docs/marketplace.md](docs/marketplace.md).
 | `ptk plugin list\|new\|validate\|install` | Import/export plugins (built-in and installed) |
 | `ptk import <build>` | Project from a folder, .app, .exe, .zip, .deb or .dmg (runs the import plugin) |
 | `ptk export [-t ID]` | Build for macOS / the web with export plugins (`--set key=value`) |
+| `ptk art --icon\|--poster <image>` | The port's icon and poster (shared in the `.ptk`, used by exports) |
 | `ptk serve <dir>` | Serve a web build on this computer, with the headers WebAssembly needs |
 | `ptk sdk new\|validate\|install` | SDKs: new platforms and their exporters |
 | `ptk market list\|install` | Community marketplace |
@@ -211,7 +217,7 @@ MIT. See [LICENSE](LICENSE).
 
 ### אפליקציה גרפית
 
-`ptk-gui` היא מנהל פרויקטים בהשראת מנהלי הפרויקטים של מנועי משחק: רשימת **Projects** (מועדפים, סינון, מיון ועמודת פעולות), **Marketplace** (Browse, Installed, Publish) ו-**Settings**. פרויקט פתוח מוסיף לשוניות Overview, Scan, Options ו-Export. ב-macOS יש menu bar אמיתי עם קיצורי מקלדת. הפעלה: `cargo run --release -p ptk-gui`.
+`ptk-gui` היא מנהל פרויקטים בהשראת מנהלי הפרויקטים של מנועי משחק: רשימת **Projects** (מועדפים, סינון, מיון ועמודת פעולות), **Marketplace** (Browse, Installed, Publish) ו-**Settings**. פרויקט פתוח מוסיף לשוניות **Game** (כותרת, targets, אייקון ופוסטר והאפשרויות המתקדמות, הכול בדף אחד), Scan ו-Export. ב-**Settings → Defaults** קובעים במה פרויקטים חדשים מתחילים: targets, אפשרויות מתקדמות והפורמט (האלגוריתם) לכל סוג קבצים. ב-macOS יש menu bar אמיתי עם קיצורי מקלדת. הפעלה: `cargo run --release -p ptk-gui`.
 
 ### ייבוא משחק בלי קוד מקור
 
@@ -232,7 +238,7 @@ MIT. See [LICENSE](LICENSE).
 
 ### Marketplace ו-SDK
 
-תוספים, SDK (פלטפורמות חדשות עם ה-exporter שלהן) ופרויקטים נמצאים באינדקס JSON ב-GitHub. כדי לפרסם: `ptk sdk new`, ‏`ptk publish`, ואז pull request. הפרטים ב-[docs/marketplace.md](docs/marketplace.md).
+**Game ports** (פרויקטי porting מוכנים עם פוסטר), תוספים ו-SDK (פלטפורמות חדשות עם ה-exporter שלהן) נמצאים באינדקס JSON ב-GitHub. port לעולם לא כולל את המשחק עצמו: כל שחקן צריך עותק משלו, והפרויקט בודק אותו לפי SHA-256. כדי לפרסם: `ptk sdk new`, ‏`ptk publish`, ואז pull request. הפרטים ב-[docs/marketplace.md](docs/marketplace.md).
 
 ### מפת דרכים
 

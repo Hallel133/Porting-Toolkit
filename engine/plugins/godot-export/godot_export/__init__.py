@@ -130,6 +130,22 @@ class Templates:
         return dest
 
 
+def make_icns(ctx, image: Path, dest: Path) -> bool:
+    """PNG/JPEG → .icns with the macOS sips and iconutil tools."""
+    if not (ctx.which("sips") and ctx.which("iconutil")):
+        return False
+    iconset = ctx.temp / "icon.iconset"
+    shutil.rmtree(iconset, ignore_errors=True)
+    iconset.mkdir(parents=True)
+    for size in (16, 32, 128, 256, 512):
+        for scale in (1, 2):
+            px = size * scale
+            name = f"icon_{size}x{size}{'@2x' if scale == 2 else ''}.png"
+            ctx.run(["sips", "-s", "format", "png", "-z", str(px), str(px), image, "--out", iconset / name])
+    ctx.run(["iconutil", "-c", "icns", iconset, "-o", dest])
+    return True
+
+
 def fill_plist(text: str, values: dict[str, str]) -> str:
     for key in sorted(values, key=len, reverse=True):
         text = text.replace("$" + key, values[key])
@@ -163,8 +179,7 @@ class Plugin:
             ctx.fail("the .pck is encrypted; it only runs with templates built with the game's own key")
         if pck.uses_csharp():
             ctx.fail("C# (.NET) Godot games are not supported by the built-in exporter yet (GDScript games are)")
-        for ext in pck.extensions():
-            ctx.warn(f"{ext} is a native GDExtension; the {target.get('name')} build needs its own version of that library")
+        self.settings = godot.project_settings(pck)
 
         override = ctx.setting("godot_version")
         if override:
@@ -250,6 +265,8 @@ class Plugin:
             "xcodebuild": "",
         }), encoding="utf-8")
         shutil.copyfile(staged, app / "Contents" / "Resources" / f"{binary}.pck")
+        self.native_libraries(ctx, pck, app)
+        self.app_icon(ctx, pck, app)
 
         signed = False
         if ctx.flag("sign", True) and ctx.which("codesign"):
@@ -257,7 +274,8 @@ class Plugin:
             ctx.run(["codesign", "--force", "--deep", "--sign", "-", "--timestamp=none", app])
             signed = True
         elif arch == "arm64":
-            ctx.warn("The app is not signed; Apple Silicon Macs refuse to run unsigned apps (install the Xcode command line tools).")
+            why = "sign=false" if not ctx.flag("sign", True) else "codesign was not found; install the Xcode command line tools"
+            ctx.warn(f"The app is not signed ({why}); Apple Silicon Macs refuse to run unsigned apps.")
         notes = [
             f"Built with the Godot {templates.dir_name} template.",
             "Signed ad-hoc: it runs on this Mac. To share it, sign and notarize it with an Apple Developer ID."
@@ -269,6 +287,87 @@ class Plugin:
             "summary": f"Built {app.name} for {ctx.target.get('name')}",
             "notes": notes,
         }
+
+    @staticmethod
+    def source_app(pck) -> Path | None:
+        """The .app the pck came from, if the game is a macOS build."""
+        for parent in Path(pck.container).parents:
+            if parent.suffix == ".app":
+                return parent
+        return None
+
+    def native_libraries(self, ctx, pck, app: Path) -> None:
+        """GDExtension libraries (GodotSteam, ...) go to Contents/Frameworks.
+
+        Godot looks for them there in an exported app. They come from the
+        game's own macOS build; a Windows or Linux build has no macOS
+        versions, so the extension (and what needs it) will not load.
+        """
+        wanted = godot.extension_libraries(pck, "macos")
+        if not wanted:
+            return
+        frameworks = app / "Contents" / "Frameworks"
+        source = self.source_app(pck)
+        copied: list[str] = []
+        if source and (source / "Contents" / "Frameworks").is_dir():
+            for item in sorted((source / "Contents" / "Frameworks").iterdir()):
+                if item.name.startswith("._"):
+                    continue
+                dest = frameworks / item.name
+                frameworks.mkdir(parents=True, exist_ok=True)
+                if item.is_dir():
+                    shutil.copytree(item, dest, symlinks=True, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(item, dest)
+                copied.append(item.name)
+        else:
+            game_root = ctx.game if ctx.game.is_dir() else ctx.game.parent
+            for libs in wanted.values():
+                for lib in libs:
+                    name = Path(lib.removeprefix("res://")).name
+                    hits = [p for p in game_root.rglob(name) if p.exists()] if name else []
+                    if hits:
+                        frameworks.mkdir(parents=True, exist_ok=True)
+                        src = hits[0]
+                        if src.is_dir():
+                            shutil.copytree(src, frameworks / name, symlinks=True, dirs_exist_ok=True)
+                        else:
+                            shutil.copy2(src, frameworks / name)
+                        copied.append(name)
+        from_app = bool(source and copied)
+        missing = []
+        for ext, libs in wanted.items():
+            names = {Path(lib.removeprefix("res://")).name for lib in libs}
+            if not from_app and not names & set(copied):
+                missing.append(Path(ext).stem)
+        if copied:
+            ctx.log("Native libraries copied into the app: " + ", ".join(copied))
+        for name in missing:
+            ctx.warn(f"No macOS version of the {name} extension was found (it ships with the game's macOS build). "
+                     "Features that need it will not work, and the game may stop on a blank screen if it requires it.")
+
+    def app_icon(self, ctx, pck, app: Path) -> None:
+        """Icon: --set icon=, the project's icon, the source app's, or the game's own."""
+        dest = app / "Contents" / "Resources" / "icon.icns"
+        chosen = ctx.setting("icon")
+        candidate = Path(chosen).expanduser() if chosen else ctx.art("icon")
+        source = self.source_app(pck)
+        if candidate is None and source:
+            for name in ("icon.icns", "AppIcon.icns"):
+                if (source / "Contents" / "Resources" / name).is_file():
+                    shutil.copyfile(source / "Contents" / "Resources" / name, dest)
+                    return
+        if candidate is None:
+            res = str(self.settings.get("application/config/icon") or "")
+            data = godot.read_file(pck, res) if res.lower().endswith((".png", ".jpg", ".jpeg")) else None
+            if data:
+                candidate = ctx.write_bytes(ctx.temp / f"game-icon{Path(res).suffix}", data)
+        if candidate is None or not candidate.is_file():
+            return
+        if candidate.suffix.lower() == ".icns":
+            shutil.copyfile(candidate, dest)
+        elif not make_icns(ctx, candidate, dest):
+            ctx.warn("Could not convert the icon (needs sips and iconutil); the app keeps Godot's icon.")
 
     # -- web -----------------------------------------------------------------
 
@@ -305,6 +404,25 @@ class Plugin:
             else:
                 worker = None
         shutil.copyfile(staged, out / f"{exe}.pck")
+        settings = self.settings
+        render = godot.renderer(settings, major) if settings else None
+        if render and render not in ("gl_compatibility", "GLES2", "GLES3"):
+            ctx.warn(f"The game uses the {render.replace('_', ' ').title()} renderer, but browsers only have Godot's "
+                     "Compatibility renderer: lighting, glow, fog, some particles and screen shaders can look "
+                     "different or stay on screen. Only the game's developer can switch the renderer.")
+        for ext in pck.extensions():
+            ctx.warn(f"{Path(ext).stem} is a native extension with no web version; features that need it "
+                     "(for example Steam) will not work in the browser.")
+        splash_res = str(settings.get("application/boot_splash/image") or "")
+        splash = godot.read_file(pck, splash_res) if splash_res.lower().endswith(".png") else None
+        if splash:
+            ctx.write_bytes(out / f"{exe}.png", splash)
+        icon_path = ctx.art("icon")
+        icon_res = str(settings.get("application/config/icon") or "")
+        icon = icon_path.read_bytes() if icon_path else (
+            godot.read_file(pck, icon_res) if icon_res.lower().endswith(".png") else None)
+        if icon:
+            ctx.write_bytes(out / f"{exe}.icon.png", icon)
         sizes = {f"{exe}.pck": (out / f"{exe}.pck").stat().st_size}
         if (out / f"{exe}.wasm").is_file():
             sizes[f"{exe}.wasm"] = (out / f"{exe}.wasm").stat().st_size
@@ -326,12 +444,16 @@ class Plugin:
         values = {
             "GODOT_URL": f"{exe}.js",
             "GODOT_PROJECT_NAME": html.escape(title),
-            "GODOT_HEAD_INCLUDE": '<meta name="generator" content="Porting Toolkit">',
+            "GODOT_HEAD_INCLUDE": '<meta name="generator" content="Porting Toolkit">'
+            + (f'\n<link rel="icon" href="{exe}.icon.png">' if icon else ""),
             "GODOT_CONFIG": json.dumps(config),
             "GODOT_THREADS_ENABLED": "true" if threaded else "false",
-            "GODOT_SPLASH_COLOR": ctx.setting("background", "#000000"),
-            "GODOT_SPLASH_CLASSES": "show-image--false fullsize--true use-filter--true",
-            "GODOT_SPLASH": "data:image/gif;base64,R0lGODlhAQABAAAAACw=",
+            "GODOT_SPLASH_COLOR": ctx.setting("background")
+            or godot.color_hex(settings.get("application/boot_splash/bg_color"), "#000000"),
+            "GODOT_SPLASH_CLASSES": (
+                f"show-image--true fullsize--{str(bool(settings.get('application/boot_splash/fullsize', True))).lower()} use-filter--true"
+                if splash else "show-image--false fullsize--true use-filter--true"),
+            "GODOT_SPLASH": f"{exe}.png" if splash else "data:image/gif;base64,R0lGODlhAQABAAAAACw=",
             "GODOT_BASENAME": exe,
             "GODOT_DEBUG_ENABLED": "false",
         }

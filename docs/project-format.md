@@ -85,6 +85,13 @@ What import plugins learned, as JSON: `recipes/godot.json` (where the
 web root, entry page, window size). Recipes never hold game data and are
 packed into `.ptk` files.
 
+### `art/`
+
+The port's icon and poster (`game.icon`, `game.poster` in `ptk.json`, e.g.
+`art/poster.png`), set with `ptk art` or the Game page. PNG, JPEG or WebP,
+at most 8 MB. They are packed, used by exports and shown in the
+marketplace, so use images you made or may share.
+
 ### `.ptk-local.json`
 
 Per-machine state, written by `ptk import`, `ptk scan --record` and

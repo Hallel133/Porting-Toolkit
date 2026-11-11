@@ -125,6 +125,12 @@ pub struct GameInfo {
     /// include any of them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content_license: Option<String>,
+    /// Icon chosen for the port, relative to the project (`art/icon.png`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    /// Poster (cover art) for the port, relative to the project.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poster: Option<String>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
 }
@@ -416,6 +422,13 @@ impl Manifest {
                 error(format!(
                     "options.{cat}.max_resolution must be 16-16384, not {r}"
                 ));
+            }
+        }
+        for (kind, art) in [("icon", &self.game.icon), ("poster", &self.game.poster)] {
+            if let Some(a) = art
+                && !(is_safe_relative_path(a) && a.starts_with("art/"))
+            {
+                error(format!("game.{kind} must be a file in art/, not {a:?}"));
             }
         }
         let mut seen = std::collections::HashSet::new();

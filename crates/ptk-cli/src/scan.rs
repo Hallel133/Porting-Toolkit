@@ -242,10 +242,7 @@ pub fn import(style: &Style, build: &Path, project: Option<&Path>) -> anyhow::Re
         let registry = ptk_core::targets::TargetRegistry::load_default().0;
         ptk_core::project::init(
             &project,
-            ptk_core::project::InitOptions {
-                title: Some(prepared.title.clone()),
-                ..Default::default()
-            },
+            ptk_core::project::InitOptions::with_defaults(Some(prepared.title.clone())),
             &registry,
         )?;
         println!("{} Created project {}", style.ok(), project.display());
@@ -263,7 +260,13 @@ pub fn import(style: &Style, build: &Path, project: Option<&Path>) -> anyhow::Re
     if prepared.extracted.is_some() {
         ptk_core::convert::LocalState::remember_game(&project, &prepared.game, Some(build))?;
     }
-    crate::convert::import_step(style, &mut engine, &project, &prepared.game);
+    crate::convert::import_step(
+        style,
+        &mut engine,
+        &project,
+        &prepared.game,
+        &prepared.title,
+    );
     engine.shutdown()?;
     print_route(style, &result);
     println!();

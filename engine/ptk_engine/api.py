@@ -131,6 +131,14 @@ class Context:
             return default
         return v.strip().lower() in ("1", "true", "yes", "on")
 
+    def art(self, kind: str) -> Path | None:
+        """The project's ``icon`` or ``poster`` image (chosen by the user), if any."""
+        rel = (self.manifest.get("game") or {}).get(kind)
+        if not rel or not self.project:
+            return None
+        p = self.project / rel
+        return p if p.is_file() else None
+
     # -- project recipes (what an import plugin learned) -------------------
 
     def recipe(self, name: str) -> dict | None:

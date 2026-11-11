@@ -39,21 +39,20 @@ pub enum View {
     Settings,
     Overview,
     Scan,
-    Options,
     Export,
 }
 
 impl View {
-    pub const ALL: [View; 7] = [
+    pub const ALL: [View; 6] = [
         View::Projects,
         View::Marketplace,
         View::Settings,
         View::Overview,
         View::Scan,
-        View::Options,
         View::Export,
     ];
-    pub const WORKSPACE: [View; 4] = [View::Overview, View::Scan, View::Options, View::Export];
+    /// The open game's pages. Its advanced options live on the Game page.
+    pub const WORKSPACE: [View; 3] = [View::Overview, View::Scan, View::Export];
 
     pub fn icon(self) -> &'static str {
         match self {
@@ -62,7 +61,6 @@ impl View {
             View::Settings => "🔧",
             View::Overview => "🏠",
             View::Scan => "🔍",
-            View::Options => "⚙",
             View::Export => "📦",
         }
     }
@@ -72,9 +70,8 @@ impl View {
             View::Projects => "Projects",
             View::Marketplace => "Marketplace",
             View::Settings => "Settings",
-            View::Overview => "Overview",
+            View::Overview => "Game",
             View::Scan => "Scan",
-            View::Options => "Options",
             View::Export => "Export",
         }
     }
@@ -83,7 +80,7 @@ impl View {
         let s = s.to_ascii_lowercase();
         let alias = match s.as_str() {
             "home" | "welcome" => Some(View::Projects),
-            "project" => Some(View::Overview),
+            "project" | "overview" | "options" => Some(View::Overview),
             "share" => Some(View::Export),
             "plugins" | "market" => Some(View::Marketplace),
             "doctor" | "targets" | "about" => Some(View::Settings),
@@ -100,6 +97,7 @@ impl View {
 /// Sub-pages of Settings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingsTab {
+    Defaults,
     Environment,
     Targets,
     About,
@@ -128,6 +126,8 @@ pub struct ProjectRow {
     pub name: String,
     pub title: Option<String>,
     pub engine: Option<String>,
+    /// Its icon: chosen art, or the game's own icon on this computer.
+    pub icon: Option<PathBuf>,
     pub modified: Option<std::time::SystemTime>,
     pub missing: bool,
 }
@@ -137,6 +137,7 @@ impl ProjectRow {
         match Manifest::load(path) {
             Ok(m) => ProjectRow {
                 path: path.to_owned(),
+                icon: ptk_core::art::resolve(path, &m, ptk_core::art::ArtKind::Icon),
                 name: m.name,
                 title: m.game.title,
                 engine: m.game.engine,
@@ -147,6 +148,7 @@ impl ProjectRow {
             },
             Err(_) => ProjectRow {
                 path: path.to_owned(),
+                icon: None,
                 name: "Missing project".into(),
                 title: None,
                 engine: None,
@@ -254,6 +256,8 @@ pub enum Msg {
     /// Progress of a running plugin: fraction (if known) and a status line.
     PluginProgress(Option<f64>, String),
     Exported(Vec<(String, Result<RunResult, String>)>),
+    /// A marketplace poster downloaded into the cache (by URL).
+    Poster(String, Result<PathBuf, String>),
 }
 
 pub enum Downloaded {
@@ -341,6 +345,13 @@ pub struct App {
     pub import_result: Option<Result<RunResult, String>>,
     /// The local web server behind "Play in browser".
     pub server: Option<ptk_core::serve::Server>,
+    /// App-wide defaults (Settings → Defaults) and the saved copy.
+    pub app_settings: ptk_core::settings::AppSettings,
+    pub app_settings_saved: ptk_core::settings::AppSettings,
+    /// Marketplace posters by URL: `None` while downloading or if it failed.
+    pub posters: std::collections::HashMap<String, Option<PathBuf>>,
+    /// Decoded icons and posters, by file.
+    pub images: std::collections::HashMap<PathBuf, Option<egui::TextureHandle>>,
     pub toast: Option<(String, ToastKind, Instant)>,
     tx: Sender<Msg>,
     rx: Receiver<Msg>,
@@ -405,7 +416,7 @@ impl App {
             plugin_kind_export: false,
             plugin_validation: None,
             pending: None,
-            settings_tab: SettingsTab::Environment,
+            settings_tab: SettingsTab::Defaults,
             market_tab: MarketTab::Browse,
             rows: Vec::new(),
             selected: None,
@@ -427,6 +438,10 @@ impl App {
             export_results: Vec::new(),
             import_result: None,
             server: None,
+            app_settings: ptk_core::settings::AppSettings::load(),
+            app_settings_saved: ptk_core::settings::AppSettings::load(),
+            images: Default::default(),
+            posters: Default::default(),
             toast: None,
             tx,
             rx,
@@ -568,10 +583,7 @@ impl App {
             );
         }
         let title = Some(self.new_title.trim().to_owned()).filter(|t| !t.is_empty());
-        let opts = ptk_core::project::InitOptions {
-            title,
-            ..Default::default()
-        };
+        let opts = ptk_core::project::InitOptions::with_defaults(title);
         match ptk_core::project::init(&dir, opts, &self.registry) {
             Ok(m) => {
                 self.notify(format!("Created project {}", m.name), ToastKind::Ok);
@@ -848,10 +860,7 @@ impl App {
                 if !project.join(MANIFEST_FILE).exists() {
                     ptk_core::project::init(
                         &project,
-                        ptk_core::project::InitOptions {
-                            title: Some(prepared.title.clone()),
-                            ..Default::default()
-                        },
+                        ptk_core::project::InitOptions::with_defaults(Some(prepared.title.clone())),
                         &registry,
                     )?;
                 }
@@ -859,12 +868,18 @@ impl App {
                 if prepared.extracted.is_some() {
                     convert::LocalState::remember_game(&project, &prepared.game, Some(&build))?;
                 }
-                let plugin = convert::import(&mut engine, &project, &prepared.game, &mut |e| {
-                    if let Event::Progress { fraction, message } = e {
-                        let _ = tx.send(Msg::PluginProgress(fraction, message));
-                        repaint.request_repaint();
-                    }
-                })
+                let plugin = convert::import(
+                    &mut engine,
+                    &project,
+                    &prepared.game,
+                    Some(&prepared.title),
+                    &mut |e| {
+                        if let Event::Progress { fraction, message } = e {
+                            let _ = tx.send(Msg::PluginProgress(fraction, message));
+                            repaint.request_repaint();
+                        }
+                    },
+                )
                 .map_err(|e| e.to_string())
                 .transpose();
                 let _ = engine.shutdown();
@@ -928,6 +943,96 @@ impl App {
         });
     }
 
+    /// An icon or poster as a texture (decoded once, scaled to 512 px).
+    pub fn image(&mut self, ctx: &egui::Context, path: &Path) -> Option<egui::TextureHandle> {
+        if let Some(t) = self.images.get(path) {
+            return t.clone();
+        }
+        let t = std::fs::read(path)
+            .ok()
+            .and_then(|b| image::load_from_memory(&b).ok())
+            .map(|img| {
+                let img = img.thumbnail(512, 512).to_rgba8();
+                let size = [img.width() as usize, img.height() as usize];
+                ctx.load_texture(
+                    path.display().to_string(),
+                    egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw()),
+                    egui::TextureOptions::LINEAR,
+                )
+            });
+        self.images.insert(path.to_owned(), t.clone());
+        t
+    }
+
+    /// A marketplace poster, downloaded in the background the first time.
+    pub fn poster(&mut self, ctx: &egui::Context, url: &str) -> Option<egui::TextureHandle> {
+        match self.posters.get(url) {
+            Some(Some(path)) => {
+                let path = path.clone();
+                self.image(ctx, &path)
+            }
+            Some(None) => None,
+            None => {
+                self.posters.insert(url.to_owned(), None);
+                let (tx, url, ctx) = (self.tx.clone(), url.to_owned(), ctx.clone());
+                std::thread::spawn(move || {
+                    let r = ptk_core::market::fetch_poster(&url).map_err(|e| e.to_string());
+                    let _ = tx.send(Msg::Poster(url, r));
+                    ctx.request_repaint();
+                });
+                None
+            }
+        }
+    }
+
+    /// Lets you pick an image as the open project's icon or poster.
+    pub fn choose_art(&mut self, kind: ptk_core::art::ArtKind) {
+        let Some(dir) = self.project.as_ref().map(|p| p.dir.clone()) else {
+            return;
+        };
+        let Some(file) = rfd::FileDialog::new()
+            .set_title(format!("Choose the {}", kind.name()))
+            .add_filter("Image", ptk_core::art::EXTENSIONS)
+            .pick_file()
+        else {
+            return;
+        };
+        self.set_art(&dir, kind, Some(&file));
+    }
+
+    /// Sets (or with `None`, removes) a project's icon or poster.
+    pub fn set_art(&mut self, dir: &Path, kind: ptk_core::art::ArtKind, file: Option<&Path>) {
+        let r = match file {
+            Some(f) => ptk_core::art::set(dir, kind, f).map(|_| ()),
+            None => ptk_core::art::clear(dir, kind),
+        };
+        match r {
+            Ok(()) => {
+                self.images.clear();
+                // Keep unsaved edits: only the art fields come from disk.
+                let saved = Manifest::load(dir).ok();
+                if let (Some(p), Some(m)) = (self.project.as_mut(), saved) {
+                    p.manifest.game.icon = m.game.icon.clone();
+                    p.manifest.game.poster = m.game.poster.clone();
+                    p.saved.game.icon = m.game.icon;
+                    p.saved.game.poster = m.game.poster;
+                }
+                self.refresh_rows();
+            }
+            Err(e) => self.notify(e.to_string(), ToastKind::Error),
+        }
+    }
+
+    pub fn save_app_settings(&mut self) {
+        match self.app_settings.save() {
+            Ok(()) => {
+                self.app_settings_saved = self.app_settings.clone();
+                self.notify("Defaults saved".into(), ToastKind::Ok);
+            }
+            Err(e) => self.notify(e.to_string(), ToastKind::Error),
+        }
+    }
+
     /// Serves a web build on this computer and opens it in the browser.
     pub fn play_in_browser(&mut self, dir: &Path) {
         self.server = None;
@@ -955,7 +1060,16 @@ impl App {
             let run = || -> ptk_core::Result<Downloaded> {
                 let path = ptk_core::market::download(&entry)?;
                 if entry.kind == EntryKind::Project {
-                    return Ok(Downloaded::Project(path));
+                    // A port is a project: unpack it next to your others.
+                    let root = ptk_core::settings::AppSettings::load().projects_dir();
+                    let mut dir = root.join(&entry.id);
+                    let mut n = 2;
+                    while dir.exists() {
+                        dir = root.join(format!("{}-{n}", entry.id));
+                        n += 1;
+                    }
+                    ptk_core::pack::unpack(&path, &dir)?;
+                    return Ok(Downloaded::Project(dir));
                 }
                 let mut e = EngineClient::start()?;
                 let pending = if entry.kind == EntryKind::Sdk {
@@ -1043,12 +1157,18 @@ impl App {
     /// Applies finished job results.
     pub fn poll(&mut self, ctx: &egui::Context) {
         while let Ok(msg) = self.rx.try_recv() {
-            if !matches!(msg, Msg::ScanProgress(_) | Msg::PluginProgress(..)) {
+            if !matches!(
+                msg,
+                Msg::ScanProgress(_) | Msg::PluginProgress(..) | Msg::Poster(..)
+            ) {
                 self.busy = None;
             }
             match msg {
                 Msg::ScanProgress(n) => self.scan_progress = Some(n),
                 Msg::PluginProgress(f, text) => self.plugin_progress = Some((f, text)),
+                Msg::Poster(url, r) => {
+                    self.posters.insert(url, r.ok());
+                }
                 Msg::Exported(results) => {
                     self.plugin_progress = None;
                     let ok = results.iter().filter(|(_, r)| r.is_ok()).count();
@@ -1137,11 +1257,12 @@ impl App {
                 }
                 Msg::Downloaded(r) => match r {
                     Ok(Downloaded::Install(p)) => self.pending = Some(*p),
-                    Ok(Downloaded::Project(path)) => {
-                        self.unpack_input = path.display().to_string();
-                        self.view = View::Export;
+                    Ok(Downloaded::Project(dir)) => {
+                        self.open_project(&dir);
+                        self.view = View::Scan;
                         self.notify(
-                            "Downloaded. Choose a folder and press Unpack.".into(),
+                            "Got the port. Now choose your own copy of the game and scan it: the port checks it against its hashes."
+                                .into(),
                             ToastKind::Ok,
                         );
                     }
@@ -1891,10 +2012,8 @@ impl App {
 
 /// Default folder for a project imported from a game build.
 pub fn default_project_dir(title: &str) -> PathBuf {
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."));
-    home.join("Porting Toolkit")
+    ptk_core::settings::AppSettings::load()
+        .projects_dir()
         .join(format!("{}-port", ptk_core::manifest::slugify(title)))
 }
 
