@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! ptk-gui [--view NAME] [--project DIR] [--game DIR] [--run]
-//!         [--screenshot FILE.png] [--smoke] [--size WxH]
+//!         [--screenshot FILE.png] [--scroll-bottom] [--smoke] [--size WxH]
 //! ```
 //!
 //! `--run` starts the view's job right away (scan, doctor, plugin list,
@@ -21,7 +21,7 @@ use eframe::egui;
 
 use app::{App, Config, View};
 
-const USAGE: &str = "usage: ptk-gui [--view home|project|scan|options|share|plugins|targets|doctor|about] [--project DIR] [--game DIR] [--run] [--screenshot FILE.png] [--smoke] [--size WxH]";
+const USAGE: &str = "usage: ptk-gui [--view home|project|scan|options|share|plugins|targets|doctor|about] [--project DIR] [--game DIR] [--run] [--screenshot FILE.png] [--scroll-bottom] [--smoke] [--size WxH]";
 
 fn parse_args(args: impl Iterator<Item = String>) -> Result<(Config, [f32; 2]), String> {
     let mut config = Config::default();
@@ -46,6 +46,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<(Config, [f32; 2]), 
                 ];
             }
             "--run" => config.auto_run = true,
+            "--scroll-bottom" => config.scroll_bottom = true,
             "--smoke" => config.smoke = true,
             "-h" | "--help" => return Err(USAGE.into()),
             other => return Err(format!("unknown argument {other:?}\n{USAGE}")),

@@ -50,6 +50,44 @@ fn handshake_and_shared_categories() {
     ] {
         assert!(e.info.engines.iter().any(|x| x == engine_id), "{engine_id}");
     }
+    // Every format a built-in target prefers can be encoded (GPU texture
+    // formats need an engine's own texture pipeline, so they are exempt).
+    for t in ptk_core::targets::TargetRegistry::builtin().iter() {
+        for cat in ["textures", "audio", "video"] {
+            for f in t.media.for_category(cat) {
+                if ptk_core::manifest::GPU_TEXTURES.contains(&f.as_str()) {
+                    continue;
+                }
+                assert!(e.info.codecs.contains(f), "{}: no encoder for {f}", t.id);
+            }
+        }
+    }
+    e.shutdown().unwrap();
+}
+
+#[test]
+fn tools_status_over_rpc() {
+    let mut e = engine();
+    let dir = tempfile::tempdir().unwrap();
+    let status: Value = e
+        .call("tools.status", json!({"tools_dir": dir.path()}))
+        .unwrap();
+    let ids: Vec<&str> = status["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["id"].as_str().unwrap())
+        .collect();
+    for id in ["ffmpeg", "cwebp", "oxipng"] {
+        assert!(ids.contains(&id), "{ids:?}");
+    }
+    let err = e
+        .call(
+            "tools.install",
+            json!({"id": "nope", "tools_dir": dir.path()}),
+        )
+        .unwrap_err();
+    assert!(err.to_string().contains("unknown tool"), "{err}");
     e.shutdown().unwrap();
 }
 

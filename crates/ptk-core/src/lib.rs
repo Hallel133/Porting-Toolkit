@@ -35,6 +35,7 @@ pub mod sdk;
 pub mod serve;
 pub mod settings;
 pub mod targets;
+pub mod tools;
 pub mod verify;
 
 pub use error::{Error, Result};

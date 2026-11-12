@@ -100,6 +100,10 @@ def run_plugin(params: dict, notify: Callable[[str, dict], None]) -> dict:
     folders = {k: str(Path(v).expanduser().resolve()) for k, v in (params.get("folders") or {}).items() if v}
     folders["$CACHE"] = str(cache_root / info["id"])
     folders["$TEMP"] = str(temp)
+    # Shared by every plugin and owned by the engine: tool downloads and
+    # re-encoded assets (see ptk_engine.tools and ptk_engine.media).
+    folders["$TOOLS"] = str(cache_root / "tools")
+    folders["$MEDIA"] = str(cache_root / "media")
     if "$OUTPUT" in folders:
         Path(folders["$OUTPUT"]).mkdir(parents=True, exist_ok=True)
 

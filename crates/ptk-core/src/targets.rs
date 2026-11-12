@@ -14,7 +14,15 @@
 //! arch = "riscv64"
 //! status = "experimental"
 //! export_backend = "nova-export"
+//!
+//! [target.media]          # what the platform plays best, preferred first
+//! textures = ["astc"]
+//! audio = ["opus", "vorbis"]
+//! video = ["h264"]
 //! ```
+//!
+//! The `media` lists decide what "Automatic" means in a project's advanced
+//! options: the first entry the game's engine can load is used.
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -53,6 +61,41 @@ pub enum TargetSource {
     File(PathBuf),
 }
 
+/// Formats a platform handles best, in order of preference. Ids are the
+/// ones in [`crate::category::formats`].
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MediaCaps {
+    /// GPU texture formats (or image formats for the web).
+    #[serde(default)]
+    pub textures: Vec<String>,
+    #[serde(default)]
+    pub audio: Vec<String>,
+    #[serde(default)]
+    pub video: Vec<String>,
+}
+
+impl MediaCaps {
+    fn of(textures: &[&str], audio: &[&str], video: &[&str]) -> Self {
+        let v = |l: &[&str]| l.iter().map(|s| s.to_string()).collect();
+        MediaCaps {
+            textures: v(textures),
+            audio: v(audio),
+            video: v(video),
+        }
+    }
+
+    /// The preference list for an asset category (empty when the target
+    /// says nothing about it).
+    pub fn for_category(&self, category: &str) -> &[String] {
+        match category {
+            "textures" => &self.textures,
+            "audio" => &self.audio,
+            "video" => &self.video,
+            _ => &[],
+        }
+    }
+}
+
 /// One platform.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Target {
@@ -66,6 +109,9 @@ pub struct Target {
     /// Plugin id of the export plugin that builds for this target.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub export_backend: Option<String>,
+    /// Preferred formats, used to resolve "Automatic" options.
+    #[serde(default)]
+    pub media: MediaCaps,
     #[serde(skip_deserializing, default)]
     pub source: TargetSource,
 }
@@ -100,6 +146,20 @@ pub struct TargetRegistry {
 }
 
 fn builtin(id: &str, name: &str, os: &str, arch: &str, status: TargetStatus, desc: &str) -> Target {
+    let media = match id {
+        "macos-arm64" => MediaCaps::of(
+            &["astc", "bc7"],
+            &["aac", "opus", "vorbis"],
+            &["hevc", "h264"],
+        ),
+        "macos-x64" => MediaCaps::of(&["bc7"], &["aac", "opus", "vorbis"], &["h264", "hevc"]),
+        "web" => MediaCaps::of(
+            &["webp", "png"],
+            &["opus", "vorbis", "aac"],
+            &["vp9", "h264"],
+        ),
+        _ => MediaCaps::of(&["bc7"], &["opus", "vorbis"], &["vp9", "av1", "h264"]),
+    };
     Target {
         id: id.into(),
         name: name.into(),
@@ -108,6 +168,7 @@ fn builtin(id: &str, name: &str, os: &str, arch: &str, status: TargetStatus, des
         status,
         description: desc.into(),
         export_backend: None,
+        media,
         source: TargetSource::Builtin,
     }
 }
@@ -289,6 +350,10 @@ os = "nova"
 arch = "riscv64"
 status = "experimental"
 export_backend = "nova-export"
+
+[target.media]
+textures = ["astc"]
+audio = ["opus"]
 "#,
         )
         .unwrap();
@@ -298,7 +363,30 @@ export_backend = "nova-export"
         assert_eq!(nova.status, TargetStatus::Experimental);
         assert_eq!(nova.export_backend.as_deref(), Some("nova-export"));
         assert!(matches!(nova.source, TargetSource::File(_)));
+        assert_eq!(nova.media.textures, ["astc"]);
+        assert_eq!(nova.media.for_category("audio"), ["opus"]);
+        assert!(nova.media.video.is_empty());
         assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn builtins_list_known_formats() {
+        let reg = TargetRegistry::builtin();
+        for t in reg.iter() {
+            for cat in ["textures", "audio", "video"] {
+                let list = t.media.for_category(cat);
+                assert!(!list.is_empty(), "{} has no {cat} formats", t.id);
+                for f in list {
+                    assert!(
+                        crate::category::is_format(cat, f),
+                        "{}: {f} is not a {cat} format",
+                        t.id
+                    );
+                }
+            }
+        }
+        assert_eq!(reg.get("web").unwrap().media.audio[0], "opus");
+        assert_eq!(reg.get("macos-arm64").unwrap().media.textures[0], "astc");
     }
 
     #[test]

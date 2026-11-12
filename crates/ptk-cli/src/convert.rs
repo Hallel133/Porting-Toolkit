@@ -5,7 +5,9 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::bail;
-use ptk_core::convert::{self, Event, ExportOptions, RunResult};
+use ptk_core::convert::{
+    self, AssetReport, AssetsMode, Event, ExportOptions, RunResult, human_size,
+};
 use ptk_core::engine::EngineClient;
 use ptk_core::manifest::Manifest;
 
@@ -83,6 +85,41 @@ fn print_result(style: &Style, r: &RunResult) {
     for n in &r.notes {
         println!("  {n}");
     }
+    if let Some(a) = &r.assets {
+        print_assets(style, a);
+    }
+}
+
+pub fn print_assets(style: &Style, a: &AssetReport) {
+    let about = if a.estimated { "about " } else { "" };
+    println!(
+        "  {} {} → {about}{} ({about}{} saved, {})",
+        style.bold("Assets:"),
+        human_size(a.before),
+        human_size(a.after),
+        human_size(a.saved()),
+        a.profile_name
+    );
+    for (cat, c) in &a.categories {
+        let codecs: Vec<String> = c.codecs.iter().map(|(k, v)| format!("{k} ×{v}")).collect();
+        println!(
+            "    {:<9} {:>4} {}, {} → {about}{}  {}{}",
+            cat,
+            c.files,
+            if c.files == 1 { "file" } else { "files" },
+            human_size(c.before),
+            human_size(c.after),
+            style.dim(codecs.join(", ")),
+            if c.failed > 0 {
+                format!("  {} failed (kept)", c.failed)
+            } else {
+                String::new()
+            }
+        );
+        for n in &c.notes {
+            println!("      {}", style.dim(n));
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -96,6 +133,7 @@ pub fn export(
     set: Vec<String>,
     json: bool,
     open: bool,
+    assets: AssetsMode,
 ) -> anyhow::Result<ExitCode> {
     let manifest = Manifest::load(project)?;
     let targets = if targets.is_empty() {
@@ -111,13 +149,19 @@ pub fn export(
         output,
         plugin,
         settings: convert::parse_settings(&set)?,
+        assets,
     };
     let mut engine = EngineClient::start()?;
     let mut results = Vec::new();
     let mut failed = false;
     for t in &targets {
         if !json {
-            println!("{} {}", style.bold("Exporting for"), style.cyan(t));
+            let verb = if assets == AssetsMode::Plan {
+                "Estimating for"
+            } else {
+                "Exporting for"
+            };
+            println!("{} {}", style.bold(verb), style.cyan(t));
         }
         let mut rep = Reporter::new(style);
         let r = convert::export(&mut engine, project, t, &opts, &mut |e| {
@@ -260,4 +304,61 @@ pub fn art(
         println!("  {:<7} {shown}", kind.name());
     }
     Ok(ExitCode::SUCCESS)
+}
+
+pub fn tools(style: &Style, action: crate::ToolsAction) -> anyhow::Result<ExitCode> {
+    let dir = ptk_core::tools::tools_dir();
+    let mut engine = EngineClient::start()?;
+    match action {
+        crate::ToolsAction::List { json } => {
+            let status = ptk_core::tools::status(&mut engine)?;
+            engine.shutdown()?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&status)?);
+                return Ok(ExitCode::SUCCESS);
+            }
+            println!(
+                "{} {}",
+                style.bold("Compression tools"),
+                style.dim(format!("({})", status.platform))
+            );
+            for t in &status.tools {
+                match &t.found {
+                    Some(f) => println!(
+                        "{} {:<10} {} {}",
+                        style.ok(),
+                        t.id,
+                        f.version.as_deref().unwrap_or(""),
+                        style.dim(format!("{} ({})", f.path, f.source))
+                    ),
+                    None => println!(
+                        "{} {:<10} {}",
+                        style.warn(),
+                        t.id,
+                        style.dim(format!(
+                            "not found: {}{}",
+                            t.purpose,
+                            if t.hint.is_empty() {
+                                String::new()
+                            } else {
+                                format!(" ({})", t.hint)
+                            }
+                        ))
+                    ),
+                }
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        crate::ToolsAction::Install { id } => {
+            let found = ptk_core::tools::install(&mut engine, &id, &dir)?;
+            engine.shutdown()?;
+            println!(
+                "{} {id} {} {}",
+                style.ok(),
+                found.version.as_deref().unwrap_or(""),
+                style.dim(found.path)
+            );
+            Ok(ExitCode::SUCCESS)
+        }
+    }
 }

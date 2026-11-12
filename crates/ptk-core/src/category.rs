@@ -102,6 +102,30 @@ pub fn category_ids() -> Vec<&'static str> {
 
 /// Output formats ("algorithms") offered for recompressing a category,
 /// first = the usual choice. Empty: the category has no format choice.
+/// The quality used when an option leaves it unset (1-100). Matches
+/// `DEFAULT_QUALITY` in `engine/ptk_engine/media/encoders.py`; PNG stays
+/// lossless unless a quality is set.
+pub fn default_quality(category: &str) -> u8 {
+    match category {
+        "textures" => 80,
+        _ => 60,
+    }
+}
+
+/// True when `format` is one of [`formats`] for the category.
+pub fn is_format(category: &str, format: &str) -> bool {
+    formats(category).iter().any(|(id, _)| *id == format)
+}
+
+/// The display name of a format id, or the id itself.
+pub fn format_name(category: &str, format: &str) -> String {
+    formats(category)
+        .iter()
+        .find(|(id, _)| *id == format)
+        .map(|(_, name)| name.to_string())
+        .unwrap_or_else(|| format.to_string())
+}
+
 pub fn formats(id: &str) -> &'static [(&'static str, &'static str)] {
     match id {
         "textures" => &[

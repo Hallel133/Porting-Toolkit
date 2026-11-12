@@ -241,11 +241,13 @@ pub enum Msg {
     Unpacked(Result<UnpackReport, String>),
     Verified(Result<VerifyReport, String>),
     Doctor(Vec<Check>),
+    /// A compression tool was installed (then the checks ran again).
+    ToolInstalled(Result<(String, Vec<Check>), String>),
     Plugins(Result<Vec<ListedPlugin>, String>),
     Validated(Result<Validation, String>),
     PluginCreated(Result<CreatedPlugin, String>),
     Installed(Result<(PathBuf, usize), String>),
-    Imported(Result<ImportDone, String>),
+    Imported(Result<Box<ImportDone>, String>),
     Market(Result<(MarketIndex, Vec<String>), String>),
     /// A marketplace download, ready for consent (or a project to unpack).
     Downloaded(Result<Downloaded, String>),
@@ -282,6 +284,8 @@ pub struct Config {
     /// Start the job of the first view (scan, doctor, plugin list).
     pub auto_run: bool,
     pub screenshot: Option<PathBuf>,
+    /// Keep the page scrolled to its end (screenshots of long pages).
+    pub scroll_bottom: bool,
     pub smoke: bool,
     /// Install the native menu bar (macOS; never in tests).
     pub native_menu: bool,
@@ -364,6 +368,7 @@ pub struct App {
     screenshot_requested: bool,
     smoke: bool,
     auto_run: bool,
+    scroll_bottom: bool,
 }
 
 impl App {
@@ -453,6 +458,7 @@ impl App {
             screenshot_requested: false,
             smoke: config.smoke,
             auto_run: config.auto_run,
+            scroll_bottom: config.scroll_bottom,
         };
         let view = app.view;
         if let Some(p) = config.project {
@@ -765,6 +771,25 @@ impl App {
         );
     }
 
+    /// Downloads the pinned build of a compression tool, then re-runs the checks.
+    pub fn install_tool(&mut self, ctx: &egui::Context, id: String) {
+        self.spawn(ctx, "Installing a tool", move |_| {
+            let r = EngineClient::start()
+                .map_err(|e| e.to_string())
+                .and_then(|mut engine| {
+                    let r =
+                        ptk_core::tools::install(&mut engine, &id, &ptk_core::tools::tools_dir())
+                            .map_err(|e| e.to_string());
+                    let _ = engine.shutdown();
+                    r
+                });
+            Msg::ToolInstalled(
+                r.map(|_| (id.clone(), ptk_core::doctor::run(false)))
+                    .map_err(|e| format!("{id}: {e}")),
+            )
+        });
+    }
+
     pub fn refresh_plugins(&mut self, ctx: &egui::Context) {
         self.spawn(ctx, "Loading plugins", move |_| {
             let r = EngineClient::start()
@@ -885,12 +910,17 @@ impl App {
                 let _ = engine.shutdown();
                 Ok((project, scan, plugin))
             };
-            Msg::Imported(run().map_err(|e| e.to_string()))
+            Msg::Imported(run().map(Box::new).map_err(|e| e.to_string()))
         });
     }
 
     /// Exports the open project for `targets`, one after the other.
-    pub fn export_targets(&mut self, ctx: &egui::Context, targets: Vec<String>) {
+    pub fn export_targets(
+        &mut self,
+        ctx: &egui::Context,
+        targets: Vec<String>,
+        assets: convert::AssetsMode,
+    ) {
         let Some(p) = &self.project else { return };
         if targets.is_empty() {
             return self.notify("Choose a target in Overview first".into(), ToastKind::Error);
@@ -910,6 +940,7 @@ impl App {
             output: Some(expand_tilde(self.export_output.trim()))
                 .filter(|o| !o.as_os_str().is_empty()),
             settings,
+            assets,
             ..Default::default()
         };
         let dir = p.dir.clone();
@@ -1211,6 +1242,13 @@ impl App {
                 Msg::Unpacked(r) => self.unpack_result = Some(r),
                 Msg::Verified(r) => self.verify_result = Some(r),
                 Msg::Doctor(checks) => self.doctor = Some(checks),
+                Msg::ToolInstalled(r) => match r {
+                    Ok((id, checks)) => {
+                        self.doctor = Some(checks);
+                        self.notify(format!("Installed {id}"), ToastKind::Ok);
+                    }
+                    Err(e) => self.notify(e, ToastKind::Error),
+                },
                 Msg::Plugins(r) => self.plugins = Some(r),
                 Msg::Validated(r) => self.plugin_validation = Some(r),
                 Msg::PluginCreated(r) => match r {
@@ -1233,7 +1271,7 @@ impl App {
                     }
                     Err(e) => self.notify(e, ToastKind::Error),
                 },
-                Msg::Imported(r) => match r {
+                Msg::Imported(r) => match r.map(|b| *b) {
                     Ok((dir, scan, plugin)) => {
                         self.plugin_progress = None;
                         self.game_input = scan.path.clone();
@@ -1341,7 +1379,7 @@ impl App {
                     .as_ref()
                     .map(|p| p.saved.targets.clone())
                     .unwrap_or_default();
-                self.export_targets(ctx, targets)
+                self.export_targets(ctx, targets, convert::AssetsMode::Apply)
             }
             _ => {}
         }
@@ -1659,6 +1697,9 @@ impl App {
                                 ui.set_max_width(ui.available_width());
                                 self.page(ui);
                             });
+                        if self.scroll_bottom {
+                            ui.scroll_to_cursor(Some(Align::BOTTOM));
+                        }
                     });
             });
         self.import_modal(ctx);
@@ -2308,7 +2349,7 @@ mod tests {
             expand_tilde("~/x"),
             PathBuf::from(std::env::var("HOME").unwrap()).join("x")
         );
-        app.export_targets(&ctx, vec!["web".into()]);
+        app.export_targets(&ctx, vec!["web".into()], convert::AssetsMode::Apply);
         wait(&mut app, &ctx);
         let (target, r) = &app.export_results[0];
         assert_eq!(target, "web");

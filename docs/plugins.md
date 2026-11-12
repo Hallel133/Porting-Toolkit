@@ -87,7 +87,7 @@ class Plugin:
 | `ctx.` | |
 |---|---|
 | `game`, `project`, `output`, `cache`, `temp` | Folders (`Path`); `output` is `<chosen>/<target id>` |
-| `kind`, `engine`, `target` | `target` is `{id, name, os, arch}` for exports |
+| `kind`, `engine`, `target` | `target` is `{id, name, os, arch, media}` for exports; `media` lists the formats the platform prefers |
 | `manifest`, `title` | The project's `ptk.json` (a dict) and the game title |
 | `settings`, `setting(k, default)`, `flag(k, default)` | `--set key=value` from the command line or the app |
 | `recipe(name)`, `save_recipe(name, dict)` | `recipes/<name>.json` in the project |
@@ -96,9 +96,26 @@ class Plugin:
 | `write_text`, `write_bytes`, `copy_tree`, `clean_dir`, `check_write` | File helpers that check `[permissions] write` |
 | `download(url, sha256=None)`, `remote_zip(url)` | https only, hosts from `[permissions] network`; uses the system `curl` |
 | `run(args)`, `which(name)` | Start programs (needs `subprocess = true`) |
+| `process_assets(root, profile)` | Applies the project's advanced options to the files under `root` (your copy in `output`) and returns a report for the result's `assets` key; `profile` is the engine's rules (`html5`, `rpgmaker-mv`, `rpgmaker-mz`, `renpy`, `love`, `rgss`, `godot`) |
+| `assets_mode` | `apply` (default), `plan` (only estimate: build nothing, return the report) or `off` |
+| `tool(id)`, `toolbox` | Path of a compression tool (`ffmpeg`, `cwebp`, `oxipng`, ...): installed first, then a pinned download |
+| `zip_dir(src, dest, executables)` | A reproducible zip (sorted, 0755 for programs) |
 
 Result keys: `outputs` (paths), `summary`, `notes`, `warnings`, `open` (the
-main file, e.g. the `.app`), `serve` (a folder to serve for web builds).
+main file, e.g. the `.app`), `serve` (a folder to serve for web builds),
+`assets` (the report of `process_assets`).
+
+### Advanced options in an export plugin
+
+Copy the game into `ctx.output` first, then call
+`ctx.process_assets(copy, profile)`: it changes files in place, so it must
+never get `ctx.game`. In `plan` mode (`ptk assets`, **Estimate savings**)
+return early with `{"summary": ..., "assets": ctx.process_assets(game_root,
+profile)}`: plan mode only reads. The pipeline (`engine/ptk_engine/media/`)
+keeps file names, checks every result (size, dimensions, transparency,
+length, loop tags) and caches encodes in `<data>/cache/media/`. It runs the
+compression tools itself, so the plugin needs no `subprocess` permission for
+it.
 Import plugins may also return `title` (the game's real title) and `icon`
 (a cached image of the game's icon, kept per machine).
 
@@ -194,6 +211,9 @@ won't call it a sandbox.
 - Installed: `<data>/plugins/<id>/` (`~/Library/Application Support/PortingToolkit/plugins` on macOS).
 - `ptk plugin list` also shows `./plugins/*` in the current folder.
 - Caches (templates, compiled wrappers): `<data>/cache/<plugin id>/`.
+- Shared by every plugin and managed by the engine: `<data>/cache/tools/`
+  (pinned tool downloads, `ptk tools install`) and `<data>/cache/media/`
+  (re-encoded assets).
 
 ## Targets from SDKs
 

@@ -17,7 +17,7 @@ A community tool to manage, convert, export and import game projects between pla
 - NoVA (owner's RISC-V SoC) is out of scope until the owner's NoVA SDK exists. It plugs in via `[[target]]` TOML in `<data>/targets/` with `export_backend` = an export plugin id. Keep that path working.
 - `LICENSE` is MIT (owner's choice, 2026-11-09).
 
-## Git / release state (2026-11-11)
+## Git / release state (2026-11-12)
 - Remote `origin` = https://github.com/Hallel133/Porting-Toolkit (public; the owner created it with a one-line README). Work on `main`.
 - Phase 1 (commit 4c21302) was pushed to `origin/main` on 2026-11-09; pushing works despite the account flag.
 - The owner said their GitHub account is "flagged" (Grand-V notes: GitHub Actions is disabled for the Hallel133 account, `HTTP 422`). So `.github/workflows/ci.yml` (macos-14 + ubuntu: fmt, clippy -D warnings, cargo test, uv run pytest) has probably never run. Run the same commands locally.
@@ -25,15 +25,17 @@ A community tool to manage, convert, export and import game projects between pla
 ## Commands
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"          # cargo is not on the default PATH on the owner's Mac
-cargo test --workspace                        # 73 Rust tests, starts the real Python engine
+cargo test --workspace                        # 77 Rust tests, starts the real Python engine
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-(cd engine && uv run pytest)                  # 68 Python tests (compiles the Swift wrapper on macOS)
+(cd engine && uv run pytest)                  # 96 Python tests (+1 skipped; compiles the Swift wrapper on macOS)
+(cd engine && PTK_TOOL_TESTS=1 uv run pytest -k real)       # also runs real FFmpeg encodes
 (cd engine && PTK_GUI_TESTS=1 uv run pytest -k macos_app)   # also opens the wrapper app and checks the page loaded
 cargo run -q -p ptk-cli -- scan fixtures/games/unity-windows
 python3 tools/gen_banner.py                   # regenerate banner art (then update ptk-core/src/banner.rs + ptk-cli/tests/snapshots/banner.txt)
 cargo run -p ptk-gui                          # the desktop app
 cargo run -p ptk-gui -- --view scan --project P --game G --run --screenshot out.png   # screenshot after the job, then exits
+# add --scroll-bottom to capture the end of a long page (the window cannot be taller than the screen)
 ```
 - Tests set `PTK_HOME` to a temp folder; never let tests touch the real data folder.
 - `PTK_PYTHON` picks the interpreter (CI sets it to `engine/.venv/bin/python`); otherwise the managed env, then `python3` + `PYTHONPATH=engine`.
@@ -80,10 +82,19 @@ Owner exported Buckshot Roulette (Godot 4.6.3, a macOS `.app` with GodotSteam) t
 - Art: `ptk_core::art` (`art/icon.*`, `art/poster.*`, ≤ 8 MB, in `ptk.json` `game.icon/poster`), `art/` is now a pack dir, `ptk art` CLI, exports use it (`ctx.art`). Project rows show the icon.
 - Marketplace: kind `project` is labelled "Game port"; entries gain `game`, `poster`, `store`. Browse shows ports first as poster cards (posters cached in `<data>/cache/posters`), "Get port" unpacks into the projects folder, opens it and asks for the user's own copy (Scan). `ptk publish` of a `.ptk` writes the poster next to it and placeholders for `poster`/`store`. `~/ptk-marketplace` README updated (local commit c19825d; still no GitHub repo).
 
+## Done (2026-11-12, plan "algorithms, new platforms, more importers", phase 1)
+Owner asked to plan and design new compression algorithms for new platforms and to widen import. Owner chose: targets Windows x64 + Linux x64 and Android APK; importers Ren'Py, LÖVE, RPG Maker XP/VX/Ace (mkxp-z) and more HTML5 engines; tools "installed first, then a pinned download checked by SHA-256". The full plan (5 phases) is in `~/.claude/plans/groovy-popping-summit.md`; phase 1 is done:
+- `Target.media` (`MediaCaps {textures, audio, video}`, preference order; `[target.media]` in target TOML files). `manifest.validate`: an unknown `format` is an error; a GPU texture format (astc/bc7/etc2, `manifest::GPU_TEXTURES`) none of the targets list is a warning.
+- `engine/ptk_engine/tools.py`: registry (ffmpeg, ffprobe, cwebp, oxipng, pngquant, oggenc, afconvert), lookup `--set tool.<id>=PATH` → PATH → /opt/homebrew/bin, /usr/local/bin → `<data>/cache/tools/` → pinned download (only oxipng is pinned, from GitHub's release digests; hosts allowlisted in tools.py). RPCs `tools.status`, `tools.install`; `ptk tools [list|install ID]`; doctor lists the tools (GUI Settings → Environment has Install buttons).
+- `engine/ptk_engine/media/`: encoders (png: oxipng / pngquant / built-in re-deflate that always works; jpeg, vorbis (ffmpeg libvorbis or oggenc), opus, aac (ffmpeg or afconvert), mp3, h264/hevc/vp9/av1), profiles per engine (loose-file engines keep names and formats and are never resized; MZ and LÖVE keep `.ogg` Vorbis; Ren'Py follows the target; Godot is "kept"), checks (≥3% smaller, same size/alpha, same duration/channels/LOOPSTART tags), content cache `<data>/cache/media/` with `.skip` sentinels, `plan` mode (largest 20 files per category, extrapolated).
+- `ctx.process_assets(root, profile)`, `ctx.assets_mode`, `ctx.tool`, `ctx.zip_dir`. html5-export applies the options to its copy (web and macOS, before signing); godot-export reports "kept". `RunResult.assets` (`AssetReport`), `ExportOptions.assets` (`AssetsMode`). CLI `ptk export --assets apply|plan|off`, `ptk assets`. GUI: Estimate savings button, assets table in the Builds card, "Automatic: …" lines and greyed GPU formats in the options editor, preset "Smaller videos" replaces "Drop videos".
+- **Homebrew's FFmpeg 8 on the owner's Mac has no libvorbis**: Vorbis needs `brew install vorbis-tools` (oggenc), otherwise `.ogg` files are kept with a note. This matters for RPG Maker MZ.
+- Verified: synthetic MZ project via the CLI (title.png 592 KB → 125 KB; game folder unchanged), real FFmpeg Opus encode keeps LOOPSTART, GUI screenshots (scratchpad only: they show the scratchpad path, so docs images were not replaced).
+
 ## Next task
 1. Owner: re-export Buckshot Roulette for macOS and check the gray screen is gone and Steam features work; check the web build's loading screen. Try the Game page, Settings → Defaults, Icon & poster.
 2. Owner: try a real Godot game and a real RPG Maker MV/MZ game (`ptk import <build>` then `ptk export`, or the app's Export tab); open the Godot `.app` on the Mac (not done by Claude). Check the macOS menu bar. Create the ptk-marketplace repo (see above).
-2. Next plugins: Ren'Py (needs the Ren'Py SDK runtime), Godot C#, Windows/Linux targets (phase 4), AI-assisted advanced options; applying advanced options (recompress) is not implemented by any plugin yet.
+2. Next (plan phases 2-5): Windows/Linux exports (Godot templates side by side, NW.js for HTML5), importers (HTML5 engines, LÖVE, Ren'Py, RGSS via mkxp-z), Android APK (AXML patching, zipalign, apksigner), then Godot `.ctex` re-encoding. Owner should try `ptk assets` / Estimate savings on a real RPG Maker game and check the music still loops after `brew install vorbis-tools`.
 3. Not tested: real games (only synthetic pcks and fake HTML5 games), Godot 3 templates, threaded web builds in a browser, Electron games, Intel Macs, Linux/Windows builds (CI blocked on the account).
 
 ## Working agreement (after every change)

@@ -20,6 +20,9 @@ use crate::category::{CATEGORIES, category};
 use crate::hash::is_sha256_hex;
 use crate::targets::TargetRegistry;
 
+/// Texture formats the GPU decodes directly (as opposed to image files).
+pub const GPU_TEXTURES: &[&str] = &["astc", "bc7", "etc2"];
+
 /// File name of the manifest inside a project folder or a `.ptk` pack.
 pub const MANIFEST_FILE: &str = "ptk.json";
 
@@ -423,6 +426,23 @@ impl Manifest {
                     "options.{cat}.max_resolution must be 16-16384, not {r}"
                 ));
             }
+            if let Some(f) = &opts.format
+                && category(cat).is_some()
+                && !crate::category::is_format(cat, f)
+            {
+                let known: Vec<&str> = crate::category::formats(cat)
+                    .iter()
+                    .map(|(id, _)| *id)
+                    .collect();
+                error(if known.is_empty() {
+                    format!("options.{cat}.format: {} has no formats to pick", cat)
+                } else {
+                    format!(
+                        "options.{cat}.format must be one of {}, not {f:?}",
+                        known.join(", ")
+                    )
+                });
+            }
         }
         for (kind, art) in [("icon", &self.game.icon), ("poster", &self.game.poster)] {
             if let Some(a) = art
@@ -467,6 +487,22 @@ impl Manifest {
                     ))
                 }
                 Some(_) => {}
+            }
+            // GPU texture formats only work where the GPU decodes them.
+            if let Some(f) = opts.format.as_deref().filter(|f| GPU_TEXTURES.contains(f))
+                && cat == "textures"
+            {
+                let known: Vec<_> = self.targets.iter().filter_map(|t| targets.get(t)).collect();
+                if !known.is_empty()
+                    && !known
+                        .iter()
+                        .any(|t| t.media.textures.iter().any(|x| x == f))
+                {
+                    warning(format!(
+                        "options.textures.format {f:?} is not supported by any of this project's targets; \
+                         \"Automatic\" picks one that is"
+                    ));
+                }
             }
         }
         issues
@@ -593,6 +629,28 @@ mod tests {
         assert_eq!(errors.len(), 3, "{issues:?}");
         assert_eq!(warnings.len(), 2, "{issues:?}");
         assert!(m.check(Path::new("ptk.json"), &reg).is_err());
+    }
+
+    #[test]
+    fn format_validation() {
+        let reg = TargetRegistry::builtin();
+        let mut m = sample();
+        assert!(m.validate(&reg).is_empty(), "{:?}", m.validate(&reg));
+        // ASTC is fine on Apple Silicon, not on an Intel-only project.
+        m.targets = vec!["macos-x64".into()];
+        let issues = m.validate(&reg);
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        assert_eq!(issues[0].level, Level::Warning);
+        m.options.get_mut("textures").unwrap().format = Some("jpeg2000".into());
+        let issues = m.validate(&reg);
+        assert!(
+            issues
+                .iter()
+                .any(|i| i.level == Level::Error && i.message.contains("astc, bc7")),
+            "{issues:?}"
+        );
+        m.options.get_mut("textures").unwrap().format = Some("bc7".into());
+        assert!(m.validate(&reg).is_empty());
     }
 
     #[test]

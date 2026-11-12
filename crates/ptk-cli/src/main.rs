@@ -15,6 +15,7 @@ use std::process::ExitCode;
 use clap::builder::styling::{AnsiColor, Styles};
 use clap::{ColorChoice, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 
+use ptk_core::convert::AssetsMode;
 use style::Style;
 
 const ABOUT: &str =
@@ -146,8 +147,30 @@ enum Command {
         /// Open the result when done
         #[arg(long)]
         open: bool,
+        /// Advanced options: apply them, only estimate the savings (plan), or ignore them
+        #[arg(long, value_name = "MODE", default_value = "apply", value_parser = ["apply", "plan", "off"])]
+        assets: String,
         #[arg(long)]
         json: bool,
+    },
+    /// Estimate what the advanced options save, per target (builds nothing)
+    Assets {
+        /// Project folder
+        #[arg(short, long, default_value = ".")]
+        project: PathBuf,
+        /// Target id (repeatable; default: the project's targets)
+        #[arg(short, long = "target", value_name = "ID")]
+        targets: Vec<String>,
+        /// Game folder (default: the one the project was imported from)
+        #[arg(long)]
+        game: Option<PathBuf>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// The compression tools (FFmpeg, cwebp, oxipng, ...): list or install them
+    Tools {
+        #[command(subcommand)]
+        action: Option<ToolsAction>,
     },
     /// Set or remove the port's icon and poster (images you may share)
     Art {
@@ -192,6 +215,20 @@ enum Command {
         /// Where to write the zip (default: ./dist)
         #[arg(short, long, default_value = "dist")]
         output: PathBuf,
+    },
+}
+
+#[derive(Subcommand, Clone)]
+pub enum ToolsAction {
+    /// Show each tool: found where, or how to get it
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Download the pinned build of a tool (checked against its SHA-256)
+    Install {
+        /// Tool id, e.g. oxipng
+        id: String,
     },
 }
 
@@ -384,10 +421,40 @@ fn run(cli: Cli, style: &Style) -> anyhow::Result<ExitCode> {
             plugin,
             set,
             open,
+            assets,
             json,
         } => convert::export(
-            style, &project, targets, output, game, plugin, set, json, open,
+            style,
+            &project,
+            targets,
+            output,
+            game,
+            plugin,
+            set,
+            json,
+            open,
+            AssetsMode::parse(&assets).unwrap_or_default(),
         ),
+        Command::Assets {
+            project,
+            targets,
+            game,
+            json,
+        } => convert::export(
+            style,
+            &project,
+            targets,
+            None,
+            game,
+            None,
+            Vec::new(),
+            json,
+            false,
+            AssetsMode::Plan,
+        ),
+        Command::Tools { action } => {
+            convert::tools(style, action.unwrap_or(ToolsAction::List { json: false }))
+        }
         Command::Serve { dir, port, open } => convert::serve(style, &dir, port, open),
         Command::Art {
             project,

@@ -13,10 +13,12 @@ import platform
 import sys
 import traceback
 from collections.abc import Callable
+from pathlib import Path
 from typing import BinaryIO
 
 from . import PROTOCOL_VERSION, EngineError, __version__
 from .categories import CATEGORY_IDS
+from .media.encoders import ENCODERS
 from .plugins import list_plugins, new_plugin, validate_plugin
 from .runtime import builtin_dir, find_plugins, run_plugin
 from .scan import scan
@@ -66,6 +68,8 @@ class Server:
             "plugin.new": self.plugin_new,
             "plugin.find": self.plugin_find,
             "plugin.run": self.plugin_run,
+            "tools.status": self.tools_status,
+            "tools.install": self.tools_install,
             "shutdown": self.shutdown,
         }
 
@@ -137,6 +141,7 @@ class Server:
             "executable": sys.executable,
             "categories": CATEGORY_IDS,
             "engines": ENGINE_IDS,
+            "codecs": sorted(ENCODERS),
             "methods": sorted(self.methods),
         }
 
@@ -182,6 +187,23 @@ class Server:
         if plugin_id is not None and not isinstance(plugin_id, str):
             raise RpcError(INVALID_PARAMS, "id must be a string")
         return new_plugin(_require(params, "path"), _require(params, "kind"), plugin_id)
+
+    def tools_status(self, params: dict) -> dict:
+        from . import tools
+        d = params.get("tools_dir")
+        return {"platform": tools.platform_key(), "tools": tools.status(Path(d) if d else None)}
+
+    def tools_install(self, params: dict) -> dict:
+        from . import tools
+        tool_id = _require(params, "id")
+        if tool_id not in tools.TOOLS:
+            raise RpcError(INVALID_PARAMS, f"unknown tool {tool_id!r} (known: {', '.join(tools.TOOLS)})")
+        d = _require(params, "tools_dir")
+        try:
+            found = tools.install(tool_id, Path(d), log=lambda m: self.notify("log", {"level": "info", "message": m}))
+        except tools.ToolError as e:
+            raise EngineError(str(e)) from e
+        return found.to_dict()
 
     def shutdown(self, params: dict) -> dict:
         self.running = False

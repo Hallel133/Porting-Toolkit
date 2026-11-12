@@ -129,6 +129,36 @@ Godot games are refused with an explanation. Ad-hoc signed apps run on your
 Mac; to give them to others, sign and notarize them with your Apple
 Developer ID. See [docs/plugins.md](docs/plugins.md).
 
+## Advanced options: compression algorithms
+
+The advanced options are applied to the exported copy (never to your game).
+For each category set to **Recompress**, every image, sound and video the
+engine can load is re-encoded with the chosen format, or with **Automatic**:
+
+| Engine | What Automatic does |
+|---|---|
+| HTML5, RPG Maker, LÖVE, RGSS | keeps each file's format and name (the game loads files by name), only smaller: PNG (lossless, or lossy with pngquant), JPEG, WebP, Ogg Vorbis/Opus, AAC, MP3, H.264/HEVC/VP9/AV1 |
+| Ren'Py | the target's preferred codec where the file allows it (for example Opus in `.ogg`) |
+| Godot | nothing yet: imported resources inside the `.pck` are kept |
+
+Every result is checked: at least 3% smaller, same image size and
+transparency, same length and channels, and the same `LOOPSTART`/`LOOPLENGTH`
+tags (RPG Maker loops music with them). RPG Maker MZ keeps `.ogg` as Vorbis,
+because it decodes it itself. Anything that fails a check keeps its original
+bytes. Results are cached by content, so the next export is instant.
+
+```bash
+ptk assets -p space-hopper-port -t web    # estimate the savings (builds nothing)
+ptk export -p space-hopper-port --assets off   # export without the options
+ptk tools                                  # FFmpeg, cwebp, oxipng, pngquant, oggenc ...
+ptk tools install oxipng                   # pinned release, checked against its SHA-256
+```
+
+Tools come from your system first (Homebrew: `brew install ffmpeg webp
+pngquant vorbis-tools`), then from a pinned download. PNG always works: a
+built-in re-deflate keeps the pixels and needs no tool. In the app: **Export →
+Estimate savings**, and the Builds card shows the sizes before and after.
+
 ## Marketplace and SDKs
 
 **Game ports** (ready-made porting projects with a poster), plugins and SDKs
@@ -146,13 +176,15 @@ See [docs/marketplace.md](docs/marketplace.md).
 | `ptk info [project]` | Project, `ptk.json` or `.ptk`: game, targets, advanced options |
 | `ptk options [set …]` | Keep / drop / recompress, quality, max resolution per asset category |
 | `ptk targets` | Platforms (web, macos-arm64, macos-x64, windows-x64, linux-x64, + SDK targets) |
-| `ptk doctor` | Checks Xcode CLT, clang, rustup, uv; sets up the engine |
+| `ptk doctor` | Checks Xcode CLT, clang, rustup, uv and the compression tools; sets up the engine |
 | `ptk scan <game-dir>` | Engine and contents from file names only (`--json`, `--record`) |
 | `ptk pack` / `ptk unpack` | Create / check-and-extract a `.ptk` community project file |
 | `ptk verify <game-dir>` | Compare your game files with a project's recorded hashes |
 | `ptk plugin list\|new\|validate\|install` | Import/export plugins (built-in and installed) |
 | `ptk import <build>` | Project from a folder, .app, .exe, .zip, .deb or .dmg (runs the import plugin) |
-| `ptk export [-t ID]` | Build for macOS / the web with export plugins (`--set key=value`) |
+| `ptk export [-t ID]` | Build for macOS / the web with export plugins (`--set key=value`, `--assets apply\|plan\|off`) |
+| `ptk assets [-t ID]` | Estimate what the advanced options save, per target |
+| `ptk tools [list\|install ID]` | Compression tools: where each one is, or install a pinned build |
 | `ptk art --icon\|--poster <image>` | The port's icon and poster (shared in the `.ptk`, used by exports) |
 | `ptk serve <dir>` | Serve a web build on this computer, with the headers WebAssembly needs |
 | `ptk sdk new\|validate\|install` | SDKs: new platforms and their exporters |
@@ -169,7 +201,7 @@ Colors are off when output is not a terminal, with `NO_COLOR=1` or `--no-color`.
 
 1. macOS + CLI infrastructure + banner + file structure (done)
 2. Desktop GUI (egui) (done)
-3. **Import/export plugins** (now: Godot and HTML5 to macOS and the web), then smart, AI-assisted advanced options
+3. **Import/export plugins** (now: Godot and HTML5 to macOS and the web, with applied compression options), then Windows/Linux and Android exports, and Ren'Py, LÖVE and RPG Maker XP/VX/Ace imports
 4. Windows/Linux and the full community marketplace
 
 ## Documentation
@@ -236,6 +268,16 @@ MIT. See [LICENSE](LICENSE).
 
 באפליקציה: Export ואז **Export all**, ואחריו Open,‏ Play in browser או Show in Finder.
 
+### אפשרויות מתקדמות: אלגוריתמי דחיסה
+
+האפשרויות המתקדמות מוחלות על העותק המיוצא, לעולם לא על המשחק שלך. כל קטגוריה שמוגדרת ל-**Recompress** נדחסת מחדש בפורמט שבחרת, או ב-**Automatic**:
+
+- **HTML5,‏ RPG Maker,‏ LÖVE:** כל קובץ שומר על השם והפורמט שלו, כי המשחק טוען קבצים לפי שם. הוא רק נעשה קטן יותר.
+- **Ren'Py:** הפורמט שהפלטפורמה מעדיפה, למשל Opus בתוך ‎.ogg.
+- **Godot:** עדיין לא נוגעים בקבצים שבתוך ה-‎.pck.
+
+כל תוצאה נבדקת: היא חייבת להיות קטנה ב-3% לפחות, ולשמור על אותו גודל תמונה ואותה שקיפות. בסאונד ובווידאו היא חייבת לשמור על אותו אורך, אותם ערוצים ואותם תגי `LOOPSTART`. קובץ שלא עובר את הבדיקה נשאר כמו שהוא. `ptk assets` מעריך כמה נחסוך בלי לבנות כלום, ו-`ptk tools` מראה את הכלים (FFmpeg,‏ cwebp,‏ oxipng ועוד). התוכנה משתמשת קודם בכלים שמותקנים אצלך, ואם חסר כלי, היא מורידה גרסה נעולה ובודקת אותה לפי SHA-256.
+
 ### Marketplace ו-SDK
 
 **Game ports** (פרויקטי porting מוכנים עם פוסטר), תוספים ו-SDK (פלטפורמות חדשות עם ה-exporter שלהן) נמצאים באינדקס JSON ב-GitHub. port לעולם לא כולל את המשחק עצמו: כל שחקן צריך עותק משלו, והפרויקט בודק אותו לפי SHA-256. כדי לפרסם: `ptk sdk new`, ‏`ptk publish`, ואז pull request. הפרטים ב-[docs/marketplace.md](docs/marketplace.md).
@@ -244,7 +286,7 @@ MIT. See [LICENSE](LICENSE).
 
 1. ‏macOS + תשתית CLI + באנר + מבנה קבצים (הושלם)
 2. ממשק גרפי (הושלם)
-3. תוספי ייבוא/ייצוא (עכשיו: Godot ו-HTML5 ל-macOS ולווב), ואחר כך אפשרויות מתקדמות חכמות (בעזרת AI)
+3. תוספי ייבוא/ייצוא (עכשיו: Godot ו-HTML5 ל-macOS ולווב, עם דחיסה אמיתית), ואחר כך Windows,‏ Linux ו-Android, וייבוא של Ren'Py,‏ LÖVE ו-RPG Maker XP/VX/Ace
 4. ‏Windows/Linux וקהילה מלאה
 
 רישיון: MIT.

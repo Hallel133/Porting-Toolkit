@@ -7,7 +7,11 @@
   ``.icns``, and an ad-hoc signature.
 
 Settings (``--set key=value``): ``bundle_id``, ``width``, ``height``,
-``sign`` (default true).
+``sign`` (default true), ``assets`` (apply/plan/off).
+
+The project's advanced options are applied to the copy in the output
+(``ctx.process_assets``): files keep their names, so the game still finds
+them.
 """
 
 from __future__ import annotations
@@ -91,8 +95,13 @@ class Plugin:
             ctx.fail(str(e))
         title = info.get("title") if ctx.title in ("", "Game") else ctx.title
         title = title or "Game"
+        profile = info.get("flavor") if str(info.get("flavor", "")).startswith("rpgmaker") else "html5"
+        if ctx.assets_mode == "plan":
+            report = ctx.process_assets(root, profile)
+            return {"summary": "Estimated the advanced options (nothing was built)", "assets": report}
         if info.get("uses_node"):
             ctx.warn("The game uses Node.js APIs (NW.js/Electron); those parts will not work outside its desktop runtime.")
+        self.profile = profile
         if target["os"] == "web":
             out = self.web(ctx, root, info, title)
         else:
@@ -108,7 +117,9 @@ class Plugin:
         if entry != "index.html" and not (out / "index.html").exists():
             ctx.write_text(out / "index.html", REDIRECT.format(entry=html.escape(entry), title=html.escape(title)))
         ctx.write_text(out / "README-ptk.txt", WEB_README.format(title=title))
+        assets = ctx.process_assets(out, self.profile)
         return {
+            "assets": assets,
             "outputs": [str(out / "index.html")],
             "open": str(out / "index.html"),
             "serve": str(out),
@@ -171,6 +182,7 @@ class Plugin:
         height = int(ctx.setting("height") or info.get("height") or 720)
         ctx.write_text(resources / "ptk-app.json", json.dumps(
             {"entry": info.get("entry", "index.html"), "title": title, "width": width, "height": height}, indent=2))
+        assets = ctx.process_assets(resources / "app", self.profile)
         has_icon = self.icon(ctx, root, info, resources)
         bundle = ctx.setting("bundle_id") or f"org.portingtoolkit.{slug(title)}"
         version = str(ctx.manifest.get("version") or "1.0.0")
@@ -185,6 +197,7 @@ class Plugin:
             ctx.run(["codesign", "--force", "--deep", "--sign", "-", "--timestamp=none", app])
             signed = True
         return {
+            "assets": assets,
             "outputs": [str(app)],
             "open": str(app),
             "summary": f"Built {app.name} ({n} game files, {arch})",

@@ -156,6 +156,15 @@ def fill_plist(text: str, values: dict[str, str]) -> str:
 
 class Plugin:
     def run(self, ctx):
+        assets = ctx.process_assets(ctx.temp, "godot")
+        if ctx.assets_mode == "plan":
+            return {"summary": "Godot games keep their imported resources", "assets": assets}
+        result = self.build(ctx)
+        if assets:
+            result["assets"] = assets
+        return result
+
+    def build(self, ctx):
         target = ctx.target or {}
         os_ = target.get("os")
         if os_ not in ("macos", "web"):

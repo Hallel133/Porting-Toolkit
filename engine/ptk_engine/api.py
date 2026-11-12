@@ -79,8 +79,11 @@ class Context:
         self.cache = Path(folders["$CACHE"])
         self.temp = Path(folders["$TEMP"])
         self.temp.mkdir(parents=True, exist_ok=True)  # $CACHE is created when used
+        self.tools_dir = Path(folders["$TOOLS"]) if folders.get("$TOOLS") else None
+        self.media_cache = Path(folders["$MEDIA"]) if folders.get("$MEDIA") else None
         perms = request.get("permissions") or {}
         self._write_roots = [self.cache, self.temp] + self._resolve(perms.get("write", []), folders)
+        self._toolbox = None
         net = perms.get("network", [])
         self._network: list[str] = ["*"] if net is True else ([] if net is False else list(net))
         self._subprocess = bool(perms.get("subprocess", False))
@@ -221,6 +224,71 @@ class Context:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
         return path
+
+    # -- assets ("advanced options") ---------------------------------------
+
+    @property
+    def toolbox(self):
+        """The compression tools (installed ones first, then pinned downloads)."""
+        if self._toolbox is None:
+            from .tools import Toolbox
+            overrides = {k[5:]: v for k, v in self.settings.items() if k.startswith("tool.")}
+            self._toolbox = Toolbox(self.tools_dir, overrides, auto_install=self.flag("download_tools", True),
+                                    log=self.log)
+        return self._toolbox
+
+    def tool(self, tool_id: str) -> str | None:
+        """Path of a compression tool (see ``ptk tools``), or None."""
+        return self.toolbox.path(tool_id)
+
+    @property
+    def assets_mode(self) -> str:
+        """``apply`` (default), ``plan`` (estimate only) or ``off`` (``--set assets=``)."""
+        mode = (self.setting("assets") or "apply").strip().lower()
+        return mode if mode in ("apply", "plan", "off") else "apply"
+
+    def process_assets(self, root: Path, profile: str) -> dict | None:
+        """Applies the project's advanced options to the files under ``root``.
+
+        ``root`` must be the plugin's own copy in ``$OUTPUT`` (it is changed
+        in place), except in ``plan`` mode, which only reads. ``profile``
+        names the engine's rules (``html5``, ``rpgmaker-mz``, ``renpy``...,
+        see ``ptk_engine.media.profiles``). Returns the report to put in the
+        result under ``"assets"`` (None when every option is "keep").
+        """
+        from .media import Pipeline, describe
+        mode = self.assets_mode
+        if mode == "apply":
+            self.check_write(root)
+        pipeline = Pipeline(self.toolbox, self.media_cache,
+                            progress=lambda f, m: self.progress(f, m), warn=self.warn)
+        report = pipeline.run(Path(root), profile, self.manifest.get("options") or {}, self.target, mode)
+        if report:
+            self.log("Assets: " + describe(report))
+            for cat, r in report["categories"].items():
+                if r["failed"]:
+                    self.warn(f"{r['failed']} {cat} files could not be re-encoded and were kept as they were.")
+        return report
+
+    def zip_dir(self, src: Path, dest: Path, executables: set[str] | None = None) -> Path:
+        """Zips a folder (sorted, links skipped); ``executables`` (paths
+        relative to ``src``) get mode 0755, everything else 0644."""
+        self.check_write(dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        executables = executables or set()
+        base = Path(src)
+        with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+            for p in sorted(base.rglob("*")):
+                if p.is_symlink() or not p.is_file() or p.name == self.MARKER:
+                    continue
+                rel = p.relative_to(base.parent).as_posix()
+                info = zipfile.ZipInfo(rel, date_time=(2020, 1, 1, 0, 0, 0))
+                mode = 0o755 if p.relative_to(base).as_posix() in executables or os.access(p, os.X_OK) else 0o644
+                info.external_attr = (0o100000 | mode) << 16
+                info.compress_type = zipfile.ZIP_DEFLATED
+                with open(p, "rb") as f:
+                    zf.writestr(info, f.read())
+        return dest
 
     MARKER = ".ptk-output"
 

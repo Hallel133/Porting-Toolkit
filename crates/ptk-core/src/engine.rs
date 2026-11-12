@@ -205,6 +205,9 @@ pub struct EngineInfo {
     pub categories: Vec<String>,
     #[serde(default)]
     pub engines: Vec<String>,
+    /// Codecs the asset pipeline can encode (`ptk_engine.media.encoders`).
+    #[serde(default)]
+    pub codecs: Vec<String>,
     #[serde(default)]
     pub methods: Vec<String>,
 }
@@ -254,6 +257,7 @@ impl EngineClient {
                 executable: String::new(),
                 categories: Vec::new(),
                 engines: Vec::new(),
+                codecs: Vec::new(),
                 methods: Vec::new(),
             },
             command,

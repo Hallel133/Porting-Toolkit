@@ -826,6 +826,7 @@ impl App {
         let idle = self.busy.is_none();
         let mut find = None;
         let mut export: Option<Vec<String>> = None;
+        let mut estimate: Option<Vec<String>> = None;
         split(ui, 0.55, 900.0, |ui, col| {
             if col == 0 {
                 card(ui, |ui| {
@@ -936,9 +937,30 @@ impl App {
                     } else {
                         "Export".to_owned()
                     };
-                    if primary(ui, idle && !ready.is_empty(), &label).clicked() {
-                        export = Some(ready);
-                    }
+                    let options_set = self.project.as_ref().is_some_and(|p| {
+                        p.saved
+                            .options
+                            .values()
+                            .any(|o| o.action != ptk_core::manifest::AssetAction::Keep)
+                    });
+                    ui.horizontal(|ui| {
+                        if primary(ui, idle && !ready.is_empty(), &label).clicked() {
+                            export = Some(ready.clone());
+                        }
+                        if ui
+                            .add_enabled(
+                                idle && !ready.is_empty() && options_set,
+                                egui::Button::new("Estimate savings"),
+                            )
+                            .on_hover_text(
+                                "Re-encodes the largest files of each kind to estimate what the advanced options save. Builds nothing.",
+                            )
+                            .on_disabled_hover_text("Set some advanced options to Recompress first (Game page).")
+                            .clicked()
+                        {
+                            estimate = Some(ready.clone());
+                        }
+                    });
                 });
             } else {
                 card(ui, |ui| {
@@ -974,7 +996,10 @@ impl App {
             self.go(View::Marketplace, ui.ctx());
         }
         if let Some(t) = export {
-            self.export_targets(ui.ctx(), t);
+            self.export_targets(ui.ctx(), t, ptk_core::convert::AssetsMode::Apply);
+        }
+        if let Some(t) = estimate {
+            self.export_targets(ui.ctx(), t, ptk_core::convert::AssetsMode::Plan);
         }
         self.export_results_card(ui);
         ui.add_space(14.0);
@@ -1022,6 +1047,9 @@ impl App {
                         }
                         for n in &r.notes {
                             ui.label(RichText::new(n).color(TEXT_WEAK));
+                        }
+                        if let Some(a) = &r.assets {
+                            assets_report(ui, a, &format!("assets-{i}"));
                         }
                         ui.horizontal(|ui| {
                             if let Some(dir) = &r.serve {
@@ -1165,7 +1193,7 @@ impl App {
                 "What new projects keep, drop or recompress, and the default format (algorithm) for each kind of asset.",
             );
             ui.add_space(6.0);
-            options_editor(ui, &mut s.default_options, "defaults");
+            options_editor(ui, &mut s.default_options, "defaults", &AutoInfo::default());
         });
     }
 
@@ -1848,7 +1876,16 @@ impl App {
                 "Before porting, decide per asset category what is kept, dropped or recompressed, so you control what is lost.",
             );
             ui.add_space(6.0);
-            options_editor(ui, &mut p.manifest.options, "project");
+            let auto = AutoInfo {
+                engine: p.manifest.game.engine.clone(),
+                targets: p
+                    .manifest
+                    .targets
+                    .iter()
+                    .filter_map(|t| self.registry.get(t).cloned())
+                    .collect(),
+            };
+            options_editor(ui, &mut p.manifest.options, "project", &auto);
         });
     }
 
@@ -2246,6 +2283,8 @@ impl App {
             widgets::message(ui, ERROR, &format!("✖ {problems} problem(s) found"));
         }
         ui.add_space(12.0);
+        let idle = self.busy.is_none();
+        let mut install = None;
         card(ui, |ui| {
             egui::Grid::new("doctor")
                 .num_columns(3)
@@ -2257,15 +2296,30 @@ impl App {
                         ui.vertical(|ui| {
                             ui.add(egui::Label::new(&c.detail).wrap());
                             if let Some(h) = &c.hint {
-                                ui.label(
-                                    RichText::new(format!("→ {h}")).size(12.0).color(TEXT_WEAK),
-                                );
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label(
+                                        RichText::new(format!("→ {h}")).size(12.0).color(TEXT_WEAK),
+                                    );
+                                    if let Some(id) = h.strip_prefix("ptk tools install ")
+                                        && ui
+                                            .add_enabled(idle, egui::Button::new("Install").small())
+                                            .on_hover_text(
+                                                "Downloads a fixed release and checks its SHA-256",
+                                            )
+                                            .clicked()
+                                    {
+                                        install = Some(id.to_owned());
+                                    }
+                                });
                             }
                         });
                         ui.end_row();
                     }
                 });
         });
+        if let Some(id) = install {
+            self.install_tool(ui.ctx(), id);
+        }
     }
 
     // =============================================================== about
@@ -2437,10 +2491,12 @@ const PRESETS: [Preset; 3] = [
         },
         _ => CategoryOptions::default(),
     }),
-    ("Drop videos", |cat| {
+    ("Smaller videos", |cat| {
         if cat == "video" {
             CategoryOptions {
-                action: AssetAction::Drop,
+                action: AssetAction::Recompress,
+                quality: Some(50),
+                max_resolution: Some(1280),
                 ..Default::default()
             }
         } else {
@@ -2449,12 +2505,129 @@ const PRESETS: [Preset; 3] = [
     }),
 ];
 
+/// Engines whose games load loose files by name: their files keep their
+/// format (see `engine/ptk_engine/media/profiles.py`).
+const LOOSE_FILE_ENGINES: &[&str] = &["html5", "rpgmaker", "love", "rgss"];
+
+/// What "Automatic" means for a project: its engine and targets.
+#[derive(Default)]
+pub struct AutoInfo {
+    pub engine: Option<String>,
+    pub targets: Vec<ptk_core::targets::Target>,
+}
+
+impl AutoInfo {
+    /// One line per media category, e.g. "Opus on Web, AAC on macOS".
+    fn line(&self, category: &str) -> Option<String> {
+        if !matches!(category, "textures" | "audio" | "video") {
+            return None;
+        }
+        let engine = self.engine.as_deref()?;
+        if engine == "godot" {
+            return Some("Godot games keep their imported resources for now".into());
+        }
+        if LOOSE_FILE_ENGINES.contains(&engine) {
+            return Some(
+                "keeps each file's format, only smaller (the game loads files by name)".into(),
+            );
+        }
+        let parts: Vec<String> = self
+            .targets
+            .iter()
+            .filter_map(|t| {
+                let f = t.media.for_category(category).first()?;
+                Some(format!(
+                    "{} on {}",
+                    ptk_core::category::format_name(category, f),
+                    t.name
+                ))
+            })
+            .collect();
+        (!parts.is_empty()).then(|| parts.join(", "))
+    }
+
+    /// GPU texture formats none of the targets can use.
+    fn unusable(&self, category: &str, format: &str) -> bool {
+        category == "textures"
+            && ptk_core::manifest::GPU_TEXTURES.contains(&format)
+            && !self.targets.is_empty()
+            && !self
+                .targets
+                .iter()
+                .any(|t| t.media.textures.iter().any(|x| x == format))
+    }
+}
+
+/// The asset pipeline's report: sizes before and after, per category.
+pub fn assets_report(ui: &mut Ui, a: &ptk_core::convert::AssetReport, salt: &str) {
+    use ptk_core::convert::human_size;
+    let about = if a.estimated { "≈ " } else { "" };
+    ui.add_space(4.0);
+    ui.horizontal_wrapped(|ui| {
+        ui.label(RichText::new("Assets").strong().color(Color32::WHITE));
+        ui.label(
+            RichText::new(format!(
+                "{} → {about}{}",
+                human_size(a.before),
+                human_size(a.after)
+            ))
+            .color(TEAL),
+        );
+        if a.saved() > 0 {
+            badge(
+                ui,
+                &format!("{about}{} saved", human_size(a.saved())),
+                GREEN,
+            );
+        }
+        if a.estimated {
+            badge(ui, "estimate", LIGHT_BLUE);
+        }
+    });
+    egui::Grid::new(("assets", salt))
+        .num_columns(4)
+        .spacing([14.0, 4.0])
+        .show(ui, |ui| {
+            for (cat, c) in &a.categories {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("■").color(category_color(cat)));
+                    ui.label(RichText::new(cat).color(TEXT_WEAK));
+                });
+                let files = if c.files == 1 { "file" } else { "files" };
+                ui.label(RichText::new(format!("{} {files}", c.files)).color(TEXT_FAINT));
+                ui.label(format!(
+                    "{} → {about}{}",
+                    human_size(c.before),
+                    human_size(c.after)
+                ));
+                let codecs: Vec<String> =
+                    c.codecs.iter().map(|(k, v)| format!("{k} ×{v}")).collect();
+                let mut text = codecs.join(", ");
+                if c.failed > 0 {
+                    text.push_str(&format!("  ·  {} kept after a failed check", c.failed));
+                }
+                ui.label(RichText::new(text).size(12.0).color(TEXT_FAINT));
+                ui.end_row();
+            }
+        });
+    for (cat, c) in &a.categories {
+        for n in &c.notes {
+            ui.label(
+                RichText::new(format!("{cat}: {n}"))
+                    .size(12.0)
+                    .color(TEXT_WEAK),
+            );
+        }
+    }
+}
+
 /// Presets plus one compact row per asset category: keep / drop /
 /// recompress, and for recompressing: quality, size and format (algorithm).
 pub fn options_editor(
     ui: &mut Ui,
     options: &mut std::collections::BTreeMap<String, CategoryOptions>,
     salt: &str,
+    auto: &AutoInfo,
 ) {
     ui.horizontal_wrapped(|ui| {
         ui.label(RichText::new("Presets").color(TEXT_WEAK));
@@ -2507,18 +2680,30 @@ pub fn options_editor(
                             .show_ui(ui, |ui| {
                                 ui.selectable_value(&mut o.format, None, "Automatic");
                                 for (id, label) in formats {
-                                    ui.selectable_value(
-                                        &mut o.format,
-                                        Some(id.to_string()),
-                                        *label,
+                                    let usable = !auto.unusable(c.id, id);
+                                    ui.add_enabled_ui(usable, |ui| {
+                                        ui.selectable_value(
+                                            &mut o.format,
+                                            Some(id.to_string()),
+                                            *label,
+                                        )
+                                    })
+                                    .response
+                                    .on_disabled_hover_text(
+                                        "None of this project's targets can use this GPU format",
                                     );
                                 }
                             })
                             .response
-                            .on_hover_text("Format (algorithm) to recompress into");
+                            .on_hover_text(match auto.line(c.id) {
+                                Some(l) => format!("Format (algorithm) to recompress into.\nAutomatic: {l}"),
+                                None => "Format (algorithm) to recompress into.\nAutomatic: the target's preferred format".into(),
+                            });
                     }
                     if c.lossy {
-                        let mut q = o.quality.unwrap_or(80);
+                        let mut q = o
+                            .quality
+                            .unwrap_or_else(|| ptk_core::category::default_quality(c.id));
                         if ui
                             .add(egui::Slider::new(&mut q, 1..=100).text("quality"))
                             .changed()
@@ -2544,4 +2729,20 @@ pub fn options_editor(
                 ui.end_row();
             }
         });
+    let auto_lines: Vec<String> = CATEGORIES
+        .iter()
+        .filter(|c| {
+            options
+                .get(c.id)
+                .is_some_and(|o| o.action == AssetAction::Recompress && o.format.is_none())
+        })
+        .filter_map(|c| auto.line(c.id).map(|l| format!("{}: {l}", c.name)))
+        .collect();
+    if !auto_lines.is_empty() {
+        ui.add_space(6.0);
+        ui.label(RichText::new("Automatic").size(12.0).color(TEXT_WEAK));
+        for l in auto_lines {
+            ui.label(RichText::new(l).size(12.0).color(TEXT_FAINT));
+        }
+    }
 }

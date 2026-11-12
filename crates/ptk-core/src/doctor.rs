@@ -215,8 +215,9 @@ pub fn run(install: bool) -> Vec<Check> {
         out.push(install_env(uv, source, &env_dir, &python));
     }
 
+    let mut tools = Vec::new();
     out.push(match EngineClient::start() {
-        Ok(engine) => {
+        Ok(mut engine) => {
             let i = &engine.info;
             let c = check(
                 Status::Ok,
@@ -227,6 +228,9 @@ pub fn run(install: bool) -> Vec<Check> {
                 ),
                 None,
             );
+            if let Ok(status) = crate::tools::status(&mut engine) {
+                tools = tool_checks(&status);
+            }
             let _ = engine.shutdown();
             c
         }
@@ -238,6 +242,7 @@ pub fn run(install: bool) -> Vec<Check> {
         ),
     });
 
+    out.extend(tools);
     out.push(check(
         Status::Ok,
         "Data folder",
@@ -245,6 +250,36 @@ pub fn run(install: bool) -> Vec<Check> {
         None,
     ));
     out
+}
+
+/// One line per compression tool (a missing tool is a warning: the files
+/// it would handle are exported unchanged).
+pub fn tool_checks(status: &crate::tools::ToolsStatus) -> Vec<Check> {
+    status
+        .tools
+        .iter()
+        .map(|t| match &t.found {
+            Some(f) => check(
+                Status::Ok,
+                &t.id,
+                format!(
+                    "{} {} ({})",
+                    f.version.as_deref().unwrap_or(""),
+                    f.path,
+                    t.purpose
+                )
+                .trim()
+                .to_owned(),
+                None,
+            ),
+            None => check(
+                Status::Warn,
+                &t.id,
+                format!("not found: {} stays as it is", t.purpose),
+                Some(&t.hint).filter(|h| !h.is_empty()).map(String::as_str),
+            ),
+        })
+        .collect()
 }
 
 fn install_env(uv: &Path, source: &Path, env_dir: &Path, python: &Path) -> Check {

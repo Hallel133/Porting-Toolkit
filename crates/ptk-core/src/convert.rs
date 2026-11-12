@@ -140,6 +140,109 @@ pub struct RunResult {
     /// A cached copy of the game's own icon (import plugins).
     #[serde(default)]
     pub icon: Option<PathBuf>,
+    /// What the advanced options did to the game's files (exports).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assets: Option<Box<AssetReport>>,
+}
+
+/// The asset pipeline's report (`ptk_engine.media`): sizes before and
+/// after re-encoding, per category.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct AssetReport {
+    #[serde(default)]
+    pub profile: String,
+    #[serde(default)]
+    pub profile_name: String,
+    #[serde(default)]
+    pub mode: String,
+    /// True for `plan`: sizes are estimated from the largest files.
+    #[serde(default)]
+    pub estimated: bool,
+    #[serde(default)]
+    pub before: u64,
+    #[serde(default)]
+    pub after: u64,
+    #[serde(default)]
+    pub cache_hits: u64,
+    #[serde(default)]
+    pub categories: BTreeMap<String, AssetCategory>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct AssetCategory {
+    #[serde(default)]
+    pub files: u64,
+    #[serde(default)]
+    pub converted: u64,
+    #[serde(default)]
+    pub kept: u64,
+    #[serde(default)]
+    pub failed: u64,
+    #[serde(default)]
+    pub before: u64,
+    #[serde(default)]
+    pub after: u64,
+    /// Files per codec used (`{"vorbis": 120}`).
+    #[serde(default)]
+    pub codecs: BTreeMap<String, u64>,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+impl AssetReport {
+    /// Bytes saved (0 when nothing got smaller).
+    pub fn saved(&self) -> u64 {
+        self.before.saturating_sub(self.after)
+    }
+
+    pub fn converted(&self) -> u64 {
+        self.categories.values().map(|c| c.converted).sum()
+    }
+}
+
+/// What an export does with the advanced options.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AssetsMode {
+    /// Re-encode the exported copy (the default).
+    #[default]
+    Apply,
+    /// Only estimate the savings; nothing is built.
+    Plan,
+    /// Ignore the options.
+    Off,
+}
+
+impl AssetsMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AssetsMode::Apply => "apply",
+            AssetsMode::Plan => "plan",
+            AssetsMode::Off => "off",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "apply" => Some(AssetsMode::Apply),
+            "plan" => Some(AssetsMode::Plan),
+            "off" => Some(AssetsMode::Off),
+            _ => None,
+        }
+    }
+}
+
+/// Human-readable size: `1.5 MB`.
+pub fn human_size(bytes: u64) -> String {
+    let b = bytes as f64;
+    if b >= 1e9 {
+        format!("{:.2} GB", b / 1e9)
+    } else if b >= 1e6 {
+        format!("{:.1} MB", b / 1e6)
+    } else if b >= 1e3 {
+        format!("{:.0} KB", b / 1e3)
+    } else {
+        format!("{bytes} B")
+    }
 }
 
 fn search_dirs() -> Vec<String> {
@@ -183,6 +286,8 @@ pub struct ExportOptions {
     pub plugin: Option<String>,
     /// `--set key=value` settings passed to the plugin.
     pub settings: BTreeMap<String, String>,
+    /// Apply, estimate or ignore the advanced options.
+    pub assets: AssetsMode,
 }
 
 /// The game folder for a project: the given one or the remembered one.
@@ -239,7 +344,9 @@ fn run(
             "plugin": candidate.validation.path,
             "kind": kind,
             "engine": manifest.game.engine,
-            "target": target.map(|t| json!({"id": t.id, "name": t.name, "os": t.os, "arch": t.arch})),
+            "target": target.map(|t| json!({
+                "id": t.id, "name": t.name, "os": t.os, "arch": t.arch, "media": t.media,
+            })),
             "manifest": serde_json::to_value(manifest).expect("manifest serializes"),
             "settings": settings,
             "folders": folders,
@@ -353,8 +460,17 @@ pub fn export(
         .unwrap_or_else(|| default_output(project))
         .join(&target.id);
     let project_abs = project.canonicalize().unwrap_or_else(|_| absolute(project));
-    let folders =
-        json!({"$GAME": absolute(&game), "$PROJECT": project_abs, "$OUTPUT": absolute(&output)});
+    let plan = opts.assets == AssetsMode::Plan;
+    let folders = if plan {
+        // An estimate builds nothing, so it gets no output folder.
+        json!({"$GAME": absolute(&game), "$PROJECT": project_abs})
+    } else {
+        json!({"$GAME": absolute(&game), "$PROJECT": project_abs, "$OUTPUT": absolute(&output)})
+    };
+    let mut settings = opts.settings.clone();
+    if opts.assets != AssetsMode::Apply {
+        settings.insert("assets".into(), opts.assets.as_str().into());
+    }
     let result = run(
         engine,
         &plugin,
@@ -362,9 +478,12 @@ pub fn export(
         &manifest,
         folders,
         Some(&target),
-        &opts.settings,
+        &settings,
         on_event,
     )?;
+    if plan {
+        return Ok(result);
+    }
     lock_plugin(project, &result)?;
     if let Some(out) = &opts.output {
         let mut s = LocalState::load(project);
@@ -487,5 +606,32 @@ mod tests {
         assert!(LocalState::load(tmp.path()).game.is_some());
         assert!(game_for(tmp.path(), None).is_ok());
         assert!(game_for(tmp.path(), Some(&tmp.path().join("missing"))).is_err());
+    }
+
+    #[test]
+    fn results_with_and_without_an_asset_report() {
+        let plain: RunResult = serde_json::from_str(r#"{"summary":"ok"}"#).unwrap();
+        assert!(plain.assets.is_none());
+        let r: RunResult = serde_json::from_value(json!({
+            "summary": "ok",
+            "assets": {
+                "profile": "rpgmaker-mz", "profile_name": "RPG Maker MZ", "mode": "apply",
+                "estimated": false, "before": 3_000_000, "after": 1_000_000, "cache_hits": 2,
+                "categories": {"audio": {"files": 3, "converted": 2, "kept": 1, "failed": 0,
+                    "before": 3_000_000, "after": 1_000_000, "sampled": 0,
+                    "codecs": {"vorbis": 2}, "notes": ["n"], "future_field": 1}},
+                "unknown": true
+            }
+        }))
+        .unwrap();
+        let a = r.assets.unwrap();
+        assert_eq!(a.saved(), 2_000_000);
+        assert_eq!(a.converted(), 2);
+        assert_eq!(a.categories["audio"].codecs["vorbis"], 2);
+        assert_eq!(human_size(a.saved()), "2.0 MB");
+        assert_eq!(human_size(512), "512 B");
+        assert_eq!(AssetsMode::parse("plan"), Some(AssetsMode::Plan));
+        assert_eq!(AssetsMode::parse("x"), None);
+        assert_eq!(AssetsMode::default().as_str(), "apply");
     }
 }
