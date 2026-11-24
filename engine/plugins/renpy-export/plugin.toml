@@ -1,0 +1,25 @@
+schema_version = 1
+
+[plugin]
+id = "renpy-export"
+name = "Ren'Py export"
+version = "1.0.0"
+kind = "export"
+description = "Builds a Ren'Py game for Windows, Linux or macOS with the Ren'Py runtime of the same version: from the game's own platform files, or from the official SDK (checked against renpy.org's SHA-256)."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "renpy_export:Plugin"
+api = 1
+homepage = "https://github.com/Hallel133/Porting-Toolkit"
+
+[formats]
+inputs = ["renpy"]
+outputs = ["app", "folder", "zip"]
+targets = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"]
+
+# The SDK is only downloaded when the build lacks the target's files.
+[permissions]
+read = ["$GAME", "$PROJECT"]
+write = ["$OUTPUT"]
+network = ["www.renpy.org"]
+subprocess = true   # codesign, sips and iconutil, for the macOS app

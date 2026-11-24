@@ -1,0 +1,23 @@
+schema_version = 1
+
+[plugin]
+id = "renpy-import"
+name = "Ren'Py import"
+version = "1.0.0"
+kind = "import"
+description = "Finds a Ren'Py game's engine and game folders, its Ren'Py version and the platforms the build already has, and lists its .rpa archives (never extracting them)."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "renpy_import:Plugin"
+api = 1
+homepage = "https://github.com/Hallel133/Porting-Toolkit"
+
+[formats]
+inputs = ["renpy"]
+outputs = ["renpy"]
+
+[permissions]
+read = ["$GAME"]
+write = ["$PROJECT/recipes"]
+network = false
+subprocess = false
