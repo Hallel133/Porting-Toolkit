@@ -1,0 +1,23 @@
+schema_version = 1
+
+[plugin]
+id = "love-import"
+name = "LÖVE import"
+version = "1.0.0"
+kind = "import"
+description = "Finds a LÖVE game's .love (on its own, fused into the .exe, inside a Mac app, or a source folder) and reads its conf.lua: LÖVE version, title, window size and icon."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "love_import:Plugin"
+api = 1
+homepage = "https://github.com/Hallel133/Porting-Toolkit"
+
+[formats]
+inputs = ["love"]
+outputs = ["love"]
+
+[permissions]
+read = ["$GAME"]
+write = ["$PROJECT/recipes"]
+network = false
+subprocess = false

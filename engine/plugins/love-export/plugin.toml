@@ -1,0 +1,25 @@
+schema_version = 1
+
+[plugin]
+id = "love-export"
+name = "LÖVE export"
+version = "1.0.0"
+kind = "export"
+description = "Packages a LÖVE game with the official LÖVE 11.5 build for each platform: a signed Mac app, a fused Windows .exe, or a Linux AppImage with the game next to it."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "love_export:Plugin"
+api = 1
+homepage = "https://github.com/Hallel133/Porting-Toolkit"
+
+[formats]
+inputs = ["love"]
+outputs = ["app", "folder", "zip"]
+targets = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"]
+
+# The LÖVE runtime comes from love2d's GitHub release (pinned, SHA-256 checked).
+[permissions]
+read = ["$GAME", "$PROJECT"]
+write = ["$OUTPUT"]
+network = ["github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"]
+subprocess = true   # codesign, sips and iconutil, for the macOS app
