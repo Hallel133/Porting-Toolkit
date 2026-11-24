@@ -5,6 +5,9 @@
   compiled once per architecture with the Xcode command line tools and
   cached), the game in ``Contents/Resources/app``, its icon converted to
   ``.icns``, and an ad-hoc signature.
+- Android (experimental): a small WebView player (``android/``, built once
+  per computer with the Android SDK's aapt2 and d8 and a JDK) with the game
+  in ``assets/www``, renamed to the game and signed with apksigner.
 - Windows / Linux: the NW.js runtime (the one RPG Maker MV/MZ ship with;
   a pinned release from dl.nwjs.io, checked against its SHA-256) renamed
   to ``<Title>.exe`` / ``<Title>``, with the game in ``package.nw/``, and a
@@ -12,7 +15,10 @@
 
 Settings (``--set key=value``): ``bundle_id``, ``width``, ``height``,
 ``sign`` (default true), ``assets`` (apply/plan/off), ``nwjs`` (a local
-NW.js folder or archive instead of the download), ``zip`` (default true).
+NW.js folder or archive instead of the download), ``zip`` (default true),
+and for Android ``package``, ``version_code``, ``orientation``,
+``permissions``, ``keystore``, ``keystore_pass``, ``key_alias``,
+``key_pass``, ``android_sdk``.
 
 The project's advanced options are applied to the copy in the output
 (``ctx.process_assets``): files keep their names, so the game still finds
@@ -24,12 +30,17 @@ from __future__ import annotations
 import hashlib
 import html
 import json
+import os
 import re
 import shutil
+import struct
 import tarfile
+import zipfile
+import zlib
 from pathlib import Path
 
-from ptk_engine.formats import html5
+from ptk_engine import android
+from ptk_engine.formats import axml, html5
 
 HERE = Path(__file__).resolve().parent
 WRAPPER = HERE / "wrapper.swift"
@@ -92,8 +103,8 @@ def skip_desktop_only(path: Path) -> bool:
 class Plugin:
     def run(self, ctx):
         target = ctx.target or {}
-        if target.get("os") not in ("macos", "web", "windows", "linux"):
-            ctx.fail(f"html5-export builds for macOS, Windows, Linux and the web, not {target.get('id')}")
+        if target.get("os") not in ("macos", "web", "windows", "linux", "android"):
+            ctx.fail(f"html5-export builds for macOS, Windows, Linux, Android and the web, not {target.get('id')}")
         info = ctx.recipe("html5")
         if not info:
             try:
@@ -118,6 +129,8 @@ class Plugin:
             out = self.web(ctx, root, info, title)
         elif target["os"] in ("windows", "linux"):
             out = self.desktop(ctx, root, info, title, target["os"])
+        elif target["os"] == "android":
+            out = self.android(ctx, root, info, title)
         else:
             out = self.macos(ctx, root, info, title)
         ctx.progress(1.0, "Done")
@@ -350,6 +363,133 @@ class Plugin:
         if lonely:
             ctx.warn(f"{len(lonely)} files ({', '.join(lonely[:3])}{'…' if len(lonely) > 3 else ''}) are H.264/AAC "
                      "with no .webm/.ogg twin; NW.js cannot play those. Convert them to WebM/Ogg if they are needed.")
+
+
+    # -- Android ------------------------------------------------------------------------
+
+    PLAYER = HERE.parent / "android"
+
+    def player_apk(self, ctx, sdk) -> Path:
+        """The WebView player, built once per computer (and per SDK)."""
+        if sdk.platform_jar is None:
+            ctx.fail("the Android SDK has no platform (android.jar): sdkmanager \"platforms;android-35\"")
+        javac = android.find_jdk_tool("javac")
+        if not javac:
+            ctx.fail("a JDK (javac) is needed to build the Android player: brew install openjdk")
+        h = hashlib.sha256()
+        for f in sorted(self.PLAYER.rglob("*")):
+            if f.is_file():
+                h.update(f.relative_to(self.PLAYER).as_posix().encode() + b"\0" + f.read_bytes())
+        h.update(f"{sdk.build_tools.name}|{sdk.platform_jar}".encode())
+        cached = ctx.cache / "android-player" / f"player-{h.hexdigest()[:16]}.apk"
+        if cached.is_file():
+            return cached
+        ctx.progress(0.3, "Building the Android player (once)")
+        work = ctx.temp / "player"
+        shutil.copytree(self.PLAYER, work)
+        icon_dir = work / "res" / "mipmap-xxxhdpi"
+        icon_dir.mkdir(parents=True)
+        (icon_dir / "icon.png").write_bytes(default_icon(192))
+        jar = sdk.platform_jar
+        target_sdk = re.sub(r"\D", "", jar.parent.name) or "35"
+        env = android.java_env()
+        ctx.run([sdk.tool("aapt2"), "compile", "--dir", work / "res", "-o", work / "res.zip"], env=env)
+        ctx.run([sdk.tool("aapt2"), "link", "-o", work / "base.apk", "-I", jar, "--manifest",
+                 work / "AndroidManifest.xml", "--min-sdk-version", "24", "--target-sdk-version", target_sdk,
+                 "--version-code", "1", "--version-name", "1.0", work / "res.zip"], env=env)
+        classes = work / "classes"
+        sources = sorted(str(p) for p in (work / "src").rglob("*.java"))
+        ctx.run([javac, "--release", "11", "-nowarn", "-classpath", jar, "-d", classes, *sources], env=env)
+        dex = work / "dex"
+        dex.mkdir()
+        ctx.run([sdk.tool("d8"), "--release", "--min-api", "24", "--lib", jar, "--output", dex,
+                 *sorted(str(p) for p in classes.rglob("*.class"))], env=env)
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        part = cached.with_name(cached.name + ".part")
+        with zipfile.ZipFile(work / "base.apk") as base, zipfile.ZipFile(part, "w") as out:
+            for info in base.infolist():
+                out.writestr(info, base.read(info))
+            out.write(dex / "classes.dex", "classes.dex", compress_type=zipfile.ZIP_DEFLATED)
+        part.replace(cached)
+        return cached
+
+    def android(self, ctx, root: Path, info: dict, title: str) -> dict:
+        sdk = android.find_sdk(ctx.setting("android_sdk"))
+        if sdk is None:
+            ctx.fail("the Android SDK build-tools are needed (aapt2, d8, apksigner): brew install --cask "
+                     "android-commandlinetools, then sdkmanager \"build-tools;35.0.0\" \"platforms;android-35\" "
+                     "(or set android_sdk=PATH)")
+        player = self.player_apk(ctx, sdk)
+        w, h = info.get("width") or 0, info.get("height") or 0
+        default_orient = android.ORIENTATIONS["sensor_portrait"] if h > w else android.ORIENTATIONS["sensor_landscape"]
+        app = android.settings_for_export(ctx, title, default_orient)
+        ctx.progress(0.5, "Copying the game")
+        www = ctx.temp / "www"
+        n = ctx.copy_tree(root, www, skip=skip_desktop_only)
+        assets = ctx.process_assets(www, self.profile)
+        entries: list[android.Entry] = []
+        with zipfile.ZipFile(player) as z:
+            for zi in z.infolist():
+                data = z.read(zi)
+                if zi.filename == "AndroidManifest.xml":
+                    data = android.patch_manifest(data, app["package"], app["code"], app["version"],
+                                                  app["orientation"], app["permissions"])
+                elif zi.filename == "resources.arsc":
+                    data = axml.replace_table_strings(data, lambda s: title if s == "ptk-app-name" else s)
+                entries.append(android.Entry(zi.filename, data, zi.compress_type != zipfile.ZIP_STORED))
+        icon = self.android_icon(ctx, root, info)
+        if icon and not android.replace_icons(entries, icon, ctx.temp, names=("icon.png",)):
+            ctx.warn("Could not resize the icon (needs macOS sips); the app keeps the default icon.")
+        files = []
+        for p in sorted(www.rglob("*")):
+            if p.is_file() and not p.is_symlink():
+                rel = "www/" + p.relative_to(www).as_posix()
+                files.append(rel)
+                entries.append(android.Entry("assets/" + rel, None, android.should_compress(rel),
+                                             src=(p, 0, p.stat().st_size)))
+        entries.append(android.Entry("assets/ptk-entry.txt", (info.get("entry") or "index.html").encode(), True))
+        entries.append(android.Entry("assets/ptk-files.txt", ("\n".join(files) + "\n").encode(), True))
+        ctx.clean_dir(ctx.output)
+        apk = ctx.output / f"{safe_name(title)}.apk"
+        ctx.progress(0.85, "Writing the APK")
+        android.write_aligned(entries, apk)
+        signed_with = android.sign_for_export(ctx, apk, sdk)
+        return {
+            "assets": assets,
+            "outputs": [str(apk)],
+            "open": str(ctx.output),
+            "summary": f"Built {apk.name} ({app['package']}, {n} game files) - experimental",
+            "notes": [
+                "Plays the game in Android's WebView (Chrome's engine); saves stay in the app's storage.",
+                f"Signed with {signed_with}. Install it with: adb install -r \"{apk.name}\" "
+                "(or copy it to the phone and allow installing unknown apps).",
+                "Android builds are experimental: test on a phone before sharing.",
+            ],
+        }
+
+    @staticmethod
+    def android_icon(ctx, root: Path, info: dict) -> Path | None:
+        chosen = ctx.setting("icon")
+        src = Path(chosen).expanduser() if chosen else ctx.art("icon")
+        if src is None and info.get("icon") and (root / info["icon"]).is_file():
+            src = root / info["icon"]
+        return src if src and src.is_file() and src.suffix.lower() in (".png", ".jpg", ".jpeg") else None
+
+
+def default_icon(size: int) -> bytes:
+    """A plain launcher icon (blue with a light square), drawn without images."""
+    rows = bytearray()
+    for y in range(size):
+        rows.append(0)
+        for x in range(size):
+            inner = size * 0.3 <= x < size * 0.7 and size * 0.3 <= y < size * 0.7
+            rows += bytes((235, 240, 250, 255) if inner else (30, 90, 180, 255))
+
+    def chunk(kind: bytes, body: bytes) -> bytes:
+        return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body))
+
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(bytes(rows), 9)) + chunk(b"IEND", b""))
 
 
 REDIRECT = """<!doctype html>

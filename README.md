@@ -136,6 +136,26 @@ Godot games are refused with an explanation. Ad-hoc signed apps run on your
 Mac; to give them to others, sign and notarize them with your Apple
 Developer ID. See [docs/plugins.md](docs/plugins.md).
 
+### Android (experimental)
+
+```bash
+ptk export -p space-hopper-port -t android      # → build/android/<Title>.apk
+adb install -r "space-hopper-port/build/android/Space Hopper.apk"
+```
+
+Godot 4 games get Godot's own `android_release.apk` template with the game's
+files, the way Godot's exporter does it without Gradle. HTML5 games (RPG Maker
+MV/MZ, Construct, Twine...) play in a small WebView player that Porting
+Toolkit builds once on your computer. Both need the Android SDK
+(`brew install --cask android-commandlinetools`, then
+`sdkmanager "build-tools;35.0.0" "platforms;android-35"`) and a JDK
+(`brew install openjdk`); `ptk tools` shows what is missing. APKs are signed
+with a debug key made on your computer (for testing); `--set keystore=...`
+uses your own key, `--set orientation=portrait`, `--set permissions=INTERNET`
+and `--set package=com.you.game` change the app. Desktop Godot games only have
+desktop texture formats; Godot 4.2+ decodes them on phones (with a warning:
+more memory), older versions are refused.
+
 ## Advanced options: compression algorithms
 
 The advanced options are applied to the exported copy (never to your game).
@@ -210,7 +230,7 @@ Colors are off when output is not a terminal, with `NO_COLOR=1` or `--no-color`.
 
 1. macOS + CLI infrastructure + banner + file structure (done)
 2. Desktop GUI (egui) (done)
-3. **Import/export plugins** (now: Godot, Ren'Py, LÖVE, RPG Maker and HTML5 to macOS, Windows, Linux and the web, with applied compression options), then Android exports
+3. **Import/export plugins** (now: Godot, Ren'Py, LÖVE, RPG Maker and HTML5 to macOS, Windows, Linux, the web and Android (experimental), with applied compression options), then re-encoding Godot's imported textures
 4. Windows/Linux and the full community marketplace
 
 ## Documentation
@@ -278,6 +298,7 @@ MIT. See [LICENSE](LICENSE).
 - **LÖVE:** המשחק עם LÖVE 11.5 הרשמי: ‎.app חתום ל-Mac,‏ ‎.exe "מאוחד" ל-Windows, ו-AppImage ל-Linux.
 - **RPG Maker XP/VX/VX Ace:** ב-Mac וב-Linux המשחק רץ עם mkxp-z (קוד פתוח, GPL). ל-mkxp-z אין גרסאות רשמיות להורדה, אז צריך להוריד אותו פעם אחת בעצמך ולהעביר את המיקום עם `--set mkxp=PATH`, והתוכנה זוכרת אותו. ב-Windows המשחק המקורי פשוט עובד.
 - **מנועי HTML5:** ‏Construct,‏ GDevelop,‏ Twine,‏ Phaser,‏ Cocos ו-Defold מזוהים ומיוצאים כמו כל משחק HTML5.
+- **Android (ניסיוני):** משחקי Godot 4 נארזים עם תבנית ה-APK הרשמית של Godot, בדיוק כמו שהעורך של Godot עושה בלי Gradle. משחקי HTML5 רצים בנגן WebView קטן שהתוכנה בונה פעם אחת אצלך במחשב. צריך Android SDK ו-JDK (‏`ptk tools` מראה מה חסר). ה-APK נחתם במפתח בדיקה שנוצר אצלך במחשב, ואפשר להתקין אותו עם `adb install`.
 - **Windows ו-Linux** (אפשר לבנות אותם מהמק): ב-Godot נוצרת תיקייה עם ‎.exe (או ‎.x86_64) ו-‎.pck מה-template הרשמי, יחד עם הספריות הנייטיביות של המשחק. במשחקי HTML5 המשחק רץ ב-NW.js, אותו runtime שאיתו RPG Maker מגיע. התוכנה מורידה גרסה נעולה ובודקת אותה לפי SHA-256. בשני המקרים נוצר גם zip ששומר על הרשאת ההרצה ב-Linux.
 
 באפליקציה: Export ואז **Export all**, ואחריו Open,‏ Play in browser או Show in Finder.
@@ -300,7 +321,7 @@ MIT. See [LICENSE](LICENSE).
 
 1. ‏macOS + תשתית CLI + באנר + מבנה קבצים (הושלם)
 2. ממשק גרפי (הושלם)
-3. תוספי ייבוא/ייצוא (עכשיו: Godot,‏ Ren'Py,‏ LÖVE,‏ RPG Maker ו-HTML5 ל-macOS,‏ Windows,‏ Linux ולווב, עם דחיסה אמיתית), ואחר כך Android
+3. תוספי ייבוא/ייצוא (עכשיו: Godot,‏ Ren'Py,‏ LÖVE,‏ RPG Maker ו-HTML5 ל-macOS,‏ Windows,‏ Linux, לווב ול-Android (ניסיוני), עם דחיסה אמיתית), ואחר כך דחיסה מחדש של הטקסטורות של Godot
 4. ‏Windows/Linux וקהילה מלאה
 
 רישיון: MIT.

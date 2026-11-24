@@ -191,7 +191,8 @@ class Server:
     def tools_status(self, params: dict) -> dict:
         from . import tools
         d = params.get("tools_dir")
-        return {"platform": tools.platform_key(), "tools": tools.status(Path(d) if d else None)}
+        from . import android
+        return {"platform": tools.platform_key(), "tools": tools.status(Path(d) if d else None) + android.status()}
 
     def tools_install(self, params: dict) -> dict:
         from . import tools

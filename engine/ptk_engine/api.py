@@ -182,11 +182,13 @@ class Context:
                 return
         raise PermissionDenied(f"the plugin may not contact {host} (not in [permissions] network)")
 
-    def run(self, args: list[str], cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess:
-        """Starts a program (needs ``subprocess = true``)."""
+    def run(self, args: list[str], cwd: Path | None = None, check: bool = True,
+            env: dict | None = None) -> subprocess.CompletedProcess:
+        """Starts a program (needs ``subprocess = true``); ``env`` adds variables."""
         if not self._subprocess:
             raise PermissionDenied(f"the plugin may not start programs ({args[0]})")
-        r = subprocess.run([str(a) for a in args], cwd=cwd, capture_output=True, text=True)
+        full_env = {**os.environ, **env} if env else None
+        r = subprocess.run([str(a) for a in args], cwd=cwd, capture_output=True, text=True, env=full_env)
         if check and r.returncode != 0:
             detail = (r.stderr or r.stdout).strip().splitlines()[-5:]
             raise PluginError(f"{Path(str(args[0])).name} failed: " + " / ".join(detail))

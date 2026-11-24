@@ -18,7 +18,7 @@ They ship in `engine/plugins/` and are listed as built-in (and reviewed).
 | Plugin | Engines | Targets | What it does |
 |---|---|---|---|
 | `godot-import` | godot | | Finds the `.pck` (standalone, appended to an `.exe`, or in an `.app`), reads its Godot version and flags into `recipes/godot.json` |
-| `godot-export` | godot | macos-arm64, macos-x64, windows-x64, linux-x64, web | `.pck` + the official Godot export template of the same version |
+| `godot-export` | godot | macos-arm64, macos-x64, windows-x64, linux-x64, web, android | `.pck` + the official Godot export template of the same version |
 | `html5-import` | rpgmaker, html5 | | Finds the web root of RPG Maker MV/MZ, NW.js (`package.nw`) and Electron (`app.asar`) games into `recipes/html5.json` |
 | `renpy-import` | renpy | | Finds game/ and renpy/ (also in a Mac app), the Ren'Py version, the platform files the build has, and lists `.rpa` archives into `recipes/renpy.json` |
 | `renpy-export` | renpy | macos-arm64, macos-x64, windows-x64, linux-x64 | Ren'Py's own distribution layout, with platform files from the game or the SDK of the same version |
@@ -26,7 +26,33 @@ They ship in `engine/plugins/` and are listed as built-in (and reviewed).
 | `love-export` | love | macos-arm64, macos-x64, windows-x64, linux-x64 | The game with the official LÖVE 11.5 build: Mac app, fused `.exe`, or AppImage + `game.love` |
 | `rgss-import` | rgss | | Reads RPG Maker XP/VX/VX Ace `Game.ini` and the archive header into `recipes/rgss.json` |
 | `rgss-export` | rgss | macos-arm64, macos-x64, windows-x64, linux-x64 | mkxp-z for macOS and Linux (you provide it once), the original game for Windows |
-| `html5-export` | rpgmaker, html5 | macos-arm64, macos-x64, windows-x64, linux-x64, web | The web root as a web folder, inside a native WebKit `.app`, or with the NW.js runtime for Windows and Linux |
+| `html5-export` | rpgmaker, html5 | macos-arm64, macos-x64, windows-x64, linux-x64, web, android | The web root as a web folder, inside a native WebKit `.app`, with the NW.js runtime for Windows and Linux, or in a WebView player APK |
+
+**Android (experimental).** Shared code is in `engine/ptk_engine/android.py`
+(SDK and JDK discovery, `write_aligned`: stored entries on 4-byte and `.so` on
+16 KB boundaries with an `0xD935` alignment field, apksigner signing with a
+per-computer debug key or `--set keystore=`, `keystore_pass`, `key_alias`,
+`key_pass`) and `formats/axml.py` (binary manifest and `resources.arsc`
+string pools: rename the package, versions, orientation, provider
+authorities, add permissions, replace the app name).
+
+- Godot 4 follows `platform/android/export/export_plugin.cpp` (4.4) without
+  Gradle: `android_release.apk` from the templates, `META-INF/` and the ABIs
+  not in `--set abis=` (default `arm64-v8a,armeabi-v7a`) dropped, the game's
+  files as `assets/<res path>` (compression per Godot's list), `assets/_cl_`,
+  `godot-project-name*` strings set to the title, launcher icons replaced.
+  Textures imported only as S3TC/BPTC get a plain `path=` fallback in their
+  `.import` remap (Godot's loader uses it when no `path.<feature>` matches, and
+  both renderers decode BC formats a GPU lacks; templates have the decoder
+  since 4.2). Godot 3, and Godot 4.0/4.1 games that need the fallback, are
+  refused (`--set force=true` tries anyway). `--set sign=false` leaves the APK
+  unsigned.
+- HTML5: `android/` holds the player (one Activity with a WebView serving
+  `assets/www/` at `https://appassets.androidplatform.net/www/`, with a
+  case-insensitive fallback from `assets/ptk-files.txt`); it is built once
+  with aapt2, javac (`--release 11`) and d8 against the newest platform and
+  cached in the plugin cache. Orientation follows the game's window (portrait
+  when taller than wide) unless `--set orientation=` is given.
 
 **Ren'Py.** The layout follows Ren'Py's `launcher/game/distribute.rpy`:
 `<name>.exe` + `lib/py3-windows-x86_64/`, `<name>.sh` +

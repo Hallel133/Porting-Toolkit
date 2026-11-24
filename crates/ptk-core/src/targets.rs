@@ -158,6 +158,7 @@ fn builtin(id: &str, name: &str, os: &str, arch: &str, status: TargetStatus, des
             &["opus", "vorbis", "aac"],
             &["vp9", "h264"],
         ),
+        "android" => MediaCaps::of(&["astc", "etc2"], &["opus", "vorbis"], &["h264", "vp9"]),
         _ => MediaCaps::of(&["bc7"], &["opus", "vorbis"], &["vp9", "av1", "h264"]),
     };
     Target {
@@ -218,6 +219,14 @@ impl TargetRegistry {
                     "x86_64",
                     Active,
                     "A game folder with a Linux executable, and a zip that keeps its executable bit.",
+                ),
+                builtin(
+                    "android",
+                    "Android",
+                    "android",
+                    "arm64",
+                    Experimental,
+                    "An APK for phones and tablets (arm64 and armv7), signed for testing; needs the Android SDK and a JDK.",
                 ),
             ],
         }
@@ -322,7 +331,8 @@ mod tests {
                 "macos-x64",
                 "web",
                 "windows-x64",
-                "linux-x64"
+                "linux-x64",
+                "android"
             ]
         );
         assert!(ids.iter().all(|id| valid_target_id(id)));

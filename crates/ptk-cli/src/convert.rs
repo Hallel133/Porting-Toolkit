@@ -319,7 +319,7 @@ pub fn tools(style: &Style, action: crate::ToolsAction) -> anyhow::Result<ExitCo
             }
             println!(
                 "{} {}",
-                style.bold("Compression tools"),
+                style.bold("Tools"),
                 style.dim(format!("({})", status.platform))
             );
             for t in &status.tools {

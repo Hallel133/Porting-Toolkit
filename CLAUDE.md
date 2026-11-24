@@ -28,7 +28,7 @@ export PATH="$HOME/.cargo/bin:$PATH"          # cargo is not on the default PATH
 cargo test --workspace                        # 78 Rust tests, starts the real Python engine
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-(cd engine && uv run pytest)                  # 146 Python tests (+1 skipped; compiles the Swift wrapper on macOS)
+(cd engine && uv run pytest)                  # 156 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
 (cd engine && PTK_TOOL_TESTS=1 uv run pytest -k real)       # also runs real FFmpeg encodes
 (cd engine && PTK_GUI_TESTS=1 uv run pytest -k macos_app)   # also opens the wrapper app and checks the page loaded
 cargo run -q -p ptk-cli -- scan fixtures/games/unity-windows
@@ -106,10 +106,17 @@ Owner asked to plan and design new compression algorithms for new platforms and 
 - 3d: `formats/rgss.py` + rgss-import/rgss-export. mkxp-z has no release builds (0 GitHub releases; CI artifacts need sign-in): `--set mkxp=PATH`, remembered in the plugin cache (`mkxp-<os>.txt`); macOS game in `Contents/Game` (from mkxp-z's `filesystemImplApple.mm`), Linux next to the executable; `mkxp.json`; GPL note. Windows = original game minus saves. Not run with a real mkxp-z build.
 - Manifest `game.variant` (from scan) and `game.engine_version` (import result `engine_version`); `GameInfo::engine_label()` shown on the Game page.
 
+## Done (2026-11-24, plan phase 4: Android, experimental)
+- Target `android` (Experimental, media astc/etc2, opus/vorbis, h264/vp9). Owner's Mac has the Android SDK from Homebrew (`/opt/homebrew/share/android-commandlinetools`: build-tools 34/35, platforms;android-35) and JDK 26; `ptk tools`/doctor list them (`android.status()`).
+- `formats/axml.py` (binary manifest + arsc string pools; verified on the real Godot 4.4.1 template: parses and round-trips byte-identically) and `android.py` (SDK/JDK discovery, aligned APK writer that streams from the pck, debug keystore via keytool, apksigner sign+verify, `patch_manifest`, `settings_for_export`, `sign_for_export`).
+- godot-export Android (Godot 4 only) per Godot 4.4's `export_plugin.cpp` (non-Gradle path). S3TC/BPTC-only textures get a `path=` fallback in `.import` (Godot 4.2+ decodes BC at load; 4.0/4.1 refused).
+- html5-export Android: WebView player in `engine/plugins/html5-export/android/` built once with aapt2/javac/d8.
+- Verified on this Mac: synthetic MZ game → APK, and synthetic Godot 4.4.1 game with the real template → APK; both pass `zipalign -c -P 16 4`, `apksigner verify` (v2+v3) and `aapt2 dump badging` (package, label, orientation, ABIs). **Not installed on a phone or emulator** (no emulator images here).
+
 ## Next task
 1. Owner: re-export Buckshot Roulette for macOS and check the gray screen is gone and Steam features work; check the web build's loading screen. Try the Game page, Settings → Defaults, Icon & poster.
 2. Owner: try a real Godot game and a real RPG Maker MV/MZ game (`ptk import <build>` then `ptk export`, or the app's Export tab); open the Godot `.app` on the Mac (not done by Claude). Check the macOS menu bar. Create the ptk-marketplace repo (see above).
-3. Owner: run a Windows/Linux export of a real game on a Windows PC / Linux machine (or Steam Deck); try a real Ren'Py, LÖVE and RPG Maker XP/VX/Ace game (for the last one, download mkxp-z once and pass --set mkxp=PATH). Next (plan phases 4-5): Android APK (AXML patching, zipalign, apksigner), then Godot `.ctex` re-encoding. Owner should try `ptk assets` / Estimate savings on a real RPG Maker game and check the music still loops after `brew install vorbis-tools`.
+3. Owner: run a Windows/Linux export of a real game on a Windows PC / Linux machine (or Steam Deck); try a real Ren'Py, LÖVE and RPG Maker XP/VX/Ace game (for the last one, download mkxp-z once and pass --set mkxp=PATH). Install an Android build on a phone (`adb install -r`) and report what happens. Next (plan phase 5, research): Godot `.ctex` re-encoding (BC → ETC2/ASTC for Android). Owner should try `ptk assets` / Estimate savings on a real RPG Maker game and check the music still loops after `brew install vorbis-tools`.
 4. Not tested: real games (only synthetic pcks and fake HTML5 games), Godot 3 templates, threaded web builds in a browser, Electron games, Intel Macs, running the Windows/Linux exports (no machines here), running ptk itself on Windows/Linux (CI blocked on the account).
 
 ## Working agreement (after every change)

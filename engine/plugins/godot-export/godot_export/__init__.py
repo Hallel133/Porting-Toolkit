@@ -6,6 +6,10 @@
 - Web: ``index.html`` + ``index.js`` / ``.wasm`` / ``.pck`` from the web
   template. The single-threaded template is used when the version has one
   (Godot 4.3+), so the build runs on any static host.
+- Android (experimental): ``<Title>.apk`` from ``android_release.apk``
+  the way Godot's own exporter does it without Gradle: the game's files in
+  ``assets/``, the manifest and app name rewritten, aligned and signed with
+  the Android SDK's apksigner (a debug key unless ``keystore=`` is set).
 - Windows / Linux: ``<Title>/<Title>.exe`` (or ``.x86_64``) from the
   release template with ``<Title>.pck`` next to it (Godot loads the pck
   named after the executable), the game's GDExtension libraries for that
@@ -14,7 +18,10 @@
 Settings (``--set key=value``): ``templates`` (a folder or .tpz),
 ``godot_version`` (e.g. ``4.3`` or ``4.3.rc1``), ``bundle_id``,
 ``threads`` (web), ``thin`` and ``sign`` (macOS, default true),
-``zip`` (Windows/Linux, default true).
+``zip`` (Windows/Linux, default true), and for Android ``package``,
+``version_code``, ``orientation``, ``permissions`` (e.g. ``INTERNET,VIBRATE``),
+``abis`` (default ``arm64-v8a,armeabi-v7a``), ``keystore``,
+``keystore_pass``, ``key_alias``, ``key_pass``, ``android_sdk``.
 """
 
 from __future__ import annotations
@@ -24,11 +31,13 @@ import json
 import os
 import re
 import shutil
+import struct
 import sys
 import zipfile
 from pathlib import Path
 
-from ptk_engine.formats import godot
+from ptk_engine import android
+from ptk_engine.formats import axml, godot
 
 RELEASES = "https://github.com/godotengine/godot/releases/download"
 
@@ -172,8 +181,8 @@ class Plugin:
     def build(self, ctx):
         target = ctx.target or {}
         os_ = target.get("os")
-        if os_ not in ("macos", "web", "windows", "linux"):
-            ctx.fail(f"godot-export builds for macOS, Windows, Linux and the web, not {target.get('id')}")
+        if os_ not in ("macos", "web", "windows", "linux", "android"):
+            ctx.fail(f"godot-export builds for macOS, Windows, Linux, Android and the web, not {target.get('id')}")
         recipe = ctx.recipe("godot") or {}
         pck_path = None
         if recipe.get("pck"):
@@ -214,6 +223,8 @@ class Plugin:
             out = self.macos(ctx, templates, pck, staged, title)
         elif os_ in ("windows", "linux"):
             out = self.desktop(ctx, templates, pck, staged, title, os_)
+        elif os_ == "android":
+            out = self.android(ctx, templates, pck, staged, title)
         else:
             out = self.web(ctx, templates, pck, staged, title)
         ctx.progress(1.0, "Done")
@@ -470,6 +481,141 @@ class Plugin:
                 ctx.write_bytes(folder / "icon.png", data)
             return
         shutil.copyfile(icon, folder / "icon.png")
+
+    # -- Android -------------------------------------------------------------
+
+    #: DisplayServer.ScreenOrientation -> android:screenOrientation
+    #: (``_get_android_orientation_value`` in Godot's exporter).
+    ORIENTATION = {0: 0, 1: 1, 2: 8, 3: 9, 4: 6, 5: 7, 6: 10}
+
+    def android(self, ctx, templates, pck, staged, title):
+        major, minor, _ = pck.version
+        if major < 4:
+            ctx.fail("Android exports support Godot 4 games; this one is Godot 3")
+        sdk = None
+        if ctx.flag("sign", True):
+            sdk = android.find_sdk(ctx.setting("android_sdk"))
+            if sdk is None:
+                ctx.fail("the Android SDK build-tools are needed to sign the APK (apksigner): brew install --cask "
+                         "android-commandlinetools, then sdkmanager \"build-tools;35.0.0\" (or set android_sdk=PATH, "
+                         "or sign=false to sign it yourself)")
+        template = templates.get("android_release.apk")
+        ctx.progress(0.7, "Building the APK")
+        staged_pck = godot.read(staged)
+        imports, fixed, missing = self.android_imports(staged_pck)
+        if missing and (major, minor) < (4, 2) and not ctx.flag("force"):
+            ctx.fail(f"{missing} textures only have desktop formats (S3TC/BPTC), and Godot {major}.{minor} cannot "
+                     "decode those on phones. Only the developer can fix it (Project Settings > Rendering > Textures "
+                     "> Import ETC2 ASTC), or try anyway with --set force=true.")
+        if fixed:
+            ctx.warn(f"{fixed} textures only have desktop formats (S3TC/BPTC). Godot decodes them on phones without "
+                     "those formats, which uses more memory and loads slower. The developer can avoid it by "
+                     "enabling Project Settings > Rendering > Textures > Import ETC2 ASTC.")
+        for ext in pck.extensions():
+            ctx.warn(f"{Path(ext).stem} is a native extension; an Android build of it is not included, so features "
+                     "that need it will not work.")
+        abis = [a.strip() for a in (ctx.setting("abis") or "arm64-v8a,armeabi-v7a").split(",") if a.strip()]
+        game_orient = self.ORIENTATION.get(int(self.settings.get("display/window/handheld/orientation", 0) or 0), 0)
+        app = android.settings_for_export(ctx, title, game_orient)
+        package, version, code = app["package"], app["version"], app["code"]
+
+        entries: list[android.Entry] = []
+        found_abis = set()
+        with zipfile.ZipFile(template) as z:
+            for info in z.infolist():
+                name = info.filename
+                if name.endswith("/") or name.startswith("META-INF/"):
+                    continue
+                if name.startswith("lib/"):
+                    abi = name.split("/")[1]
+                    if abi not in abis:
+                        continue
+                    found_abis.add(abi)
+                data = z.read(info)
+                if name == "AndroidManifest.xml":
+                    data = android.patch_manifest(data, package, code, version, app["orientation"],
+                                                  app["permissions"])
+                elif name == "resources.arsc":
+                    data = axml.replace_table_strings(
+                        data, lambda s: title if s.startswith("godot-project-name") else s)
+                entries.append(android.Entry(name, data, info.compress_type != zipfile.ZIP_STORED))
+        if missing_abis := [a for a in abis if a not in found_abis]:
+            ctx.fail(f"the template has no libraries for {', '.join(missing_abis)}")
+        icon = self.android_icon(ctx, pck)
+        if icon and not android.replace_icons(entries, icon, ctx.temp):
+            ctx.warn("Could not resize the icon (needs macOS sips); the app keeps Godot's icon.")
+        for e in staged_pck.files:
+            name = "assets/" + e.path
+            if e.path in imports:
+                entries.append(android.Entry(name, imports[e.path], android.should_compress(e.path)))
+            else:
+                entries.append(android.Entry(name, None, android.should_compress(e.path),
+                                             src=(staged, e.offset, e.size)))
+        entries.append(android.Entry("assets/_cl_", struct.pack("<I", 0), False))  # no extra command line
+
+        ctx.clean_dir(ctx.output)
+        apk = ctx.output / f"{safe_name(title)}.apk"
+        android.write_aligned(entries, apk)
+        if sdk is not None:
+            ctx.progress(0.92, "Signing")
+            signed_with = android.sign_for_export(ctx, apk, sdk)
+        else:
+            signed_with = "nothing (sign=false): sign it with apksigner before installing"
+        return {
+            "outputs": [str(apk)],
+            "open": str(ctx.output),
+            "summary": f"Built {apk.name} ({package}, version {version} / {code}) - experimental",
+            "notes": [
+                f"Built with the Godot {templates.dir_name} android_release.apk template for "
+                f"{', '.join(abis)}.",
+                f"Signed with {signed_with}. Install it with: adb install -r \"{apk.name}\" "
+                "(or copy it to the phone and allow installing unknown apps).",
+                "Android builds are experimental: test on a phone before sharing.",
+            ],
+        }
+
+    @staticmethod
+    def android_imports(pck) -> tuple[dict[str, bytes], int, int]:
+        """``.import`` remaps for phones. A texture imported only in desktop
+        GPU formats has ``path.s3tc``/``path.bptc`` lines and no
+        ``path.etc2``/``path.astc``; Android matches none of them, so it gets
+        a plain ``path=`` to the desktop file as the fallback Godot's loader
+        uses (``ResourceFormatImporter``), and Godot decodes it at load.
+        Returns (new file contents, fixed count, count needing a fix)."""
+        present = {e.path for e in pck.files}
+        changed: dict[str, bytes] = {}
+        need = 0
+        for e in pck.files:
+            if not e.path.endswith(".import") or e.size > 1 << 20:
+                continue
+            raw = godot.read_file(pck, e.path)
+            if raw is None:
+                continue
+            text = raw.decode("utf-8", "replace")
+            keys = dict(re.findall(r'(?m)^(path(?:\.[a-z0-9_]+)?)="([^"]*)"', text))
+            if not keys or "path" in keys or {"path.etc2", "path.astc", "path.etc"} & set(keys):
+                continue
+            desktop = keys.get("path.s3tc") or keys.get("path.bptc")
+            if not desktop:
+                continue
+            need += 1
+            if desktop.removeprefix("res://") not in present:
+                continue
+            last = list(re.finditer(r'(?m)^path\.[a-z0-9_]+="[^"]*"\n?', text))[-1]
+            text = text[:last.end()] + ("" if text[last.end() - 1:last.end()] == "\n" else "\n") \
+                + f'path="{desktop}"\n' + text[last.end():]
+            changed[e.path] = text.encode("utf-8")
+        return changed, len(changed), need
+
+    def android_icon(self, ctx, pck) -> Path | None:
+        chosen = ctx.setting("icon")
+        candidate = Path(chosen).expanduser() if chosen else ctx.art("icon")
+        if candidate is None:
+            res = str(self.settings.get("application/config/icon") or "")
+            data = godot.read_file(pck, res) if res.lower().endswith((".png", ".jpg", ".jpeg")) else None
+            if data:
+                candidate = ctx.write_bytes(ctx.temp / f"game-icon{Path(res).suffix}", data)
+        return candidate if candidate and candidate.is_file() else None
 
     # -- web -----------------------------------------------------------------
 

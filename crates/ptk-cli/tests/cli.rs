@@ -258,6 +258,7 @@ fn targets_include_external_definitions() {
             "web",
             "windows-x64",
             "linux-x64",
+            "android",
             "nova-example"
         ]
     );

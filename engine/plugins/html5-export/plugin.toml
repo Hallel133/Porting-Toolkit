@@ -3,7 +3,7 @@ schema_version = 1
 [plugin]
 id = "html5-export"
 name = "HTML5 export"
-version = "1.1.0"
+version = "1.2.0"
 kind = "export"
 description = "Publishes an HTML5 game (RPG Maker MV/MZ, NW.js, Electron) as a web folder, wraps it in a small native macOS app built with WebKit, or packages it with the NW.js runtime for Windows and Linux."
 license = "MIT"
@@ -14,11 +14,11 @@ homepage = "https://github.com/Hallel133/Porting-Toolkit"
 
 [formats]
 inputs = ["rpgmaker", "html5"]
-outputs = ["app", "html5", "folder", "zip"]
-targets = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64", "web"]
+outputs = ["app", "html5", "folder", "zip", "apk"]
+targets = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64", "web", "android"]
 
 [permissions]
 read = ["$GAME", "$PROJECT"]
 write = ["$OUTPUT"]
 network = ["dl.nwjs.io"]   # the NW.js runtime for Windows and Linux (pinned, SHA-256 checked)
-subprocess = true   # swiftc, sips, iconutil and codesign, for the macOS app
+subprocess = true   # swiftc, sips, iconutil, codesign (macOS app); aapt2, javac, d8, apksigner (Android)

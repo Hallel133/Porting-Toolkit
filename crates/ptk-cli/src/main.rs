@@ -167,7 +167,7 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// The compression tools (FFmpeg, cwebp, oxipng, ...): list or install them
+    /// Tools exports use (FFmpeg, cwebp, oxipng, the Android SDK, ...): list or install them
     Tools {
         #[command(subcommand)]
         action: Option<ToolsAction>,
