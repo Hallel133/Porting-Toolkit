@@ -36,8 +36,11 @@ class Plugin:
         where = game.container if game.container != "folder" else "a folder"
         root = game.root or "(top level)"
         ctx.progress(1.0, "Done")
+        kind = FLAVORS.get(game.flavor, game.flavor)
+        if game.framework:
+            kind = game.framework if game.flavor == "web" else f"{game.framework} ({kind})"
         return {
-            "summary": f"{FLAVORS.get(game.flavor, game.flavor)} game: {game.entry} in {root}, from {where}",
+            "summary": f"{kind} game: {game.entry} in {root}, from {where}",
             "recipe": recipe,
             "outputs": [str(saved)],
             "title": game.title,

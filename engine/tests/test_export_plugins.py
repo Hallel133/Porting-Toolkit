@@ -686,3 +686,36 @@ def test_rpgmaker_title_comes_from_system_json(tmp_path):
     project.mkdir()
     out, _ = run(tmp_path, "html5-import", game, project, "import")
     assert out["result"]["title"] == "Real Quest"
+
+
+@pytest.mark.parametrize("files,framework", [
+    ({"index.html": PAGE, "scripts/c3runtime.js": "//", "data.json": "{}"}, "Construct 3"),
+    ({"index.html": PAGE, "c2runtime.js": "//"}, "Construct 2"),
+    ({"index.html": PAGE, "gd.js": "//", "pixi-renderers/x.js": "//"}, "GDevelop"),
+    ({"index.html": PAGE, "js/phaser.min.js": "//"}, "Phaser"),
+    ({"index.html": PAGE, "dmloader.js": "//", "archive/game.arcd": "x"}, "Defold"),
+    ({"index.html": PAGE}, None),
+])
+def test_html5_frameworks(tmp_path, files, framework):
+    game = tmp_path / "game"
+    for rel, text in files.items():
+        (game / rel).parent.mkdir(parents=True, exist_ok=True)
+        (game / rel).write_text(text)
+    g = html5.detect(game)
+    assert g.flavor == "web" and g.framework == framework
+
+
+def test_twine_story_without_index_html(tmp_path):
+    game = tmp_path / "game"
+    game.mkdir()
+    (game / "My Story.html").write_text(
+        '<html><body><tw-storydata name="Moon &amp; Back" startnode="1"><tw-passagedata pid="1" name="Start">Hi'
+        '</tw-passagedata></tw-storydata></body></html>')
+    g = html5.detect(game)
+    assert (g.framework, g.entry, g.title) == ("Twine", "My Story.html", "Moon & Back")
+    project = tmp_path / "project"
+    project.mkdir()
+    out, _ = run(tmp_path, "html5-import", game, project, "import")
+    assert out["result"]["title"] == "Moon & Back" and out["result"]["summary"].startswith("Twine game")
+    out, _ = run(tmp_path, "html5-export", game, project, "export", WEB, output=tmp_path / "web")
+    assert "My Story.html" in (tmp_path / "web" / "index.html").read_text()

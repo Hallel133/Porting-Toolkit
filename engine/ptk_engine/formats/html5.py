@@ -9,8 +9,10 @@ giving it a new host: a browser, or a small native macOS app.
 
 from __future__ import annotations
 
+import html
 import json
 import os
+import re
 import shutil
 import struct
 import zipfile
@@ -36,6 +38,8 @@ class Html5Game:
     height: int | None = None
     icon: str | None = None  # relative to the root
     uses_node: bool = False
+    #: The tool that made the game, when known: Construct 3, GDevelop, Twine, ...
+    framework: str | None = None
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -247,7 +251,48 @@ def _from_listing(listing: Listing) -> tuple[str, str, str, dict] | None:
         page = pages[0]
         pkg = _package(listing, _parent(page))
         return "web", _parent(page), page.rsplit("/", 1)[-1], pkg
+    # A Twine story is one page with any name ("My Story.html").
+    for n in names:
+        if n.count("/") <= 1 and n.lower().endswith((".html", ".htm")) and _twine_title(listing.read(n)) is not None:
+            return "web", _parent(n), n.rsplit("/", 1)[-1], {}
     return None
+
+
+#: Script names that give away the tool that made an HTML5 game.
+FRAMEWORKS = (
+    ("c3runtime.js", "Construct 3"),
+    ("c3main.js", "Construct 3"),
+    ("c2runtime.js", "Construct 2"),
+    ("gd.js", "GDevelop"),
+    ("dmloader.js", "Defold"),
+    ("phaser", "Phaser"),
+    ("cocos2d-js", "Cocos"),
+)
+
+
+def _twine_title(page: bytes | None) -> str | None:
+    """The story name of a Twine page, '' when unnamed, None if not Twine."""
+    if not page or b"<tw-storydata" not in page:
+        return None
+    m = re.search(rb'<tw-storydata[^>]*\bname="([^"]*)"', page)
+    return html.unescape(m.group(1).decode("utf-8", "replace")).strip() if m else ""
+
+
+def _framework(listing: Listing, root: str, entry: str) -> tuple[str | None, str | None]:
+    """(framework, title from the framework's own data) for a web root."""
+    prefix = root.lower() + "/" if root else ""
+    for n in listing.names:
+        low = n.lower()
+        if not low.startswith(prefix) or low[len(prefix):].count("/") > 2:
+            continue
+        base = low.rsplit("/", 1)[-1]
+        for marker, name in FRAMEWORKS:
+            if base == marker or (not marker.endswith(".js") and base.startswith(marker) and base.endswith(".js")):
+                return name, None
+    title = _twine_title(listing.read(_join(root, entry)))
+    if title is not None:
+        return "Twine", title or None
+    return None, None
 
 
 def detect(game: Path) -> Html5Game:
@@ -304,6 +349,9 @@ def detect(game: Path) -> Html5Game:
             g.icon = icon[len(prefix):] if icon.startswith(prefix) else icon
         elif listing.has(_join(root, "icon/icon.png")):
             g.icon = "icon/icon.png"
+        g.framework, framework_title = _framework(listing, root, entry)
+        if framework_title:
+            g.title = framework_title
         if flavor.startswith("rpgmaker"):
             # RPG Maker keeps the real title in data/System.json.
             try:

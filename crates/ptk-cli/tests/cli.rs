@@ -223,7 +223,7 @@ fn scan_fixtures_detects_every_engine() {
         ("source", "source"),
         ("gamemaker", "gamemaker"),
         ("renpy", "renpy"),
-        ("rpgmaker-vxace", "rpgmaker"),
+        ("rpgmaker-vxace", "rgss"),
         ("macos-app", "macos"),
     ] {
         let path = fixtures().join(folder);

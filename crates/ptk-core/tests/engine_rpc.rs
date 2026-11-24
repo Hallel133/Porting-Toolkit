@@ -46,6 +46,9 @@ fn handshake_and_shared_categories() {
         "gamemaker",
         "renpy",
         "rpgmaker",
+        "rgss",
+        "love",
+        "html5",
         "macos",
     ] {
         assert!(e.info.engines.iter().any(|x| x == engine_id), "{engine_id}");

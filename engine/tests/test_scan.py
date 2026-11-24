@@ -15,7 +15,11 @@ EXPECTED = {
     "gamemaker": ("gamemaker", None, ["windows"]),
     "renpy": ("renpy", None, ["windows"]),
     "rpgmaker-mv": ("rpgmaker", "MV", ["windows"]),
-    "rpgmaker-vxace": ("rpgmaker", "VX Ace", ["windows"]),
+    "rpgmaker-vxace": ("rgss", "VX Ace", ["windows"]),
+    "love-windows": ("love", None, ["windows"]),
+    "construct3": ("html5", "Construct 3", []),
+    "gdevelop": ("html5", "GDevelop", []),
+    "twine": ("html5", "Twine", []),
     "macos-app": ("macos", None, ["macos"]),
 }
 

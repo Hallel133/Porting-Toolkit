@@ -18,6 +18,18 @@ from .signatures import GameIndex, detect, guess_platforms
 JUNK_NAMES = {".DS_Store", "Thumbs.db", "desktop.ini"}
 MAGIC_EXTENSIONS = {"", "exe", "dll", "so", "dylib", "bin", "x86_64", "pck", "arm64"}
 MAX_MAGIC_READS = 4000
+MAX_MARK_READS = 10
+MAX_MARK_SIZE = 32 << 20  # Twine stories inline their story format: a few MB
+
+
+def read_mark(path: str) -> str | None:
+    """'twine' when a page holds a Twine story (<tw-storydata ...>)."""
+    try:
+        with open(path, "rb") as f:
+            data = f.read(MAX_MARK_SIZE)
+    except OSError:
+        return None
+    return "twine" if b"<tw-storydata" in data else None
 
 
 def is_junk(name: str) -> bool:
@@ -82,7 +94,8 @@ def scan(
     dirs: list[str] = []
     magic: dict[str, str] = {}
     embedded: list[str] = []
-    symlinks = unreadable = magic_reads = 0
+    marks: dict[str, str] = {}
+    symlinks = unreadable = magic_reads = mark_reads = 0
     truncated = False
 
     # A single file (a Windows .exe, a Linux binary, a .pck) is scanned as a
@@ -135,13 +148,20 @@ def scan(
                     magic[rel] = kind
                 if kind in ("pe", "elf", "mach-o") and has_embedded_pck(entry.path):
                     embedded.append(rel)
+            if (_ext(name) in ("html", "htm") and rel.count("/") <= 1 and mark_reads < MAX_MARK_READS
+                    and size <= MAX_MARK_SIZE):
+                mark_reads += 1
+                if mark := read_mark(entry.path):
+                    marks[rel] = mark
             if progress and len(files) % 2000 == 0:
                 progress(len(files))
             if max_files and len(files) >= max_files:
                 truncated = True
                 break
 
-    index = GameIndex([f for f, _ in files], dirs, magic, embedded)
+    if single is not None and _ext(single.name) in ("html", "htm") and (mark := read_mark(str(single))):
+        marks[single.name] = mark
+    index = GameIndex([f for f, _ in files], dirs, magic, embedded, marks)
     engines = detect(index)
 
     per_cat = {c: {"id": c, "files": 0, "size": 0} for c in CATEGORY_IDS}

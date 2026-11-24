@@ -1,7 +1,8 @@
 """Engine and format detection from file signatures.
 
 Detection only looks at file and folder names, plus the first four bytes of
-executables (to recognise PE, ELF and Mach-O). It never opens, decrypts or
+executables (to recognise PE, ELF and Mach-O) and, for Twine stories, the
+``<tw-storydata`` tag in top-level HTML pages. It never opens, decrypts or
 decodes game archives or other protected content.
 
 Each rule adds weight when it matches; an engine is reported once its score
@@ -24,6 +25,7 @@ THRESHOLD = 0.5
 #   dirpath  "/" + relative folder path
 #   magic    a file whose header is "pe", "elf", "mach-o" or "godot-pck"
 #   embedded an executable with a Godot .pck appended (ends with GDPC)
+#   mark     a top-level HTML page carrying a marker ("twine": <tw-storydata)
 Rule = tuple[float, str, str]
 
 
@@ -133,12 +135,19 @@ ENGINES: tuple[EngineSignature, ...] = (
     ),
     EngineSignature(
         "rpgmaker",
-        "RPG Maker",
+        "RPG Maker MV/MZ",
         "engine",
         (
             (0.8, "path", "*/js/rpg_core.js"),
             (0.8, "path", "*/js/rmmz_core.js"),
             (0.2, "path", "*/data/system.json"),
+        ),
+    ),
+    EngineSignature(
+        "rgss",
+        "RPG Maker XP/VX/VX Ace (RGSS)",
+        "engine",
+        (
             (0.8, "name", "*.rgss3a"),
             (0.8, "name", "*.rgss2a"),
             (0.8, "name", "*.rgssad"),
@@ -146,13 +155,35 @@ ENGINES: tuple[EngineSignature, ...] = (
             (0.5, "name", "*.rvdata2"),
             (0.5, "name", "*.rvdata"),
             (0.5, "name", "*.rxdata"),
+            (0.1, "name", "game.ini"),
+        ),
+    ),
+    EngineSignature(
+        "love",
+        "LÖVE",
+        "engine",
+        (
+            (0.8, "name", "*.love"),
+            (0.6, "name", "love.dll"),
+            (0.2, "name", "lua51.dll"),
+            (0.3, "name", "main.lua"),
+            (0.2, "name", "conf.lua"),
         ),
     ),
     EngineSignature(
         "html5",
-        "HTML5 (NW.js / Electron)",
+        "HTML5 (web, NW.js, Electron)",
         "engine",
         (
+            (0.6, "name", "c2runtime.js"),
+            (0.6, "name", "c3runtime.js"),
+            (0.6, "name", "c3main.js"),
+            (0.4, "name", "gd.js"),
+            (0.3, "dir", "pixi-renderers"),
+            (0.5, "name", "phaser*.js"),
+            (0.5, "name", "cocos2d-js*.js"),
+            (0.5, "name", "dmloader.js"),
+            (0.9, "mark", "twine"),
             (0.8, "name", "package.nw"),
             (0.5, "name", "nw.dll"),
             (0.4, "name", "nw_elf.dll"),
@@ -188,6 +219,7 @@ class GameIndex:
     dirs: list[str] = field(default_factory=list)
     magic: dict[str, str] = field(default_factory=dict)
     embedded_pck: list[str] = field(default_factory=list)
+    marks: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self._names = [f.rsplit("/", 1)[-1].lower() for f in self.files]
@@ -211,6 +243,8 @@ class GameIndex:
             return next((p for p, m in self.magic.items() if m == pattern), None)
         if kind == "embedded":
             return next((f"{p} (embedded .pck)" for p in self.embedded_pck), None)
+        if kind == "mark":
+            return next((p for p, m in self.marks.items() if m == pattern), None)
         has_wildcard = any(c in pattern for c in "*?[")
         if kind == "name" and not has_wildcard:
             return self._name_set.get(pattern)
@@ -250,16 +284,43 @@ def _variant(engine_id: str, index: GameIndex) -> str | None:
     if engine_id == "godot" and index.embedded_pck:
         return "embedded .pck"
     if engine_id == "html5":
+        framework = None
+        for kind, pattern, name in (
+            ("name", "c3runtime.js", "Construct 3"),
+            ("name", "c3main.js", "Construct 3"),
+            ("name", "c2runtime.js", "Construct 2"),
+            ("name", "gd.js", "GDevelop"),
+            ("name", "phaser*.js", "Phaser"),
+            ("name", "cocos2d-js*.js", "Cocos"),
+            ("name", "dmloader.js", "Defold"),
+            ("mark", "twine", "Twine"),
+        ):
+            if f(kind, pattern):
+                framework = name
+                break
+        runtime = None
         if f("name", "package.nw") or f("name", "nw.dll") or f("path", "*/resources/app.nw/*"):
-            return "NW.js"
-        if f("path", "*/resources/app.asar") or f("path", "*/resources/app/package.json"):
-            return "Electron"
+            runtime = "NW.js"
+        elif f("path", "*/resources/app.asar") or f("path", "*/resources/app/package.json"):
+            runtime = "Electron"
+        if framework and runtime:
+            return f"{framework} ({runtime})"
+        return framework or runtime
     if engine_id == "unreal" and (f("name", "*.utoc") or f("name", "*.ucas")):
         return "IoStore (UE 4.26+ / UE5)"
     if engine_id == "rpgmaker":
+        if f("path", "*/js/rmmz_core.js"):
+            return "MZ"
+        if f("path", "*/js/rpg_core.js"):
+            return "MV"
+    if engine_id == "rgss":
+        if f("name", "rgss3*.dll"):
+            return "VX Ace"
+        if f("name", "rgss2*.dll"):
+            return "VX"
+        if f("name", "rgss1*.dll"):
+            return "XP"
         for pattern, kind, name in (
-            ("*/js/rmmz_core.js", "path", "MZ"),
-            ("*/js/rpg_core.js", "path", "MV"),
             ("*.rgss3a", "name", "VX Ace"),
             ("*.rvdata2", "name", "VX Ace"),
             ("*.rgss2a", "name", "VX"),

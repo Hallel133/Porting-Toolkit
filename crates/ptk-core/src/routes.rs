@@ -59,9 +59,27 @@ pub const ROUTES: &[Route] = &[
     },
     Route {
         engine: "rpgmaker",
-        name: "RPG Maker",
+        name: "RPG Maker MV/MZ",
         kind: RouteKind::Retarget,
-        how: "MV/MZ games are HTML5 + JavaScript: wrap www/ with a runtime for the target or play it in a browser. XP/VX/VX Ace need a compatible RGSS runtime.",
+        how: "MV/MZ games are HTML5 + JavaScript: the web folder runs in a browser, in a WebKit app on macOS, or with NW.js on Windows and Linux.",
+    },
+    Route {
+        engine: "rgss",
+        name: "RPG Maker XP/VX/VX Ace",
+        kind: RouteKind::Retarget,
+        how: "The game's Ruby scripts and data run on mkxp-z, an open-source RGSS runtime for macOS and Linux. Windows keeps the original Game.exe. Games that use the RTP need it installed.",
+    },
+    Route {
+        engine: "love",
+        name: "LÖVE",
+        kind: RouteKind::Retarget,
+        how: "The game is a .love archive of Lua scripts and assets (on its own or fused into the .exe). It runs with the official LÖVE build of the same version for each platform.",
+    },
+    Route {
+        engine: "html5",
+        name: "HTML5 (Construct, GDevelop, Twine, NW.js, Electron)",
+        kind: RouteKind::Retarget,
+        how: "The game is a web page: it runs in a browser, in a WebKit app on macOS, or with NW.js on Windows and Linux. Electron games that call Node.js need those parts changed.",
     },
     Route {
         engine: "gamemaker",
