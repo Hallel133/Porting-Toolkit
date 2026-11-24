@@ -304,6 +304,14 @@ def detect(game: Path) -> Html5Game:
             g.icon = icon[len(prefix):] if icon.startswith(prefix) else icon
         elif listing.has(_join(root, "icon/icon.png")):
             g.icon = "icon/icon.png"
+        if flavor.startswith("rpgmaker"):
+            # RPG Maker keeps the real title in data/System.json.
+            try:
+                system = json.loads((listing.read(_join(root, "data/System.json")) or b"{}").decode("utf-8-sig"))
+                if isinstance(system, dict) and str(system.get("gameTitle") or "").strip():
+                    g.title = str(system["gameTitle"]).strip()
+            except (ValueError, UnicodeDecodeError, OSError):
+                pass
         page = listing.read(_join(root, entry)) or b""
         g.uses_node = flavor == "electron" or b"require(" in page or b"process.versions" in page
         if g.flavor == "electron":

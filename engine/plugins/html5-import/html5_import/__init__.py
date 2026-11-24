@@ -40,4 +40,5 @@ class Plugin:
             "summary": f"{FLAVORS.get(game.flavor, game.flavor)} game: {game.entry} in {root}, from {where}",
             "recipe": recipe,
             "outputs": [str(saved)],
+            "title": game.title,
         }

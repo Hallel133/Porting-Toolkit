@@ -18,9 +18,19 @@ They ship in `engine/plugins/` and are listed as built-in (and reviewed).
 | Plugin | Engines | Targets | What it does |
 |---|---|---|---|
 | `godot-import` | godot | | Finds the `.pck` (standalone, appended to an `.exe`, or in an `.app`), reads its Godot version and flags into `recipes/godot.json` |
-| `godot-export` | godot | macos-arm64, macos-x64, web | `.pck` + the official Godot export template of the same version |
+| `godot-export` | godot | macos-arm64, macos-x64, windows-x64, linux-x64, web | `.pck` + the official Godot export template of the same version |
 | `html5-import` | rpgmaker, html5 | | Finds the web root of RPG Maker MV/MZ, NW.js (`package.nw`) and Electron (`app.asar`) games into `recipes/html5.json` |
-| `html5-export` | rpgmaker, html5 | macos-arm64, macos-x64, web | The web root as a web folder, or inside a native WebKit `.app` |
+| `html5-export` | rpgmaker, html5 | macos-arm64, macos-x64, windows-x64, linux-x64, web | The web root as a web folder, inside a native WebKit `.app`, or with the NW.js runtime for Windows and Linux |
+
+**HTML5 on Windows and Linux.** The game runs in NW.js, the runtime RPG
+Maker MV/MZ ship with (Electron would break their `nw.gui` and save code).
+The pinned NW.js release (`NWJS_VERSION` in the plugin, SHA-256 from
+dl.nwjs.io's `SHASUMS256.txt`) is downloaded once and cached; `--set
+nwjs=PATH` uses a local folder or archive. `nw.exe` / `nw` becomes
+`<Title>.exe` / `<Title>`, the game goes into `package.nw/` with a
+`package.json` whose `main` is the game's page, and `credits.html` keeps
+the licences. NW.js has no H.264/AAC decoder, so `.mp4`/`.m4a` files without
+a `.webm`/`.ogg` twin are reported.
 
 **Godot.** The pck formats of Godot 3 (1), 4.0–4.3 (2) and 4.4+ (3) are
 read; embedded pcks are cut out of the executable (Godot 3 offsets are
@@ -39,6 +49,16 @@ cache. The `.pck` does not record rc/beta builds; use
 - Web: the single-threaded template (Godot 4.3+) is used, so the build runs
   on any static host such as itch.io. `--set threads=true` uses the threaded
   template and adds Godot's service worker for the COOP/COEP headers.
+- Windows / Linux: `<Title>/<Title>.exe` (or `<Title>.x86_64`) from the
+  release template (`windows_release_x86_64.exe`, `linux_release.x86_64`;
+  Godot 3: `windows_64_release.exe`, `linux_x11_64_release`) with
+  `<Title>.pck` next to it, since Godot loads the pck named after its
+  executable. GDExtension libraries for that platform and architecture,
+  their `[dependencies]` (such as `steam_api64.dll`) and `steam_appid.txt`
+  are copied from the game folder; a missing one is a warning. A zip of the
+  folder (`--set zip=false` skips it) keeps the Linux executable bit. The
+  `.exe` keeps Godot's icon (changing it needs a PE resource editor) and is
+  not signed, so SmartScreen may ask once.
 - Import reads the game's `project.binary` (its Godot project settings):
   the real title (replacing a title guessed from a file name), the
   renderer, the icon and boot splash, and the autoloads. The game's icon is

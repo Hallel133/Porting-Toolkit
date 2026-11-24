@@ -277,7 +277,7 @@ class Context:
         dest.parent.mkdir(parents=True, exist_ok=True)
         executables = executables or set()
         base = Path(src)
-        with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+        with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
             for p in sorted(base.rglob("*")):
                 if p.is_symlink() or not p.is_file() or p.name == self.MARKER:
                     continue
@@ -286,8 +286,9 @@ class Context:
                 mode = 0o755 if p.relative_to(base).as_posix() in executables or os.access(p, os.X_OK) else 0o644
                 info.external_attr = (0o100000 | mode) << 16
                 info.compress_type = zipfile.ZIP_DEFLATED
-                with open(p, "rb") as f:
-                    zf.writestr(info, f.read())
+                info.file_size = p.stat().st_size
+                with open(p, "rb") as f, zf.open(info, "w", force_zip64=info.file_size > 0x7FFF0000) as out:
+                    shutil.copyfileobj(f, out, 1 << 20)
         return dest
 
     MARKER = ".ptk-output"

@@ -103,7 +103,7 @@ pub fn run(install: bool) -> Vec<Check> {
         out.push(check(
             Status::Warn,
             "Support",
-            "macOS comes first; Windows and Linux are planned for phase 4",
+            "ptk itself is tested on macOS so far (it exports Windows and Linux builds from a Mac)",
             None,
         ));
     }

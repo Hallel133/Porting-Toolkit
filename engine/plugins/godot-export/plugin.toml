@@ -3,9 +3,9 @@ schema_version = 1
 [plugin]
 id = "godot-export"
 name = "Godot export"
-version = "1.0.0"
+version = "1.1.0"
 kind = "export"
-description = "Pairs the game's .pck with the official Godot export template of the same version: a signed .app for macOS, or an HTML5 build for the web."
+description = "Pairs the game's .pck with the official Godot export template of the same version: a signed .app for macOS, a Windows or Linux game folder (and zip), or an HTML5 build for the web."
 license = "MIT"
 authors = ["Porting Toolkit contributors"]
 entry = "godot_export:Plugin"
@@ -14,8 +14,8 @@ homepage = "https://github.com/Hallel133/Porting-Toolkit"
 
 [formats]
 inputs = ["godot"]
-outputs = ["app", "html5"]
-targets = ["macos-arm64", "macos-x64", "web"]
+outputs = ["app", "html5", "folder", "zip"]
+targets = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64", "web"]
 
 # Templates come from the Godot editor's own folder when present, otherwise
 # only the needed files are fetched from Godot's GitHub releases.

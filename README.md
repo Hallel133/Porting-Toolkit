@@ -105,7 +105,7 @@ logic lives:
 | Unity, GameMaker | Depends: Unity Mono yes, IL2CPP no; GameMaker needs a runner for the target |
 | Unreal, RAGE, Source | No: native code. Needs the source, or a compatibility layer (Wine-style) |
 
-## Export to macOS and the web
+## Export to macOS, Windows, Linux and the web
 
 ```bash
 ptk export -p space-hopper-port                 # every target of the project
@@ -116,15 +116,17 @@ ptk serve space-hopper-port/build/web --open    # play the web build locally
 Builds go to `PROJECT/build/<target>/` (`-o` changes it). In the app:
 **Export → Export all**, then **Open**, **Play in browser** or **Show in Finder**.
 
-| Plugin (built in) | Reads | macOS | Web |
-|---|---|---|---|
-| Godot | `.pck`, standalone or inside the `.exe` / `.app` (Godot 3 and 4) | `.app` from the official template of the same Godot version, thinned and ad-hoc signed | `index.html` + `.wasm` + `.pck` (single-threaded, any static host) |
-| HTML5 | RPG Maker MV/MZ, NW.js (`package.nw`), Electron (`app.asar`) | `.app` with a small WebKit wrapper (needs the Xcode command line tools) | the game's web root |
+| Plugin (built in) | Reads | macOS | Windows / Linux | Web |
+|---|---|---|---|---|
+| Godot | `.pck`, standalone or inside the `.exe` / `.app` (Godot 3 and 4) | `.app` from the official template of the same Godot version, thinned and ad-hoc signed | `<Title>.exe` / `<Title>.x86_64` + `<Title>.pck` from the official template, the game's native libraries, and a zip | `index.html` + `.wasm` + `.pck` (single-threaded, any static host) |
+| HTML5 | RPG Maker MV/MZ, NW.js (`package.nw`), Electron (`app.asar`) | `.app` with a small WebKit wrapper (needs the Xcode command line tools) | the game with the NW.js runtime (pinned, SHA-256 checked), and a zip | the game's web root |
 
 Godot templates come from the Godot editor's folder when installed;
 otherwise only the needed files (about 10 MB for the web, 120 MB for macOS)
 are fetched from Godot's GitHub release, not the whole 1.3 GB archive.
-`--set templates=PATH` uses your own. Encrypted `.pck` files and C# (.NET)
+`--set templates=PATH` uses your own. Windows and Linux builds can be made
+on a Mac; the `.exe` keeps the engine's icon and is not signed, so Windows
+SmartScreen may ask once. Encrypted `.pck` files and C# (.NET)
 Godot games are refused with an explanation. Ad-hoc signed apps run on your
 Mac; to give them to others, sign and notarize them with your Apple
 Developer ID. See [docs/plugins.md](docs/plugins.md).
@@ -182,7 +184,7 @@ See [docs/marketplace.md](docs/marketplace.md).
 | `ptk verify <game-dir>` | Compare your game files with a project's recorded hashes |
 | `ptk plugin list\|new\|validate\|install` | Import/export plugins (built-in and installed) |
 | `ptk import <build>` | Project from a folder, .app, .exe, .zip, .deb or .dmg (runs the import plugin) |
-| `ptk export [-t ID]` | Build for macOS / the web with export plugins (`--set key=value`, `--assets apply\|plan\|off`) |
+| `ptk export [-t ID]` | Build for macOS, Windows, Linux or the web with export plugins (`--set key=value`, `--assets apply\|plan\|off`) |
 | `ptk assets [-t ID]` | Estimate what the advanced options save, per target |
 | `ptk tools [list\|install ID]` | Compression tools: where each one is, or install a pinned build |
 | `ptk art --icon\|--poster <image>` | The port's icon and poster (shared in the `.ptk`, used by exports) |
@@ -201,7 +203,7 @@ Colors are off when output is not a terminal, with `NO_COLOR=1` or `--no-color`.
 
 1. macOS + CLI infrastructure + banner + file structure (done)
 2. Desktop GUI (egui) (done)
-3. **Import/export plugins** (now: Godot and HTML5 to macOS and the web, with applied compression options), then Windows/Linux and Android exports, and Ren'Py, LÖVE and RPG Maker XP/VX/Ace imports
+3. **Import/export plugins** (now: Godot and HTML5 to macOS, Windows, Linux and the web, with applied compression options), then Ren'Py, LÖVE and RPG Maker XP/VX/Ace imports and Android exports
 4. Windows/Linux and the full community marketplace
 
 ## Documentation
@@ -259,12 +261,13 @@ MIT. See [LICENSE](LICENSE).
 - **Unity ו-GameMaker:** תלוי ב-build.
 - **Unreal,‏ RAGE,‏ Source:** צריך קוד מקור, או שכבת תאימות בסגנון Wine.
 
-### ייצוא ל-macOS ולווב
+### ייצוא ל-macOS,‏ Windows,‏ Linux ולווב
 
 התוספים המובנים מייצאים בלי קוד מקור:
 
 - **Godot** (גרסאות 3 ו-4): ה-‎.pck של המשחק, גם כשהוא ארוז בתוך ‎.exe או ‎.app, יחד עם ה-export template הרשמי של אותה גרסה. התוצאה היא ‎.app חתום (ad-hoc), או גרסת ווב (`index.html` + ‏‎.wasm + ‏‎.pck). ה-templates נלקחים מהתיקייה של עורך Godot אם הם מותקנים, ואם לא, מורידים מ-GitHub רק את הקבצים הדרושים.
 - **HTML5** (RPG Maker MV/MZ,‏ NW.js,‏ Electron): תיקיית ווב, או ‎.app עם עטיפת WebKit קטנה (דורש Xcode Command Line Tools).
+- **Windows ו-Linux** (אפשר לבנות אותם מהמק): ב-Godot נוצרת תיקייה עם ‎.exe (או ‎.x86_64) ו-‎.pck מה-template הרשמי, יחד עם הספריות הנייטיביות של המשחק. במשחקי HTML5 המשחק רץ ב-NW.js, אותו runtime שאיתו RPG Maker מגיע. התוכנה מורידה גרסה נעולה ובודקת אותה לפי SHA-256. בשני המקרים נוצר גם zip ששומר על הרשאת ההרצה ב-Linux.
 
 באפליקציה: Export ואז **Export all**, ואחריו Open,‏ Play in browser או Show in Finder.
 
@@ -286,7 +289,7 @@ MIT. See [LICENSE](LICENSE).
 
 1. ‏macOS + תשתית CLI + באנר + מבנה קבצים (הושלם)
 2. ממשק גרפי (הושלם)
-3. תוספי ייבוא/ייצוא (עכשיו: Godot ו-HTML5 ל-macOS ולווב, עם דחיסה אמיתית), ואחר כך Windows,‏ Linux ו-Android, וייבוא של Ren'Py,‏ LÖVE ו-RPG Maker XP/VX/Ace
+3. תוספי ייבוא/ייצוא (עכשיו: Godot ו-HTML5 ל-macOS,‏ Windows,‏ Linux ולווב, עם דחיסה אמיתית), ואחר כך ייבוא של Ren'Py,‏ LÖVE ו-RPG Maker XP/VX/Ace, ו-Android
 4. ‏Windows/Linux וקהילה מלאה
 
 רישיון: MIT.

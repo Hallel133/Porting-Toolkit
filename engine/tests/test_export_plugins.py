@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import plistlib
+import re
 import shutil
 import struct
 import subprocess
@@ -503,3 +504,185 @@ def test_project_icon_wins(tmp_path):
         "cache_root": str(tmp_path / "cache")}, lambda m, p: events.append(p))
     assert (tmp_path / "w/index.icon.png").read_bytes() == b"\x89PNG mine"
     assert out["result"]["outputs"]
+
+
+# -- Windows and Linux ---------------------------------------------------------------
+
+WINDOWS = {"id": "windows-x64", "name": "Windows x64", "os": "windows", "arch": "x86_64"}
+LINUX = {"id": "linux-x64", "name": "Linux x64", "os": "linux", "arch": "x86_64"}
+
+GDEXT_DESKTOP = b"""[configuration]
+entry_symbol = "steam_init"
+[libraries]
+windows.debug.x86_64 = "res://addons/steam/win64/steam_debug.dll"
+windows.release.x86_64 = "res://addons/steam/win64/steam.dll"
+windows.release.x86_32 = "res://addons/steam/win32/steam32.dll"
+linux.release.x86_64 = "res://addons/steam/linux64/libsteam.so"
+[dependencies]
+windows.release.x86_64 = { "res://addons/steam/win64/steam_api64.dll": "" }
+"""
+
+
+def desktop_templates(root: Path) -> Path:
+    d = fake_templates(root)
+    (d / "windows_release_x86_64.exe").write_bytes(b"MZ-template")
+    (d / "linux_release.x86_64").write_bytes(b"\x7fELF-template")
+    return d
+
+
+def windows_godot_game(tmp_path: Path) -> Path:
+    """A Windows Godot build: the pck inside the .exe, GodotSteam next to it."""
+    game = tmp_path / "game"
+    files = {**GAME_FILES, "addons/steam/steam.gdextension": GDEXT_DESKTOP}
+    godot.write_pck(game / "PtkDemo.exe", files, (4, 4, 1), 3, b"MZ" + b"\0" * 4000)
+    (game / "steam.dll").write_bytes(b"MZ-steam")
+    (game / "steam_api64.dll").write_bytes(b"MZ-steam-api")
+    (game / "steam_appid.txt").write_text("480")
+    return game
+
+
+def zip_modes(path: Path) -> dict[str, int]:
+    with zipfile.ZipFile(path) as z:
+        return {i.filename: (i.external_attr >> 16) & 0o777 for i in z.infolist()}
+
+
+def test_extension_files_pick_platform_arch_release_and_dependencies(tmp_path):
+    game = windows_godot_game(tmp_path)
+    pck = godot.read(game / "PtkDemo.exe")
+    assert godot.extension_files(pck, "windows", "x86_64") == {
+        "addons/steam/steam.gdextension": ["steam.dll", "steam_api64.dll"]}
+    assert godot.extension_files(pck, "linux", "x86_64") == {"addons/steam/steam.gdextension": ["libsteam.so"]}
+    assert godot.extension_files(pck, "macos") == {"addons/steam/steam.gdextension": []}
+
+
+def plugin_module(folder: str, module: str):
+    import importlib
+    path = str(BUILTIN_DIR / folder)
+    if path not in sys.path:
+        sys.path.insert(0, path)
+    return importlib.import_module(module)
+
+
+def test_godot_desktop_template_names():
+    Plugin = plugin_module("godot-export", "godot_export").Plugin
+    assert Plugin.desktop_template(4, "windows", "x86_64") == "windows_release_x86_64.exe"
+    assert Plugin.desktop_template(4, "linux", "x86_64") == "linux_release.x86_64"
+    assert Plugin.desktop_template(3, "windows", "x86_64") == "windows_64_release.exe"
+    assert Plugin.desktop_template(3, "linux", "x86_64") == "linux_x11_64_release"
+
+
+def test_godot_export_windows(tmp_path):
+    game = windows_godot_game(tmp_path)
+    project = tmp_path / "project"
+    project.mkdir()
+    out, _ = run(tmp_path, "godot-export", game, project, "export", WINDOWS,
+                 {"templates": str(desktop_templates(tmp_path))}, tmp_path / "win")
+    r = out["result"]
+    folder = tmp_path / "win" / "Ptk Demo"
+    assert r["open"] == str(folder)
+    assert (folder / "Ptk Demo.exe").read_bytes() == b"MZ-template"
+    pck = godot.read(folder / "Ptk Demo.pck")
+    assert not pck.embedded and "main.gd" in pck.paths()
+    assert (folder / "steam.dll").read_bytes() == b"MZ-steam"
+    assert (folder / "steam_api64.dll").is_file() and (folder / "steam_appid.txt").read_text() == "480"
+    assert not (folder / "steam_debug.dll").exists()
+    assert not r["warnings"]
+    modes = zip_modes(tmp_path / "win" / "Ptk Demo-windows-x64.zip")
+    assert modes["Ptk Demo/Ptk Demo.exe"] == 0o755 and modes["Ptk Demo/Ptk Demo.pck"] == 0o644
+    assert not any(".ptk-output" in n for n in modes)
+
+
+def test_godot_export_linux_warns_about_missing_libraries(tmp_path):
+    game = windows_godot_game(tmp_path)
+    project = tmp_path / "project"
+    project.mkdir()
+    out, _ = run(tmp_path, "godot-export", game, project, "export", LINUX,
+                 {"templates": str(desktop_templates(tmp_path)), "zip": "false"}, tmp_path / "linux")
+    folder = tmp_path / "linux" / "Ptk Demo"
+    exe = folder / "Ptk Demo.x86_64"
+    assert exe.read_bytes() == b"\x7fELF-template" and os.access(exe, os.X_OK)
+    assert (folder / "Ptk Demo.pck").is_file() and (folder / "README.txt").is_file()
+    assert not list((tmp_path / "linux").glob("*.zip"))
+    assert any("No Linux version of the steam extension" in w for w in out["result"]["warnings"])
+
+
+def fake_nwjs(root: Path, kind: str) -> Path:
+    files = {"credits.html": b"<p>licences</p>", "locales/en-US.pak": b"pak", "nw.dll": b"MZ-nw"}
+    if kind == "zip":
+        path = root / "nwjs-v0.1.0-win-x64.zip"
+        with zipfile.ZipFile(path, "w") as z:
+            z.writestr("nwjs-v0.1.0-win-x64/nw.exe", b"MZ-nwjs")
+            for n, b in files.items():
+                z.writestr(f"nwjs-v0.1.0-win-x64/{n}", b)
+        return path
+    import io
+    import tarfile
+    path = root / "nwjs-v0.1.0-linux-x64.tar.gz"
+    with tarfile.open(path, "w:gz") as tf:
+        for n, b in {"nw": b"\x7fELF-nwjs", "lib/libnw.so": b"\x7fELF", **files}.items():
+            info = tarfile.TarInfo(f"nwjs-v0.1.0-linux-x64/{n}")
+            info.size = len(b)
+            info.mode = 0o755 if n == "nw" else 0o644
+            tf.addfile(info, io.BytesIO(b))
+    return path
+
+
+def test_html5_export_windows_with_nwjs(tmp_path):
+    game = nwjs_folder(tmp_path / "game")
+    (game / "movie.mp4").write_bytes(b"\0\0\0\x18ftypmp42")
+    project = tmp_path / "project"
+    project.mkdir()
+    run(tmp_path, "html5-import", game, project, "import")
+    out, _ = run(tmp_path, "html5-export", game, project, "export", WINDOWS,
+                 {"nwjs": str(fake_nwjs(tmp_path, "zip"))}, tmp_path / "win")
+    folder = tmp_path / "win" / "Ptk Demo"
+    assert (folder / "Ptk Demo.exe").read_bytes() == b"MZ-nwjs" and not (folder / "nw.exe").exists()
+    assert (folder / "credits.html").is_file() and (folder / "nw.dll").is_file()
+    pkg = folder / "package.nw"
+    assert (pkg / "index.html").read_text() == PAGE and (pkg / "data" / "info.json").is_file()
+    assert not (pkg / "nw.dll").exists(), "the game's own runtime files stay out"
+    meta = json.loads((pkg / "package.json").read_text())
+    assert meta["main"] == "index.html" and meta["name"] == "demo"
+    assert meta["window"]["width"] == 800 and meta["window"]["title"] == "Nw Demo"
+    assert any("movie.mp4" in w for w in out["result"]["warnings"])
+    assert (tmp_path / "win" / "Ptk Demo-windows-x64.zip").is_file()
+
+
+def test_html5_export_linux_with_nwjs_keeps_the_executable_bit(tmp_path):
+    game = nwjs_folder(tmp_path / "game")
+    project = tmp_path / "project"
+    project.mkdir()
+    out, _ = run(tmp_path, "html5-export", game, project, "export", LINUX,
+                 {"nwjs": str(fake_nwjs(tmp_path, "tar.gz"))}, tmp_path / "linux")
+    folder = tmp_path / "linux" / "Ptk Demo"
+    assert os.access(folder / "Ptk Demo", os.X_OK) and (folder / "lib" / "libnw.so").is_file()
+    modes = zip_modes(tmp_path / "linux" / "Ptk Demo-linux-x64.zip")
+    assert modes["Ptk Demo/Ptk Demo"] == 0o755 and modes["Ptk Demo/package.nw/index.html"] == 0o644
+    assert not out["result"]["warnings"]
+
+
+def test_nwjs_pins_are_sha256():
+    html5_export = plugin_module("html5-export", "html5_export")
+    assert re.fullmatch(r"\d+\.\d+\.\d+", html5_export.NWJS_VERSION)
+    for plat, kind, sha in html5_export.NWJS.values():
+        assert re.fullmatch(r"[0-9a-f]{64}", sha) and kind in ("zip", "tar.gz")
+
+
+def test_desktop_targets_find_their_exporters():
+    ids = lambda **kw: [r["plugin"]["id"] for r in find_plugins(dirs=[], **kw)]  # noqa: E731
+    assert ids(kind="export", engine="godot", target="windows-x64") == ["godot-export"]
+    assert ids(kind="export", engine="rpgmaker", target="linux-x64") == ["html5-export"]
+
+
+def test_rpgmaker_title_comes_from_system_json(tmp_path):
+    game = tmp_path / "game"
+    (game / "js").mkdir(parents=True)
+    (game / "data").mkdir()
+    (game / "index.html").write_text(PAGE)
+    (game / "js" / "rmmz_core.js").write_text("//")
+    (game / "package.json").write_text('{"name": "rmmz-game", "main": "index.html"}')
+    (game / "data" / "System.json").write_text('﻿{"gameTitle": "Real Quest"}', encoding="utf-8")
+    project = tmp_path / "project"
+    project.mkdir()
+    out, _ = run(tmp_path, "html5-import", game, project, "import")
+    assert out["result"]["title"] == "Real Quest"

@@ -6,10 +6,15 @@
 - Web: ``index.html`` + ``index.js`` / ``.wasm`` / ``.pck`` from the web
   template. The single-threaded template is used when the version has one
   (Godot 4.3+), so the build runs on any static host.
+- Windows / Linux: ``<Title>/<Title>.exe`` (or ``.x86_64``) from the
+  release template with ``<Title>.pck`` next to it (Godot loads the pck
+  named after the executable), the game's GDExtension libraries for that
+  platform, and a zip of the folder.
 
 Settings (``--set key=value``): ``templates`` (a folder or .tpz),
 ``godot_version`` (e.g. ``4.3`` or ``4.3.rc1``), ``bundle_id``,
-``threads`` (web), ``thin`` and ``sign`` (macOS, default true).
+``threads`` (web), ``thin`` and ``sign`` (macOS, default true),
+``zip`` (Windows/Linux, default true).
 """
 
 from __future__ import annotations
@@ -167,8 +172,8 @@ class Plugin:
     def build(self, ctx):
         target = ctx.target or {}
         os_ = target.get("os")
-        if os_ not in ("macos", "web"):
-            ctx.fail(f"godot-export builds for macOS and the web, not {target.get('id')}")
+        if os_ not in ("macos", "web", "windows", "linux"):
+            ctx.fail(f"godot-export builds for macOS, Windows, Linux and the web, not {target.get('id')}")
         recipe = ctx.recipe("godot") or {}
         pck_path = None
         if recipe.get("pck"):
@@ -207,6 +212,8 @@ class Plugin:
         staged = godot.extract(pck, ctx.temp / "game.pck")
         if os_ == "macos":
             out = self.macos(ctx, templates, pck, staged, title)
+        elif os_ in ("windows", "linux"):
+            out = self.desktop(ctx, templates, pck, staged, title, os_)
         else:
             out = self.web(ctx, templates, pck, staged, title)
         ctx.progress(1.0, "Done")
@@ -378,6 +385,92 @@ class Plugin:
         elif not make_icns(ctx, candidate, dest):
             ctx.warn("Could not convert the icon (needs sips and iconutil); the app keeps Godot's icon.")
 
+    # -- Windows and Linux ---------------------------------------------------
+
+    @staticmethod
+    def desktop_template(major: int, os_: str, arch: str) -> str:
+        if major >= 4:
+            return f"windows_release_{arch}.exe" if os_ == "windows" else f"linux_release.{arch}"
+        bits = {"x86_64": "64", "x86_32": "32", "arm64": "arm64", "arm32": "arm32"}.get(arch, "64")
+        return f"windows_{bits}_release.exe" if os_ == "windows" else f"linux_x11_{bits}_release"
+
+    def desktop(self, ctx, templates, pck, staged, title, os_):
+        arch = {"x86_64": "x86_64", "arm64": "arm64"}.get(ctx.target.get("arch"), "x86_64")
+        name = self.desktop_template(pck.version[0], os_, arch)
+        template = templates.get(name)
+        ctx.progress(0.75, "Building the game folder")
+        app_name = safe_name(title)
+        ctx.clean_dir(ctx.output)
+        folder = ctx.output / app_name
+        folder.mkdir(parents=True)
+        exe = folder / (f"{app_name}.exe" if os_ == "windows" else f"{app_name}.{arch}")
+        shutil.copyfile(template, exe)
+        exe.chmod(0o755)
+        shutil.copyfile(staged, folder / f"{app_name}.pck")
+        copied, missing = self.desktop_libraries(ctx, pck, folder, os_, arch)
+        if os_ == "linux":
+            self.linux_icon(ctx, pck, folder)
+        ctx.write_text(folder / "README.txt", DESKTOP_README[os_].format(title=title, exe=exe.name))
+        notes = [f"Built with the Godot {templates.dir_name} {name} template."]
+        if os_ == "windows":
+            notes.append("The .exe keeps Godot's icon and is not signed, so Windows SmartScreen may ask "
+                         "before the first start (More info, then Run anyway).")
+        else:
+            notes.append(f"Start it with ./{exe.name}; the zip keeps the executable bit.")
+        if copied:
+            notes.append("Native libraries: " + ", ".join(copied))
+        for ext in missing:
+            ctx.warn(f"No {os_.title()} version of the {ext} extension was found next to the game "
+                     f"(it ships with the game's {os_.title()} build). Features that need it will not work, "
+                     "and the game may stop on a blank screen if it requires it.")
+        outputs = [str(folder)]
+        if ctx.flag("zip", True):
+            ctx.progress(0.92, "Zipping")
+            z = ctx.zip_dir(folder, ctx.output / f"{app_name}-{ctx.target.get('id')}.zip",
+                            executables={exe.name})
+            outputs.append(str(z))
+        return {
+            "outputs": outputs,
+            "open": str(folder),
+            "summary": f"Built {folder.name}/ for {ctx.target.get('name')}",
+            "notes": notes,
+        }
+
+    def desktop_libraries(self, ctx, pck, folder: Path, os_: str, arch: str) -> tuple[list[str], list[str]]:
+        """GDExtension libraries (and their dependencies, e.g. steam_api64.dll)
+        go next to the executable, where an exported Godot game looks for them.
+        They are taken from the game folder, which only has them when the
+        game is a build for the same platform."""
+        wanted = godot.extension_files(pck, os_, arch)
+        game_root = ctx.game if ctx.game.is_dir() else ctx.game.parent
+        copied: list[str] = []
+        missing: list[str] = []
+        for ext, names in wanted.items():
+            found_any = False
+            for name in names:
+                hits = sorted(p for p in game_root.rglob(name) if p.is_file() and not p.name.startswith("._"))
+                if hits:
+                    shutil.copy2(hits[0], folder / name)
+                    copied.append(name)
+                    found_any = True
+            if names and not found_any:
+                missing.append(Path(ext).stem)
+        # GodotSteam and other Steam builds read the app id from this file.
+        appid = game_root / "steam_appid.txt"
+        if wanted and appid.is_file():
+            shutil.copy2(appid, folder / appid.name)
+        return copied, missing
+
+    def linux_icon(self, ctx, pck, folder: Path) -> None:
+        icon = ctx.art("icon")
+        if icon is None or icon.suffix.lower() != ".png":
+            res = str(self.settings.get("application/config/icon") or "")
+            data = godot.read_file(pck, res) if res.lower().endswith(".png") else None
+            if data:
+                ctx.write_bytes(folder / "icon.png", data)
+            return
+        shutil.copyfile(icon, folder / "icon.png")
+
     # -- web -----------------------------------------------------------------
 
     def web(self, ctx, templates, pck, staged, title):
@@ -512,3 +605,19 @@ Browsers do not run this from a file:// address. Serve the folder:
 and open http://localhost:8000/. To publish it, upload this folder to any
 static host (for itch.io: zip it and choose "HTML").
 """
+
+DESKTOP_README = {
+    "windows": """\
+{title}: Windows build made by Porting Toolkit
+
+Start {exe}. Keep the .pck (and any .dll files) in the same folder.
+Windows may warn about an unknown publisher the first time: choose
+"More info", then "Run anyway".
+""",
+    "linux": """\
+{title}: Linux build made by Porting Toolkit
+
+Start ./{exe} (if it does not start: chmod +x {exe}). Keep the .pck
+(and any .so files) in the same folder.
+""",
+}

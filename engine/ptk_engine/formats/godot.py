@@ -12,6 +12,7 @@ Supported pack formats: 1 (Godot 3.x), 2 (Godot 4.0-4.3), 3 (Godot 4.4+).
 
 from __future__ import annotations
 
+import re
 import shutil
 import struct
 from dataclasses import dataclass, field
@@ -385,10 +386,52 @@ def color_hex(rgba, default: str = "#000000") -> str:
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
+#: Platform tags in .gdextension `[libraries]` keys.
+PLATFORM_TAGS = {"macos": ("macos", "osx"), "web": ("web", "wasm32"), "windows": ("windows",),
+                 "linux": ("linux", "linuxbsd", "x11"), "android": ("android",)}
+ARCH_TAGS = ("x86_64", "x86_32", "arm64", "arm32", "rv64", "wasm32", "universal")
+
+
+def _feature_match(key: str, platform: str, arch: str | None) -> bool:
+    tags = key.strip().strip('"').split(".")
+    if tags[0] not in PLATFORM_TAGS[platform]:
+        return False
+    archs = [t for t in tags[1:] if t in ARCH_TAGS]
+    return arch is None or not archs or arch in archs
+
+
+def extension_files(pck: Pck, platform: str, arch: str | None = None) -> dict[str, list[str]]:
+    """``{extension: [file names]}``: the libraries for a platform (and
+    architecture) plus their ``[dependencies]`` (e.g. steam_api64.dll),
+    debug builds left out when a release one exists."""
+    out: dict[str, list[str]] = {}
+    for ext in pck.extensions():
+        raw = read_file(pck, ext)
+        release: list[str] = []
+        debug: list[str] = []
+        section = ""
+        for line in (raw or b"").decode("utf-8", "replace").splitlines():
+            line = line.strip()
+            if line.startswith("["):
+                section = line.strip("[]")
+                continue
+            if section not in ("libraries", "dependencies") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            if not _feature_match(k, platform, arch):
+                continue
+            names = [Path(x.removeprefix("res://")).name for x in re.findall(r'"([^"]+)"', v)]
+            is_debug = any("debug" in t for t in k.strip().strip('"').split("."))
+            (debug if is_debug else release).extend(n for n in names if n)
+        files = release or debug
+        out[ext] = list(dict.fromkeys(files))
+    return out
+
+
 def extension_libraries(pck: Pck, platform: str = "macos") -> dict[str, list[str]]:
     """``{extension.gdextension: [library paths for platform]}``."""
     out: dict[str, list[str]] = {}
-    tags = {"macos": ("macos", "osx"), "web": ("web", "wasm32")}[platform]
+    tags = PLATFORM_TAGS[platform]
     for ext in pck.extensions():
         raw = read_file(pck, ext)
         libs: list[str] = []

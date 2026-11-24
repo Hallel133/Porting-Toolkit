@@ -17,7 +17,7 @@ A community tool to manage, convert, export and import game projects between pla
 - NoVA (owner's RISC-V SoC) is out of scope until the owner's NoVA SDK exists. It plugs in via `[[target]]` TOML in `<data>/targets/` with `export_backend` = an export plugin id. Keep that path working.
 - `LICENSE` is MIT (owner's choice, 2026-11-09).
 
-## Git / release state (2026-11-12)
+## Git / release state (2026-11-24)
 - Remote `origin` = https://github.com/Hallel133/Porting-Toolkit (public; the owner created it with a one-line README). Work on `main`.
 - Phase 1 (commit 4c21302) was pushed to `origin/main` on 2026-11-09; pushing works despite the account flag.
 - The owner said their GitHub account is "flagged" (Grand-V notes: GitHub Actions is disabled for the Hallel133 account, `HTTP 422`). So `.github/workflows/ci.yml` (macos-14 + ubuntu: fmt, clippy -D warnings, cargo test, uv run pytest) has probably never run. Run the same commands locally.
@@ -28,7 +28,7 @@ export PATH="$HOME/.cargo/bin:$PATH"          # cargo is not on the default PATH
 cargo test --workspace                        # 77 Rust tests, starts the real Python engine
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-(cd engine && uv run pytest)                  # 96 Python tests (+1 skipped; compiles the Swift wrapper on macOS)
+(cd engine && uv run pytest)                  # 105 Python tests (+1 skipped; compiles the Swift wrapper on macOS)
 (cd engine && PTK_TOOL_TESTS=1 uv run pytest -k real)       # also runs real FFmpeg encodes
 (cd engine && PTK_GUI_TESTS=1 uv run pytest -k macos_app)   # also opens the wrapper app and checks the page loaded
 cargo run -q -p ptk-cli -- scan fixtures/games/unity-windows
@@ -91,11 +91,19 @@ Owner asked to plan and design new compression algorithms for new platforms and 
 - **Homebrew's FFmpeg 8 on the owner's Mac has no libvorbis**: Vorbis needs `brew install vorbis-tools` (oggenc), otherwise `.ogg` files are kept with a note. This matters for RPG Maker MZ.
 - Verified: synthetic MZ project via the CLI (title.png 592 KB → 125 KB; game folder unchanged), real FFmpeg Opus encode keeps LOOPSTART, GUI screenshots (scratchpad only: they show the scratchpad path, so docs images were not replaced).
 
+## Done (2026-11-24, plan phase 2: Windows x64 and Linux x64)
+- `windows-x64` and `linux-x64` are Active targets. Both built-in exporters build them (plugin versions 1.1.0).
+- godot-export: release templates (verified names in the real 4.4.1 and 3.6 .tpz: `windows_release_x86_64.exe`, `linux_release.x86_64`; Godot 3 `windows_64_release.exe`, `linux_x11_64_release`) renamed to `<Title>.exe` / `<Title>.x86_64` with `<Title>.pck` beside it; `godot.extension_files(pck, platform, arch)` picks release libraries for the platform/arch plus `[dependencies]`; they and `steam_appid.txt` are copied from the game folder, missing ones warn. Linux gets `icon.png`. Windows `.exe` keeps Godot's icon (no PE resource editing yet).
+- html5-export: NW.js 0.119.2 normal build (`NWJS` pins from dl.nwjs.io SHASUMS256.txt; `--set nwjs=PATH` for a local runtime), `nw.exe`/`nw` renamed to the title, game in `package.nw/` with `package.json` main = the game page, codec warning for `.mp4`/`.m4a` without `.webm`/`.ogg` twins. Electron is not used (RPG Maker needs nw.gui).
+- Both write `<out>/<Title>/` + `<out>/<Title>-<target>.zip` (`ctx.zip_dir` streams files, 0755 for executables; `--set zip=false`).
+- html5-import now returns the title (RPG Maker: `data/System.json` `gameTitle`).
+- Verified: real NW.js downloads for win-x64 and linux-x64 matched their SHA-256 and built folders/zips for a synthetic MZ project (oxipng was auto-installed from its pin on the way). Not run on Windows or Linux (no machines here); no real Godot template was downloaded for Windows/Linux in this round.
+
 ## Next task
 1. Owner: re-export Buckshot Roulette for macOS and check the gray screen is gone and Steam features work; check the web build's loading screen. Try the Game page, Settings → Defaults, Icon & poster.
 2. Owner: try a real Godot game and a real RPG Maker MV/MZ game (`ptk import <build>` then `ptk export`, or the app's Export tab); open the Godot `.app` on the Mac (not done by Claude). Check the macOS menu bar. Create the ptk-marketplace repo (see above).
-2. Next (plan phases 2-5): Windows/Linux exports (Godot templates side by side, NW.js for HTML5), importers (HTML5 engines, LÖVE, Ren'Py, RGSS via mkxp-z), Android APK (AXML patching, zipalign, apksigner), then Godot `.ctex` re-encoding. Owner should try `ptk assets` / Estimate savings on a real RPG Maker game and check the music still loops after `brew install vorbis-tools`.
-3. Not tested: real games (only synthetic pcks and fake HTML5 games), Godot 3 templates, threaded web builds in a browser, Electron games, Intel Macs, Linux/Windows builds (CI blocked on the account).
+3. Owner: run a Windows/Linux export of a real game on a Windows PC / Linux machine (or Steam Deck). Next (plan phases 3-5): importers (HTML5 engines, LÖVE, Ren'Py, RGSS via mkxp-z), Android APK (AXML patching, zipalign, apksigner), then Godot `.ctex` re-encoding. Owner should try `ptk assets` / Estimate savings on a real RPG Maker game and check the music still loops after `brew install vorbis-tools`.
+4. Not tested: real games (only synthetic pcks and fake HTML5 games), Godot 3 templates, threaded web builds in a browser, Electron games, Intel Macs, running the Windows/Linux exports (no machines here), running ptk itself on Windows/Linux (CI blocked on the account).
 
 ## Working agreement (after every change)
 1. Run the tests (Rust and Python); for CLI output changes, take screenshots and show them.
