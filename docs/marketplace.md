@@ -40,6 +40,14 @@ Port entries have three extra fields:
 | `game` | The game's title |
 | `poster` | https URL of the poster image (upload the one `ptk publish` writes next to your `.ptk`) |
 | `store` | https URL of a page where players get the game |
+| `fingerprint` | A few of the game's largest files (`path`, `size`, `sha256`), written by `ptk publish` from the project's recorded hashes |
+
+**Check my copy** (on the port's card, or `ptk market check <id> <game
+folder>`) compares the fingerprint with a player's game before they download
+anything: "Matches your copy", "Another version of the game" (some files
+differ), "Different files" or "Game files not found". Each file is looked up
+at its path, then by name and size anywhere in the folder, so picking a
+parent folder works. Only those few files are hashed.
 
 Give the project a poster and icon first: `ptk art --poster cover.png
 --icon icon.png -p my-port` (or the Icon & poster card on the Game page).
@@ -102,6 +110,15 @@ ptk sdk install my-sdk    # copies targets into <data>/targets, installs plugins
 Target ids should start with the SDK id (`nova-…` for the NoVA SDK).
 Installing an SDK adds its targets to `ptk targets` and to the app.
 
+## Updates
+
+`ptk market outdated` lists installed plugins and SDKs, and port projects in
+your projects folder (`--projects DIR`), whose index entry has a newer
+version. The app shows the same as a banner and an "⬆ v1 → v2" badge on each
+card, whose button turns into **Update**. Updating a plugin or SDK installs
+the new version over the old one (with the usual permission check); a port
+update arrives as a new project folder, so your own changes are kept.
+
 ## Publishing
 
 1. **Create**: `ptk sdk new …`, `ptk plugin new …`, or pack a project with
@@ -109,8 +126,16 @@ Installing an SDK adds its targets to `ptk targets` and to the app.
 2. **Validate & package**: `ptk publish <folder or .ptk>` validates it,
    writes a reproducible zip to `dist/`, computes its SHA-256 and prints
    the index entry.
-3. **Submit**: upload the file (a GitHub release of your own repository
-   works well), put its URL in `download`, and open a pull request that
-   adds the entry to `index.json` in the marketplace repository.
+3. **Submit**: `ptk market submit <folder or .ptk> [--store URL]` (or
+   Marketplace → Publish → **Publish to the marketplace…**) does the rest
+   with the GitHub CLI (`gh auth login` first): it shows what will be made
+   public, then uploads the file (and a port's poster) to a GitHub release,
+   writes the entry with those URLs to `index.json` on a new branch, and
+   opens a pull request. The marketplace's owner publishes in the
+   marketplace repository itself; everyone else through a fork that `gh`
+   creates. `--dry-run` shows the plan and changes nothing. A game port
+   needs `--store`, a page where players get the game.
+   You can still do it by hand: upload the file, put its URL in
+   `download`, and open a pull request adding the entry to `index.json`.
 
 Never publish game files or decompiled game code; see [legal.md](legal.md).

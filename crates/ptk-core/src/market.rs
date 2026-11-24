@@ -24,7 +24,7 @@ use zip::{CompressionMethod, DateTime, ZipWriter};
 use crate::engine::EngineClient;
 use crate::error::{Error, Result, io_ctx};
 use crate::hash::{is_junk_file, is_sha256_hex, relative_path, sha256_bytes, sha256_file};
-use crate::manifest::valid_project_name;
+use crate::manifest::{SourceFile, valid_project_name};
 use crate::pack::read_pack_manifest;
 use crate::paths;
 use crate::plugins;
@@ -99,6 +99,158 @@ pub struct MarketEntry {
     /// contains the game; players need their own copy.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub store: Option<String>,
+    /// Game ports: a few distinctive files of the game the port was made
+    /// for (path, size, SHA-256), so players can check their copy before
+    /// downloading. Hashes only, never game content.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fingerprint: Vec<SourceFile>,
+}
+
+/// How many files a port's fingerprint holds, and the largest one hashed
+/// (bigger files take players too long to check).
+pub const FINGERPRINT_FILES: usize = 4;
+pub const FINGERPRINT_MAX_SIZE: u64 = 1 << 30;
+
+/// The fingerprint of a project's game: its largest recorded files (they
+/// change from one game version to the next) up to 1 GB each.
+pub fn fingerprint_of(manifest: &crate::manifest::Manifest) -> Vec<SourceFile> {
+    let mut files: Vec<&SourceFile> = manifest
+        .source_files
+        .iter()
+        .filter(|f| f.size > 0 && f.size <= FINGERPRINT_MAX_SIZE && !is_junk_file(&f.path))
+        .collect();
+    files.sort_by(|a, b| b.size.cmp(&a.size).then(a.path.cmp(&b.path)));
+    files.into_iter().take(FINGERPRINT_FILES).cloned().collect()
+}
+
+/// Whether a player's copy is the game a port was made for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CopyVerdict {
+    /// Every fingerprint file is there, identical.
+    Matches,
+    /// Some files match: most likely another version of the game.
+    OtherVersion,
+    /// The files are there but none is identical.
+    Different,
+    /// None of the files was found in the folder.
+    NotFound,
+    /// The entry has no fingerprint to compare with.
+    Unknown,
+}
+
+impl CopyVerdict {
+    pub fn label(self) -> &'static str {
+        match self {
+            CopyVerdict::Matches => "Matches your copy",
+            CopyVerdict::OtherVersion => "Another version of the game",
+            CopyVerdict::Different => "Different files",
+            CopyVerdict::NotFound => "Game files not found",
+            CopyVerdict::Unknown => "Cannot be checked",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct CopyCheck {
+    pub verdict: CopyVerdict,
+    pub matched: usize,
+    pub total: usize,
+    /// Fingerprint paths found but different, and not found.
+    pub different: Vec<String>,
+    pub missing: Vec<String>,
+}
+
+/// Compares a game folder with a port's fingerprint. A file is looked up
+/// at its path first, then by name and size anywhere in the folder (the
+/// player may have picked a parent folder or a differently named one).
+pub fn check_copy(entry: &MarketEntry, game: &Path) -> Result<CopyCheck> {
+    let root = if game.is_file() {
+        game.parent().unwrap_or(game)
+    } else {
+        game
+    };
+    let total = entry.fingerprint.len();
+    let mut check = CopyCheck {
+        verdict: CopyVerdict::Unknown,
+        matched: 0,
+        total,
+        different: Vec::new(),
+        missing: Vec::new(),
+    };
+    if total == 0 {
+        return Ok(check);
+    }
+    let mut by_name: Option<Vec<(String, u64, PathBuf)>> = None;
+    for f in &entry.fingerprint {
+        if !crate::manifest::is_safe_relative_path(&f.path) {
+            check.missing.push(f.path.clone());
+            continue;
+        }
+        let mut candidates = Vec::new();
+        let direct = root.join(&f.path);
+        if direct.is_file() {
+            candidates.push(direct);
+        } else {
+            let index = by_name.get_or_insert_with(|| {
+                WalkDir::new(root)
+                    .follow_links(false)
+                    .max_depth(8)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.file_type().is_file())
+                    .filter_map(|e| {
+                        let size = e.metadata().ok()?.len();
+                        Some((
+                            e.file_name().to_string_lossy().to_lowercase(),
+                            size,
+                            e.into_path(),
+                        ))
+                    })
+                    .collect()
+            });
+            let name = f.path.rsplit('/').next().unwrap_or(&f.path).to_lowercase();
+            candidates.extend(
+                index
+                    .iter()
+                    .filter(|(n, size, _)| *n == name && *size == f.size)
+                    .map(|(_, _, p)| p.clone()),
+            );
+            if candidates.is_empty() && index.iter().any(|(n, _, _)| *n == name) {
+                check.different.push(f.path.clone());
+                continue;
+            }
+        }
+        if candidates.is_empty() {
+            check.missing.push(f.path.clone());
+            continue;
+        }
+        let mut same = false;
+        for c in candidates.iter().take(4) {
+            let meta = fs::metadata(c).map_err(io_ctx(c.display().to_string()))?;
+            if meta.len() == f.size
+                && sha256_file(c).map_err(io_ctx(c.display().to_string()))? == f.sha256
+            {
+                same = true;
+                break;
+            }
+        }
+        if same {
+            check.matched += 1;
+        } else {
+            check.different.push(f.path.clone());
+        }
+    }
+    check.verdict = if check.matched == total {
+        CopyVerdict::Matches
+    } else if check.matched > 0 {
+        CopyVerdict::OtherVersion
+    } else if !check.different.is_empty() {
+        CopyVerdict::Different
+    } else {
+        CopyVerdict::NotFound
+    };
+    Ok(check)
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -127,6 +279,11 @@ impl MarketEntry {
             .any(|s| self.download.starts_with(s));
         if !url_ok {
             p.push(format!("{}: download must be an https:// URL", self.id));
+        }
+        for f in &self.fingerprint {
+            if !crate::manifest::is_safe_relative_path(&f.path) || !is_sha256_hex(&f.sha256) {
+                p.push(format!("{}: bad fingerprint file {:?}", self.id, f.path));
+            }
         }
         for (field, url) in [("poster", &self.poster), ("store", &self.store)] {
             if let Some(u) = url
@@ -294,6 +451,9 @@ pub struct Published {
     pub archive: PathBuf,
     pub entry: MarketEntry,
     pub warnings: Vec<String>,
+    /// A game port's poster, written next to the archive for uploading.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poster_file: Option<PathBuf>,
 }
 
 /// One file from a `.ptk` (a zip), if present and small.
@@ -352,12 +512,14 @@ pub fn package(src: &Path, out_dir: &Path, engine: &mut EngineClient) -> Result<
             );
         }
         let mut poster = None;
+        let mut poster_file = None;
         if let Some(rel) = &m.game.poster
             && let Some(bytes) = read_pack_member(src, rel)
         {
             let ext = rel.rsplit('.').next().unwrap_or("png");
             let out = out_dir.join(format!("{}-poster.{ext}", m.name));
             fs::write(&out, bytes).map_err(io_ctx(out.display().to_string()))?;
+            poster_file = Some(out.clone());
             warnings.push(format!(
                 "Upload {} next to the .ptk and put its https URL in \"poster\".",
                 out.display()
@@ -387,7 +549,9 @@ pub fn package(src: &Path, out_dir: &Path, engine: &mut EngineClient) -> Result<
                 game: m.game.title.clone(),
                 poster,
                 store: Some("REPLACE-with-a-page-where-players-get-the-game".into()),
+                fingerprint: fingerprint_of(&m),
             },
+            poster_file,
             warnings,
         });
     }
@@ -423,7 +587,9 @@ pub fn package(src: &Path, out_dir: &Path, engine: &mut EngineClient) -> Result<
                 game: None,
                 poster: None,
                 store: None,
+                fingerprint: Vec::new(),
             },
+            poster_file: None,
             warnings: report.warnings,
         });
     }
@@ -471,7 +637,9 @@ pub fn package(src: &Path, out_dir: &Path, engine: &mut EngineClient) -> Result<
                 game: None,
                 poster: None,
                 store: None,
+                fingerprint: Vec::new(),
             },
+            poster_file: None,
             warnings: v.warnings,
         });
     }
@@ -516,7 +684,117 @@ mod tests {
             game: None,
             poster: None,
             store: None,
+            fingerprint: Vec::new(),
         }
+    }
+
+    fn source(path: &str, data: &[u8]) -> SourceFile {
+        SourceFile {
+            path: path.into(),
+            size: data.len() as u64,
+            sha256: crate::hash::sha256_bytes(data),
+        }
+    }
+
+    #[test]
+    fn fingerprint_takes_the_largest_files() {
+        let mut m = crate::manifest::Manifest::new("moon-port");
+        m.source_files = vec![
+            source("a.txt", b"a"),
+            source("Data/big.pak", &[7; 500]),
+            source("Game.exe", &[1; 300]),
+            source("Data/mid.bin", &[2; 200]),
+            source("Data/small.bin", &[3; 100]),
+            source(".DS_Store", &[0; 900]),
+            source("empty", b""),
+        ];
+        let fp: Vec<_> = fingerprint_of(&m).into_iter().map(|f| f.path).collect();
+        assert_eq!(
+            fp,
+            ["Data/big.pak", "Game.exe", "Data/mid.bin", "Data/small.bin"]
+        );
+    }
+
+    #[test]
+    fn copy_check_verdicts() {
+        let dir = tempfile::tempdir().unwrap();
+        let game = dir.path().join("Moon Game");
+        fs::create_dir_all(game.join("Data")).unwrap();
+        fs::write(game.join("Game.exe"), [1; 300]).unwrap();
+        fs::write(game.join("Data/big.pak"), [7; 500]).unwrap();
+        let mut e = entry();
+        e.kind = EntryKind::Project;
+        e.id = "moon-port".into();
+        e.fingerprint = vec![
+            source("Game.exe", &[1; 300]),
+            source("Data/big.pak", &[7; 500]),
+        ];
+        assert!(e.problems().is_empty(), "{:?}", e.problems());
+        let c = check_copy(&e, &game).unwrap();
+        assert_eq!(
+            (c.verdict, c.matched, c.total),
+            (CopyVerdict::Matches, 2, 2)
+        );
+        // The player picked the parent folder: found by name and size.
+        assert_eq!(
+            check_copy(&e, dir.path()).unwrap().verdict,
+            CopyVerdict::Matches
+        );
+        // Another version: one file differs.
+        fs::write(game.join("Data/big.pak"), [8; 500]).unwrap();
+        let c = check_copy(&e, &game).unwrap();
+        assert_eq!(c.verdict, CopyVerdict::OtherVersion);
+        assert_eq!(c.different, ["Data/big.pak"]);
+        fs::write(game.join("Game.exe"), [9; 301]).unwrap();
+        assert_eq!(
+            check_copy(&e, &game).unwrap().verdict,
+            CopyVerdict::Different
+        );
+        let empty = dir.path().join("empty");
+        fs::create_dir_all(&empty).unwrap();
+        assert_eq!(
+            check_copy(&e, &empty).unwrap().verdict,
+            CopyVerdict::NotFound
+        );
+        e.fingerprint.clear();
+        assert_eq!(check_copy(&e, &game).unwrap().verdict, CopyVerdict::Unknown);
+        e.fingerprint = vec![source("../escape", b"x")];
+        assert!(e.problems().iter().any(|p| p.contains("fingerprint")));
+    }
+
+    #[test]
+    fn versions_and_updates() {
+        assert!(version_newer("1.10.0", "1.9.2"));
+        assert!(version_newer("2.0", "1.99.99"));
+        assert!(version_newer("v1.0.1", "1.0"));
+        assert!(!version_newer("1.0.0", "1.0"));
+        assert!(!version_newer("0.9", "1.0"));
+        let mut newer = entry();
+        newer.version = "0.2.0".into();
+        let index = MarketIndex {
+            schema_version: 1,
+            entries: vec![newer],
+        };
+        let items = vec![
+            InstalledItem {
+                kind: EntryKind::Plugin,
+                id: "unity-import".into(),
+                version: "0.1.0".into(),
+                path: PathBuf::from("/p"),
+            },
+            InstalledItem {
+                kind: EntryKind::Sdk,
+                id: "unity-import".into(),
+                version: "0.0.1".into(),
+                path: PathBuf::from("/s"),
+            },
+        ];
+        let up = outdated(&index, &items);
+        assert_eq!(up.len(), 1, "only the same kind counts");
+        assert_eq!(
+            (up[0].installed.as_str(), up[0].available.as_str()),
+            ("0.1.0", "0.2.0")
+        );
     }
 
     #[test]
@@ -544,4 +822,133 @@ mod tests {
         assert!(e.matches("reads"));
         assert!(!e.matches("godot"));
     }
+}
+
+/// Something from the marketplace that is installed (or a port project).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct InstalledItem {
+    pub kind: EntryKind,
+    pub id: String,
+    pub version: String,
+    pub path: PathBuf,
+}
+
+/// A newer version in the index.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Update {
+    pub kind: EntryKind,
+    pub id: String,
+    pub installed: String,
+    pub available: String,
+    pub path: PathBuf,
+}
+
+/// `1.10.0` > `1.9.2`: numeric parts compared as numbers.
+pub fn version_newer(available: &str, installed: &str) -> bool {
+    fn key(v: &str) -> Vec<u64> {
+        v.trim_start_matches('v')
+            .split(['.', '-', '+'])
+            .map(|p| p.parse().unwrap_or(0))
+            .collect()
+    }
+    let (a, b) = (key(available), key(installed));
+    for i in 0..a.len().max(b.len()) {
+        let (x, y) = (
+            a.get(i).copied().unwrap_or(0),
+            b.get(i).copied().unwrap_or(0),
+        );
+        if x != y {
+            return x > y;
+        }
+    }
+    false
+}
+
+/// Installed plugins and SDKs, plus the given project folders (ports).
+pub fn installed(project_dirs: &[PathBuf]) -> Vec<InstalledItem> {
+    let mut out = Vec::new();
+    if let Ok(entries) = fs::read_dir(paths::plugins_dir()) {
+        let mut dirs: Vec<PathBuf> = entries.filter_map(|e| e.ok().map(|e| e.path())).collect();
+        dirs.sort();
+        for dir in dirs {
+            let Ok(text) = fs::read_to_string(dir.join("plugin.toml")) else {
+                continue;
+            };
+            let Ok(value) = text.parse::<toml::Table>() else {
+                continue;
+            };
+            let plugin = value.get("plugin").and_then(|v| v.as_table());
+            let get = |k: &str| {
+                plugin
+                    .and_then(|p| p.get(k))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned)
+            };
+            if let (Some(id), Some(version)) = (get("id"), get("version")) {
+                out.push(InstalledItem {
+                    kind: EntryKind::Plugin,
+                    id,
+                    version,
+                    path: dir,
+                });
+            }
+        }
+    }
+    for info in sdk::installed() {
+        out.push(InstalledItem {
+            kind: EntryKind::Sdk,
+            path: sdks_dir_of(&info.id),
+            id: info.id,
+            version: info.version,
+        });
+    }
+    for dir in project_dirs {
+        if let Ok(m) = crate::manifest::Manifest::load(dir) {
+            out.push(InstalledItem {
+                kind: EntryKind::Project,
+                id: m.name,
+                version: m.version,
+                path: dir.clone(),
+            });
+        }
+    }
+    out
+}
+
+fn sdks_dir_of(id: &str) -> PathBuf {
+    sdk::sdks_dir().join(id)
+}
+
+/// Port projects in a folder (each subfolder with a ptk.json).
+pub fn projects_in(folder: &Path) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = fs::read_dir(folder)
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.join(crate::manifest::MANIFEST_FILE).is_file())
+        .collect();
+    out.sort();
+    out
+}
+
+/// Installed items whose index entry (same kind and id) is newer.
+pub fn outdated(index: &MarketIndex, items: &[InstalledItem]) -> Vec<Update> {
+    let mut out = Vec::new();
+    for item in items {
+        if let Some(e) = index
+            .entries
+            .iter()
+            .find(|e| e.kind == item.kind && e.id == item.id)
+            && version_newer(&e.version, &item.version)
+        {
+            out.push(Update {
+                kind: item.kind,
+                id: item.id.clone(),
+                installed: item.version.clone(),
+                available: e.version.clone(),
+                path: item.path.clone(),
+            });
+        }
+    }
+    out
 }

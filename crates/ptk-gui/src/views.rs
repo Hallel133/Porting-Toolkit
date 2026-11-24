@@ -543,6 +543,31 @@ impl App {
                     .map(|e| e.poster.as_deref().and_then(|u| self.poster(&ctx, u)))
                     .collect();
                 let idle = self.busy.is_none();
+                if !self.market_updates.is_empty() {
+                    let names: Vec<String> = self
+                        .market_updates
+                        .iter()
+                        .map(|u| format!("{} {} → {}", u.id, u.installed, u.available))
+                        .collect();
+                    widgets::message(
+                        ui,
+                        FOCUS,
+                        &format!(
+                            "⬆ {} update(s) available: {}",
+                            names.len(),
+                            names.join(", ")
+                        ),
+                    );
+                    ui.add_space(10.0);
+                }
+                let updates = self.market_updates.clone();
+                let update_of = |e: &ptk_core::market::MarketEntry| {
+                    updates
+                        .iter()
+                        .find(|u| u.kind == e.kind && u.id == e.id)
+                        .cloned()
+                };
+                let mut check = None;
                 if entries.is_empty() {
                     empty_state(
                         ui,
@@ -555,11 +580,21 @@ impl App {
                     card_grid(ui, entries.len(), cols, |ui, i| {
                         let e = &entries[i];
                         if e.kind == EntryKind::Project {
-                            if let Some(e) = port_card(ui, e, posters[i].as_ref(), idle) {
-                                install = Some(e);
+                            match port_card(
+                                ui,
+                                e,
+                                posters[i].as_ref(),
+                                idle,
+                                self.copy_checks.get(&e.id),
+                                update_of(e).as_ref(),
+                            ) {
+                                Some(PortAction::Get) => install = Some(e.clone()),
+                                Some(PortAction::Check) => check = Some(e.clone()),
+                                None => {}
                             }
                             return;
                         }
+                        let update = update_of(e);
                         card(ui, |ui| {
                             ui.horizontal(|ui| {
                                 let icon = match e.kind {
@@ -603,23 +638,28 @@ impl App {
                                 for t in e.engines.iter().chain(&e.targets).take(4) {
                                     badge(ui, t, LIGHT_BLUE);
                                 }
+                                if let Some(u) = &update {
+                                    badge(
+                                        ui,
+                                        &format!("⬆ v{} → v{}", u.installed, u.available),
+                                        FOCUS,
+                                    );
+                                }
                             });
                             ui.add_space(4.0);
-                            if primary(
-                                ui,
-                                idle,
-                                if e.kind == EntryKind::Project {
-                                    "Download"
-                                } else {
-                                    "Install…"
-                                },
-                            )
-                            .clicked()
-                            {
+                            let label = match (&update, e.kind) {
+                                (Some(_), _) => "Update…",
+                                (None, EntryKind::Project) => "Download",
+                                (None, _) => "Install…",
+                            };
+                            if primary(ui, idle, label).clicked() {
                                 install = Some(e.clone());
                             }
                         });
                     });
+                }
+                if let Some(e) = check {
+                    self.check_copy(ui.ctx(), e);
                 }
             }
         }
@@ -725,8 +765,29 @@ impl App {
                     });
                     hint(
                         ui,
-                        "Upload the zip (for example to a GitHub release of your repository), put its URL in \"download\", and open a pull request that adds the entry to index.json. Reviewed entries get a ✔.",
+                        "Publishes what you packaged in one step with the GitHub CLI (gh): a GitHub release with the file, and a pull request that adds the entry to the marketplace. A maintainer reviews and merges it.",
                     );
+                    let is_port =
+                        matches!(&self.published, Some(Ok(p)) if p.kind == EntryKind::Project);
+                    if is_port {
+                        ui.label(RichText::new("Where players get the game").color(TEXT_WEAK));
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.submit_store)
+                                .hint_text("https://store.steampowered.com/app/…")
+                                .desired_width(f32::INFINITY),
+                        );
+                    }
+                    let ready = matches!(&self.published, Some(Ok(_)));
+                    if ui
+                        .add_enabled(
+                            !busy && ready,
+                            egui::Button::new("Publish to the marketplace…"),
+                        )
+                        .on_disabled_hover_text("Validate & package something first")
+                        .clicked()
+                    {
+                        self.plan_submit(ui.ctx());
+                    }
                     if ui.button("Open the marketplace repository").clicked() {
                         let _ = std::process::Command::new(if cfg!(target_os = "macos") {
                             "open"
@@ -773,6 +834,77 @@ impl App {
                     }
                 });
             }
+        }
+        let mut publish_now = false;
+        let mut cancel = false;
+        match &self.submit_plan {
+            None => {}
+            Some(Err(e)) => widgets::message(ui, ERROR, e),
+            Some(Ok(plan)) => {
+                ui.add_space(12.0);
+                card(ui, |ui| {
+                    card_title(ui, "Publish to the marketplace?");
+                    egui::Grid::new("submit-plan")
+                        .num_columns(2)
+                        .spacing([14.0, 4.0])
+                        .show(ui, |ui| {
+                            kv(
+                                ui,
+                                "Entry",
+                                format!(
+                                    "{} {} ({})",
+                                    plan.entry.kind.label(),
+                                    plan.entry.id,
+                                    plan.entry.version
+                                ),
+                            );
+                            kv(ui, "As", plan.login.clone());
+                            kv(
+                                ui,
+                                "Release",
+                                format!(
+                                    "{} in {}{}",
+                                    plan.tag,
+                                    plan.work_repo,
+                                    if plan.fork { " (your fork)" } else { "" }
+                                ),
+                            );
+                            for a in &plan.assets {
+                                kv(ui, "Upload", widgets::display_path(a));
+                            }
+                            kv(
+                                ui,
+                                "Pull request",
+                                format!("{} → {}", plan.branch, plan.upstream),
+                            );
+                        });
+                    widgets::message(ui, WARN, "The release and the pull request are public.");
+                    ui.horizontal(|ui| {
+                        publish_now = primary(ui, self.busy.is_none(), "Publish now").clicked();
+                        cancel = ui.button("Cancel").clicked();
+                    });
+                });
+            }
+        }
+        match &self.submit_result {
+            Some(Ok(url)) => {
+                let url = url.clone();
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    widgets::message(ui, GREEN, "✔ Pull request opened");
+                    if ui.link(&url).clicked() {
+                        crate::app::open_url(&url);
+                    }
+                });
+            }
+            Some(Err(e)) => widgets::message(ui, ERROR, e),
+            None => {}
+        }
+        if publish_now {
+            self.run_submit(ui.ctx());
+        }
+        if cancel {
+            self.submit_plan = None;
         }
     }
 
@@ -2384,13 +2516,21 @@ impl App {
 
 /// A game port in the marketplace: poster, game, engine → targets, and
 /// where to get the game. Returns the entry when "Get port" is pressed.
+enum PortAction {
+    Get,
+    Check,
+}
+
 fn port_card(
     ui: &mut Ui,
     e: &ptk_core::market::MarketEntry,
     poster: Option<&egui::TextureHandle>,
     idle: bool,
-) -> Option<ptk_core::market::MarketEntry> {
-    let mut get = None;
+    check: Option<&Result<ptk_core::market::CopyCheck, String>>,
+    update: Option<&ptk_core::market::Update>,
+) -> Option<PortAction> {
+    use ptk_core::market::CopyVerdict;
+    let mut action = None;
     card(ui, |ui| {
         let w = ui.available_width();
         let (rect, _) =
@@ -2445,11 +2585,51 @@ fn port_card(
             if e.reviewed {
                 badge(ui, "✔ reviewed", GREEN);
             }
+            if let Some(u) = update {
+                badge(ui, &format!("⬆ v{} → v{}", u.installed, u.available), FOCUS);
+            }
         });
+        match check {
+            Some(Ok(c)) => {
+                let color = match c.verdict {
+                    CopyVerdict::Matches => GREEN,
+                    CopyVerdict::OtherVersion | CopyVerdict::Unknown => WARN,
+                    _ => ERROR,
+                };
+                let detail = if c.total > 0 {
+                    format!(" ({} of {} files identical)", c.matched, c.total)
+                } else {
+                    String::new()
+                };
+                ui.label(RichText::new(format!("{}{detail}", c.verdict.label())).color(color));
+            }
+            Some(Err(err)) => {
+                ui.label(RichText::new(err).color(ERROR));
+            }
+            None => {}
+        }
         ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            if primary(ui, idle, "Get port").clicked() {
-                get = Some(e.clone());
+        ui.horizontal_wrapped(|ui| {
+            let label = if update.is_some() {
+                "Get update"
+            } else {
+                "Get port"
+            };
+            if primary(ui, idle, label).clicked() {
+                action = Some(PortAction::Get);
+            }
+            if ui
+                .add_enabled(
+                    idle && !e.fingerprint.is_empty(),
+                    egui::Button::new("Check my copy"),
+                )
+                .on_hover_text(
+                    "Compares a few files of your game with the ones this port was made for",
+                )
+                .on_disabled_hover_text("This port was published without a fingerprint")
+                .clicked()
+            {
+                action = Some(PortAction::Check);
             }
             if let Some(store) = &e.store
                 && ui.button("Get the game ↗").on_hover_text(store).clicked()
@@ -2463,7 +2643,7 @@ fn port_card(
                 .color(TEXT_FAINT),
         );
     });
-    get
+    action
 }
 
 type Preset = (&'static str, fn(&str) -> CategoryOptions);

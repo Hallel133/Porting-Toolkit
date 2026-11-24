@@ -271,6 +271,40 @@ pub enum MarketAction {
         #[arg(long)]
         yes: bool,
     },
+    /// Check that your copy of a game is the one a port was made for
+    Check {
+        /// Port id
+        id: String,
+        /// Your game folder (or its executable)
+        game: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Publish a plugin, SDK or .ptk port: GitHub release + pull request (uses gh)
+    Submit {
+        /// Plugin folder, SDK folder or .ptk file
+        path: PathBuf,
+        /// Game ports: a page where players get the game (https)
+        #[arg(long)]
+        store: Option<String>,
+        /// Where the packaged file is written
+        #[arg(short, long, default_value = "dist")]
+        output: PathBuf,
+        /// Show what would be published, change nothing
+        #[arg(long)]
+        dry_run: bool,
+        /// Do not ask before publishing
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Installed plugins, SDKs and ports that have a newer version
+    Outdated {
+        /// Folder with port projects (default: your projects folder)
+        #[arg(long)]
+        projects: Option<PathBuf>,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]

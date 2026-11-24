@@ -198,8 +198,10 @@ Estimate savings**, and the Builds card shows the sizes before and after.
 
 **Game ports** (ready-made porting projects with a poster), plugins and SDKs
 (new platforms + their exporters) are listed in a
-JSON index on GitHub. `ptk market list|install`, `ptk sdk new|validate|install`
-and `ptk publish <folder>` (zip + SHA-256 + index entry for a pull request).
+JSON index on GitHub. `ptk market list|install`, `ptk sdk new|validate|install`,
+`ptk market submit <folder or .ptk>` (release + pull request in one step, with
+`gh`), `ptk market check <port> <game>` (does your copy match the port?) and
+`ptk market outdated` (updates for what you installed).
 See [docs/marketplace.md](docs/marketplace.md).
 
 ## Commands
@@ -223,7 +225,7 @@ See [docs/marketplace.md](docs/marketplace.md).
 | `ptk art --icon\|--poster <image>` | The port's icon and poster (shared in the `.ptk`, used by exports) |
 | `ptk serve <dir>` | Serve a web build on this computer, with the headers WebAssembly needs |
 | `ptk sdk new\|validate\|install` | SDKs: new platforms and their exporters |
-| `ptk market list\|install` | Community marketplace |
+| `ptk market list\|install\|check\|outdated\|submit` | Community marketplace: browse, install, check your copy against a port, updates, publish (release + pull request via gh) |
 | `ptk publish <path>` | Package a plugin, SDK or .ptk for the marketplace |
 
 `ptk scan` recognises Unity, Unreal, Godot, RAGE, Source, GameMaker, Ren'Py,
@@ -322,6 +324,10 @@ MIT. See [LICENSE](LICENSE).
 כל תוצאה נבדקת: היא חייבת להיות קטנה ב-3% לפחות, ולשמור על אותו גודל תמונה ואותה שקיפות. בסאונד ובווידאו היא חייבת לשמור על אותו אורך, אותם ערוצים ואותם תגי `LOOPSTART`. קובץ שלא עובר את הבדיקה נשאר כמו שהוא. `ptk assets` מעריך כמה נחסוך בלי לבנות כלום, ו-`ptk tools` מראה את הכלים (FFmpeg,‏ cwebp,‏ oxipng ועוד). התוכנה משתמשת קודם בכלים שמותקנים אצלך, ואם חסר כלי, היא מורידה גרסה נעולה ובודקת אותה לפי SHA-256.
 
 ### Marketplace ו-SDK
+
+- **פרסום בלחיצה אחת:** `ptk market submit` (או Marketplace → Publish באפליקציה) מעלה את הקובץ ל-GitHub Release ופותח pull request עם הרשומה. הוא מציג קודם מה יתפרסם בפומבי.
+- **בדיקת העותק שלך:** ‏"Check my copy" על כרטיס של port משווה כמה קבצים של המשחק שלך לטביעת האצבע של ה-port, עוד לפני ההורדה.
+- **עדכונים:** האפליקציה מסמנת תוספים, SDK ו-ports שיש להם גרסה חדשה, ו-`ptk market outdated` מציג אותם.
 
 **Game ports** (פרויקטי porting מוכנים עם פוסטר), תוספים ו-SDK (פלטפורמות חדשות עם ה-exporter שלהן) נמצאים באינדקס JSON ב-GitHub. port לעולם לא כולל את המשחק עצמו: כל שחקן צריך עותק משלו, והפרויקט בודק אותו לפי SHA-256. כדי לפרסם: `ptk sdk new`, ‏`ptk publish`, ואז pull request. הפרטים ב-[docs/marketplace.md](docs/marketplace.md).
 

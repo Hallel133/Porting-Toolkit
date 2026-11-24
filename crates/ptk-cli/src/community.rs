@@ -122,6 +122,16 @@ pub fn sdk(style: &Style, action: SdkAction) -> anyhow::Result<ExitCode> {
 }
 
 pub fn market(style: &Style, action: MarketAction) -> anyhow::Result<ExitCode> {
+    if let MarketAction::Submit {
+        path,
+        store,
+        output,
+        dry_run,
+        yes,
+    } = action
+    {
+        return submit(style, &path, store.as_deref(), &output, dry_run, yes);
+    }
     let url = market::index_url();
     let (index, problems) = market::fetch_index(&url).map_err(|e| {
         anyhow::anyhow!("{e}\nThe marketplace index is {url} (repository {MARKETPLACE_REPO}).")
@@ -164,6 +174,82 @@ pub fn market(style: &Style, action: MarketAction) -> anyhow::Result<ExitCode> {
             println!("{}", t.render(style));
             Ok(ExitCode::SUCCESS)
         }
+        MarketAction::Check { id, game, json } => {
+            let Some(entry) = index.entries.iter().find(|e| e.id == id) else {
+                bail!("no marketplace entry {id:?}");
+            };
+            let check = market::check_copy(entry, &game)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&check)?);
+            } else {
+                let mark = match check.verdict {
+                    market::CopyVerdict::Matches => style.ok(),
+                    market::CopyVerdict::OtherVersion | market::CopyVerdict::Unknown => {
+                        style.warn()
+                    }
+                    _ => style.fail(),
+                };
+                println!(
+                    "{mark} {} ({} of {} files identical)",
+                    check.verdict.label(),
+                    check.matched,
+                    check.total
+                );
+                for p in &check.different {
+                    println!("  {} {p}", style.dim("different:"));
+                }
+                for p in &check.missing {
+                    println!("  {} {p}", style.dim("not found:"));
+                }
+                if check.verdict == market::CopyVerdict::Unknown {
+                    println!(
+                        "  {}",
+                        style.dim(
+                            "This entry has no fingerprint (published before checks existed)."
+                        )
+                    );
+                }
+            }
+            Ok(if check.verdict == market::CopyVerdict::Matches {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            })
+        }
+        MarketAction::Outdated { projects, json } => {
+            let folder =
+                projects.unwrap_or_else(|| ptk_core::settings::AppSettings::load().projects_dir());
+            let items = market::installed(&market::projects_in(&folder));
+            let updates = market::outdated(&index, &items);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&updates)?);
+                return Ok(ExitCode::SUCCESS);
+            }
+            if updates.is_empty() {
+                println!(
+                    "{} Everything is up to date ({} installed items checked)",
+                    style.ok(),
+                    items.len()
+                );
+                return Ok(ExitCode::SUCCESS);
+            }
+            let mut t = Table::new(&["ID", "KIND", "INSTALLED", "AVAILABLE"]);
+            for u in &updates {
+                t.row(vec![
+                    style.bold(&u.id),
+                    u.kind.label().into(),
+                    u.installed.clone(),
+                    style.green(&u.available),
+                ]);
+            }
+            println!("{}", t.render(style));
+            println!(
+                "  {}",
+                style.dim("Update a plugin or SDK with: ptk market install <id>. A port update is a new project folder.")
+            );
+            Ok(ExitCode::SUCCESS)
+        }
+        MarketAction::Submit { .. } => unreachable!("handled above"),
         MarketAction::Install { id, yes } => {
             let Some(entry) = index.entries.iter().find(|e| e.id == id) else {
                 bail!("no marketplace entry {id:?}");
@@ -192,6 +278,72 @@ pub fn market(style: &Style, action: MarketAction) -> anyhow::Result<ExitCode> {
     }
 }
 
+/// `ptk market submit`: package, then release + pull request with gh.
+fn submit(
+    style: &Style,
+    path: &Path,
+    store: Option<&str>,
+    out: &Path,
+    dry_run: bool,
+    yes: bool,
+) -> anyhow::Result<ExitCode> {
+    use ptk_core::submit::{self, GhCli};
+    let mut gh = GhCli::find().ok_or_else(|| {
+        anyhow::anyhow!("the GitHub CLI (gh) is needed: brew install gh, then gh auth login")
+    })?;
+    let mut engine = EngineClient::start()?;
+    let p = market::package(path, out, &mut engine)?;
+    engine.shutdown()?;
+    let plan = submit::plan(&p, p.poster_file.as_deref(), store, &mut gh)?;
+    println!("{}", style.heading("Publishing to the marketplace"));
+    println!(
+        "  {:<9} {} {} ({})",
+        "entry",
+        plan.entry.kind.label(),
+        style.bold(&plan.entry.id),
+        plan.entry.version
+    );
+    println!("  {:<9} {}", "as", plan.login);
+    println!(
+        "  {:<9} {} in {}{}",
+        "release",
+        plan.tag,
+        plan.work_repo,
+        if plan.fork { " (your fork)" } else { "" }
+    );
+    for a in &plan.assets {
+        println!("  {:<9} {}", "upload", a.display());
+    }
+    println!("  {:<9} {} → {}", "pull req.", plan.branch, plan.upstream);
+    println!(
+        "{}",
+        style.dim("  The release and the pull request are public.")
+    );
+    if dry_run {
+        println!("{}", serde_json::to_string_pretty(&plan.entry)?);
+        println!("{} Dry run: nothing was published.", style.ok());
+        return Ok(ExitCode::SUCCESS);
+    }
+    if !yes {
+        use std::io::{BufRead, Write};
+        print!("Publish it? [y/N] ");
+        std::io::stdout().flush()?;
+        let mut line = String::new();
+        std::io::stdin().lock().read_line(&mut line)?;
+        if !matches!(line.trim().to_lowercase().as_str(), "y" | "yes") {
+            println!("Nothing was published.");
+            return Ok(ExitCode::FAILURE);
+        }
+    }
+    let url = submit::submit(&plan, &mut gh, |step| println!("  {}", style.dim(step)))?;
+    println!("{} Pull request opened: {}", style.ok(), style.bold(&url));
+    println!(
+        "  {}",
+        style.dim("It appears in the marketplace once a maintainer merges it.")
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
 pub fn publish(style: &Style, path: &Path, out: &Path) -> anyhow::Result<ExitCode> {
     let mut engine = EngineClient::start()?;
     let p = market::package(path, out, &mut engine)?;
@@ -210,9 +362,11 @@ pub fn publish(style: &Style, path: &Path, out: &Path) -> anyhow::Result<ExitCod
     println!("{}", style.heading("Marketplace entry"));
     println!("{}", serde_json::to_string_pretty(&p.entry)?);
     println!("{}", style.heading("Next steps"));
-    println!("  1. Upload the file (for example to a GitHub release of your repository).");
-    println!("  2. Put its URL in \"download\".");
-    println!("  3. Open a pull request adding the entry to index.json in {MARKETPLACE_REPO}");
-    println!("     Reviewed entries are marked \"reviewed\" when merged.");
+    println!(
+        "  Publish it in one step: {}",
+        style.bold(format!("ptk market submit {}", path.display()))
+    );
+    println!("  (or upload the file yourself, put its URL in \"download\" and open a pull request");
+    println!("  adding the entry to index.json in {MARKETPLACE_REPO})");
     Ok(ExitCode::SUCCESS)
 }

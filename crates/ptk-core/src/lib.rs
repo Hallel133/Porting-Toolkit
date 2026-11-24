@@ -34,6 +34,7 @@ pub mod scan;
 pub mod sdk;
 pub mod serve;
 pub mod settings;
+pub mod submit;
 pub mod targets;
 pub mod tools;
 pub mod verify;

@@ -5,6 +5,7 @@
 //! Long work (engine calls, hashing, packing) runs on a thread and reports
 //! back through a channel; the thread wakes the UI with `request_repaint`.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Duration, Instant};
@@ -258,6 +259,12 @@ pub enum Msg {
     /// Progress of a running plugin: fraction (if known) and a status line.
     PluginProgress(Option<f64>, String),
     Exported(Vec<(String, Result<RunResult, String>)>),
+    /// A submission was planned (nothing published yet).
+    SubmitPlanned(Result<ptk_core::submit::SubmitPlan, String>),
+    /// A submission finished: the pull request's URL.
+    Submitted(Result<String, String>),
+    /// "Check my copy" finished for a port.
+    CopyChecked(String, Result<ptk_core::market::CopyCheck, String>),
     /// A marketplace poster downloaded into the cache (by URL).
     Poster(String, Result<PathBuf, String>),
 }
@@ -332,10 +339,20 @@ pub struct App {
     pub import_build: String,
     pub import_dest: String,
     pub market: Option<Result<MarketIndex, String>>,
+    /// Newer versions of what is installed (plugins, SDKs, port projects).
+    pub market_updates: Vec<ptk_core::market::Update>,
+    /// "Check my copy" results, by port id.
+    pub copy_checks: HashMap<String, Result<ptk_core::market::CopyCheck, String>>,
     pub market_search: String,
     pub market_kind: Option<EntryKind>,
     pub publish_path: String,
     pub published: Option<Result<Published, String>>,
+    /// Game ports: the store page typed in the Submit card.
+    pub submit_store: String,
+    /// What "Publish to the marketplace" would do (shown before it does it).
+    pub submit_plan: Option<Result<ptk_core::submit::SubmitPlan, String>>,
+    /// The pull request's URL, or why it failed.
+    pub submit_result: Option<Result<String, String>>,
     pub sdk_new_dir: String,
 
     pub busy: Option<String>,
@@ -431,6 +448,11 @@ impl App {
             import_build: String::new(),
             import_dest: String::new(),
             market: None,
+            market_updates: Vec::new(),
+            submit_store: String::new(),
+            submit_plan: None,
+            submit_result: None,
+            copy_checks: HashMap::new(),
             market_search: String::new(),
             market_kind: None,
             publish_path: String::new(),
@@ -1085,6 +1107,24 @@ impl App {
         });
     }
 
+    /// "Check my copy": compares a game folder the user picks with a port's
+    /// fingerprint, in the background.
+    pub fn check_copy(&mut self, ctx: &egui::Context, entry: MarketEntry) {
+        let Some(dir) = rfd::FileDialog::new()
+            .set_title(format!(
+                "Choose your copy of {}",
+                entry.game.as_deref().unwrap_or(&entry.name)
+            ))
+            .pick_folder()
+        else {
+            return;
+        };
+        self.spawn(ctx, "Checking your copy", move |_| {
+            let r = ptk_core::market::check_copy(&entry, &dir).map_err(|e| e.to_string());
+            Msg::CopyChecked(entry.id.clone(), r)
+        });
+    }
+
     /// Downloads a marketplace entry, checks it, and asks before installing.
     pub fn market_install(&mut self, ctx: &egui::Context, entry: MarketEntry) {
         self.spawn(ctx, &format!("Downloading {}", entry.id), move |_| {
@@ -1154,6 +1194,50 @@ impl App {
                 Ok(p)
             };
             Msg::Published(run().map_err(|e| e.to_string()))
+        });
+    }
+
+    /// Works out a marketplace submission (asks gh who is signed in).
+    pub fn plan_submit(&mut self, ctx: &egui::Context) {
+        let Some(Ok(published)) = self.published.clone() else {
+            return;
+        };
+        let store = Some(self.submit_store.trim().to_owned()).filter(|s| !s.is_empty());
+        self.submit_result = None;
+        self.spawn(ctx, "Preparing the submission", move |_| {
+            let r = match ptk_core::submit::GhCli::find() {
+                None => Err(
+                    "The GitHub CLI (gh) is needed: brew install gh, then gh auth login".to_owned(),
+                ),
+                Some(mut gh) => ptk_core::submit::plan(
+                    &published,
+                    published.poster_file.as_deref(),
+                    store.as_deref(),
+                    &mut gh,
+                )
+                .map_err(|e| e.to_string()),
+            };
+            Msg::SubmitPlanned(r)
+        });
+    }
+
+    /// Publishes a planned submission: release, branch and pull request.
+    pub fn run_submit(&mut self, ctx: &egui::Context) {
+        let Some(Ok(plan)) = self.submit_plan.clone() else {
+            return;
+        };
+        let repaint = ctx.clone();
+        self.spawn(ctx, "Publishing to the marketplace", move |tx| {
+            let tx = tx.clone();
+            let r = match ptk_core::submit::GhCli::find() {
+                None => Err("The GitHub CLI (gh) is needed".to_owned()),
+                Some(mut gh) => ptk_core::submit::submit(&plan, &mut gh, |step| {
+                    let _ = tx.send(Msg::PluginProgress(None, step.to_owned()));
+                    repaint.request_repaint();
+                })
+                .map_err(|e| e.to_string()),
+            };
+            Msg::Submitted(r)
         });
     }
 
@@ -1289,9 +1373,21 @@ impl App {
                 },
                 Msg::Market(r) => {
                     self.market = Some(r.map(|(index, _)| index));
+                    if let Some(Ok(index)) = &self.market {
+                        let projects = ptk_core::market::projects_in(
+                            &ptk_core::settings::AppSettings::load().projects_dir(),
+                        );
+                        self.market_updates = ptk_core::market::outdated(
+                            index,
+                            &ptk_core::market::installed(&projects),
+                        );
+                    }
                     if self.plugins.is_none() {
                         self.refresh_plugins(ctx);
                     }
+                }
+                Msg::CopyChecked(id, r) => {
+                    self.copy_checks.insert(id, r);
                 }
                 Msg::Downloaded(r) => match r {
                     Ok(Downloaded::Install(p)) => self.pending = Some(*p),
@@ -1329,7 +1425,19 @@ impl App {
                     }
                     Err(e) => self.notify(e, ToastKind::Error),
                 },
-                Msg::Published(r) => self.published = Some(r),
+                Msg::Published(r) => {
+                    self.published = Some(r);
+                    self.submit_plan = None;
+                    self.submit_result = None;
+                }
+                Msg::SubmitPlanned(r) => self.submit_plan = Some(r),
+                Msg::Submitted(r) => {
+                    if let Ok(url) = &r {
+                        self.notify(format!("Pull request opened: {url}"), ToastKind::Ok);
+                    }
+                    self.submit_plan = None;
+                    self.submit_result = Some(r);
+                }
                 Msg::FoundProjects(list) => {
                     let n = list.len();
                     for p in &list {
