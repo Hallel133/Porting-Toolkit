@@ -104,7 +104,7 @@ logic lives:
 | Engine | Without source code |
 |---|---|
 | Godot, Ren'Py, LÖVE, RPG Maker, HTML5 engines | Yes: the game data is portable; pair it with the engine runtime for the target |
-| Unity, GameMaker | Depends: Unity Mono yes, IL2CPP no; GameMaker needs a runner for the target |
+| Unity, GameMaker | Depends: Unity Mono builds can move with the Unity player of the same version from your own Unity install (experimental: the build's shaders must cover the target's graphics API); IL2CPP no; GameMaker needs a runner for the target |
 | Unreal, RAGE, Source | No: native code. Needs the source, or a compatibility layer (Wine-style) |
 
 ## Export to macOS, Windows, Linux and the web
@@ -125,6 +125,7 @@ Builds go to `PROJECT/build/<target>/` (`-o` changes it). In the app:
 | Ren'Py | the game folder (also inside a Mac `.app`): version, platforms it has, `.rpa` archives (listed, never extracted) | `.app` with the game in `Contents/Resources/autorun` | `<name>.exe` / `<name>.sh` with Ren'Py's platform files | – |
 | LÖVE | `.love`, a fused `.exe`, a Mac app or a source folder; `conf.lua` (never run) | the LÖVE 11.5 app with `game.love` inside | fused `.exe` / the LÖVE AppImage + `game.love` | – |
 | RPG Maker XP/VX/VX Ace | `Game.ini` and the archive header (never decrypted) | mkxp-z's app with the game in `Contents/Game` | Windows: the original game; Linux: mkxp-z + the game | – |
+| Unity (Mono, experimental) | the Data folder: Unity version, Mono or IL2CPP, native plugins, Apple-only services | your Unity install's Mac player with the game's Data | the Windows/Linux player of the same version + `<Name>_Data` | – |
 
 Godot templates come from the Godot editor's folder when installed;
 otherwise only the needed files (about 10 MB for the web, 120 MB for macOS)
@@ -307,6 +308,7 @@ MIT. See [LICENSE](LICENSE).
 - **Ren'Py:** המשחק עם ה-runtime של אותה גרסה של Ren'Py. אם למשחק כבר יש את קבצי הפלטפורמה (build של "PC" כולל Windows ו-Linux), התוכנה לא מורידה כלום. אם חסרים קבצים, היא מורידה פעם אחת את ה-SDK מ-renpy.org ובודקת אותו לפי SHA-256. השמירות של השחקן לא מועתקות.
 - **LÖVE:** המשחק עם LÖVE 11.5 הרשמי: ‎.app חתום ל-Mac,‏ ‎.exe "מאוחד" ל-Windows, ו-AppImage ל-Linux.
 - **RPG Maker XP/VX/VX Ace:** ב-Mac וב-Linux המשחק רץ עם mkxp-z (קוד פתוח, GPL). ל-mkxp-z אין גרסאות רשמיות להורדה, אז צריך להוריד אותו פעם אחת בעצמך ולהעביר את המיקום עם `--set mkxp=PATH`, והתוכנה זוכרת אותו. ב-Windows המשחק המקורי פשוט עובד.
+- **Unity (ניסיוני):** משחקי Mono (הקוד ב-`Data/Managed`) עוברים עם ה-player של אותה גרסה מ-Unity שמותקן אצלך דרך Unity Hub. אם הגרסה חסרה, התוכנה נותנת קישור `unityhub://` להתקנה. המגבלה: בנייה מכילה shaders רק ל-API הגרפי של הפלטפורמה שלה, ו-plugins נייטיביים לא עוברים. משחקי IL2CPP לא ניתנים להמרה בלי קוד מקור.
 - **מנועי HTML5:** ‏Construct,‏ GDevelop,‏ Twine,‏ Phaser,‏ Cocos ו-Defold מזוהים ומיוצאים כמו כל משחק HTML5.
 - **Android (ניסיוני):** משחקי Godot 4 נארזים עם תבנית ה-APK הרשמית של Godot, בדיוק כמו שהעורך של Godot עושה בלי Gradle. משחקי HTML5 רצים בנגן WebView קטן שהתוכנה בונה פעם אחת אצלך במחשב. צריך Android SDK ו-JDK (‏`ptk tools` מראה מה חסר). ה-APK נחתם במפתח בדיקה שנוצר אצלך במחשב, ואפשר להתקין אותו עם `adb install`. הטקסטורות של משחקי Godot מומרות מפורמטים של מחשב (S3TC/BPTC) ל-ASTC, הפורמט של טלפונים: התוכנה מפענחת כל רמת mip עם bcdec וקודדת אותה עם astcenc של ARM. טלפון בלי ASTC ממשיך לקבל את הקובץ המקורי ומפענח אותו בעצמו.
 - **Windows ו-Linux** (אפשר לבנות אותם מהמק): ב-Godot נוצרת תיקייה עם ‎.exe (או ‎.x86_64) ו-‎.pck מה-template הרשמי, יחד עם הספריות הנייטיביות של המשחק. במשחקי HTML5 המשחק רץ ב-NW.js, אותו runtime שאיתו RPG Maker מגיע. התוכנה מורידה גרסה נעולה ובודקת אותה לפי SHA-256. בשני המקרים נוצר גם zip ששומר על הרשאת ההרצה ב-Linux.

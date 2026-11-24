@@ -28,7 +28,7 @@ export PATH="$HOME/.cargo/bin:$PATH"          # cargo is not on the default PATH
 cargo test --workspace                        # 85 Rust tests, starts the real Python engine
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-(cd engine && uv run pytest)                  # 163 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
+(cd engine && uv run pytest)                  # 172 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
 (cd engine && PTK_TOOL_TESTS=1 uv run pytest -k real)       # also runs real FFmpeg encodes
 (cd engine && PTK_GUI_TESTS=1 uv run pytest -k macos_app)   # also opens the wrapper app and checks the page loaded
 cargo run -q -p ptk-cli -- scan fixtures/games/unity-windows
@@ -125,11 +125,17 @@ Owner asked to plan and design new compression algorithms for new platforms and 
 - Updates: `market::installed` (user plugins' plugin.toml, `sdk::installed()`, ptk.json projects in the projects folder) + `outdated` (numeric version compare). `ptk market outdated`, GUI banner, badges, Update buttons.
 - `ptk_core::submit`: `plan` (gh login; owner → the marketplace repo, others → fork; tag `<id>-v<version>`, release asset URLs, `--store` required for ports; entry validated) and `submit` (fork+sync, `gh release create`, branch, index.json PUT via contents API with a built-in base64, `gh pr create`). `ptk market submit [--dry-run] [--yes] [--store]`, GUI Publish → "Publish to the marketplace…" with a plan card and "Publish now". Tested with a fake gh and a real `--dry-run`; **nothing was actually published**.
 
+## Done (2026-11-25, Unity, experimental)
+- Owner's Mac has two Unity games: The Lost City (Mono, 2022.3.62f2, Apple Arcade, Wwise/Game Center/iCloud plugins, Burst) and Sasquatch (IL2CPP, 2021.3.37f1). No Unity Editor is installed.
+- Player layouts were read from Unity 2022.3.62f2's own installer Boms (HTTP ranges of the .pkg xar TOC + `lsbom`): Windows `Variations/win64_player_nondevelopment_mono/{WindowsPlayer.exe, UnityPlayer.dll, UnityCrashHandler64.exe, MonoBleedingEdge/, Data/Managed, Data/Resources}`; Linux `linux64_..._mono/{LinuxPlayer, UnityPlayer.so, Data/{Managed,MonoBleedingEdge,Resources}}`; Mac `Unity.app/Contents/PlaybackEngines/MacStandaloneSupport/{Variations/macos_x64arm64_player_nondevelopment_mono/UnityPlayer.app, Variations/mono/Managed, MonoBleedingEdge}`. Module destinations from `services.api.unity.com` (`{UNITY_PATH}/PlaybackEngines/...`).
+- `formats/unity.py` (detect, version from globalgamemanagers, app.info, Mono/IL2CPP incl. GameAssembly.dylib/.so, plugins, Apple services, App Store/Arcade, Burst note; Hub install lookup and variation choice), unity-import (report), unity-export (Mono only; BYO Unity install; unityhub:// link). Route text updated.
+- Tested with synthetic builds and a fake Hub tree; real import of The Lost City; the export without Unity gives the exact Hub link. **No real Unity player was run or even present.**
+
 ## Next task
 0. Owner: ask GitHub Support to lift the flag on the Hallel133 account (it hides both repos from the public and disables Actions). Then publish a first entry with `ptk market submit`.
 1. Owner: re-export Buckshot Roulette for macOS and check the gray screen is gone and Steam features work; check the web build's loading screen. Try the Game page, Settings → Defaults, Icon & poster.
 2. Owner: try a real Godot game and a real RPG Maker MV/MZ game (`ptk import <build>` then `ptk export`, or the app's Export tab); open the Godot `.app` on the Mac (not done by Claude). Check the macOS menu bar. Create the ptk-marketplace repo (see above).
-3. Owner: run a Windows/Linux export of a real game on a Windows PC / Linux machine (or Steam Deck); try a real Ren'Py, LÖVE and RPG Maker XP/VX/Ace game (for the last one, download mkxp-z once and pass --set mkxp=PATH). Install an Android build on a phone (`adb install -r`) and report what happens. The plan's 5 phases are done; next: Unity Mono retarget (owner's choice, after the community work); other ideas: a real-device test round, Godot 3 Android, ETC2 for phones without ASTC, love.js/Ren'Py web. Owner should try `ptk assets` / Estimate savings on a real RPG Maker game and check the music still loops after `brew install vorbis-tools`.
+3. Owner: run a Windows/Linux export of a real game on a Windows PC / Linux machine (or Steam Deck); try a real Ren'Py, LÖVE and RPG Maker XP/VX/Ace game (for the last one, download mkxp-z once and pass --set mkxp=PATH). Install an Android build on a phone (`adb install -r`) and report what happens. The plan's 5 phases are done; Unity is in (experimental); owner can install Unity 2022.3.62f2 + Windows/Linux Mono support via the unityhub:// link to try The Lost City (Apple Arcade: personal testing only). Other ideas: a real-device test round, Godot 3 Android, ETC2 for phones without ASTC, love.js/Ren'Py web. Owner should try `ptk assets` / Estimate savings on a real RPG Maker game and check the music still loops after `brew install vorbis-tools`.
 4. Not tested: real games (only synthetic pcks and fake HTML5 games), Godot 3 templates, threaded web builds in a browser, Electron games, Intel Macs, running the Windows/Linux exports (no machines here), running ptk itself on Windows/Linux (CI blocked on the account).
 
 ## Working agreement (after every change)

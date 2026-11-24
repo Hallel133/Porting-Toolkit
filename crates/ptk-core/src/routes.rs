@@ -91,7 +91,7 @@ pub const ROUTES: &[Route] = &[
         engine: "unity",
         name: "Unity",
         kind: RouteKind::Partial,
-        how: "Mono builds keep game code in Managed/*.dll and can pair with the Unity player of the same version for the target. IL2CPP builds are native code.",
+        how: "Mono builds keep the game's code in Data/Managed/*.dll, which runs with the Unity player of the same version for another platform (from your own Unity install). The build's shaders must cover the target's graphics API, and native plugins need their own builds. IL2CPP builds are native code and need the source.",
     },
     Route {
         engine: "unreal",

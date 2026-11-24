@@ -26,6 +26,8 @@ They ship in `engine/plugins/` and are listed as built-in (and reviewed).
 | `love-export` | love | macos-arm64, macos-x64, windows-x64, linux-x64 | The game with the official LÖVE 11.5 build: Mac app, fused `.exe`, or AppImage + `game.love` |
 | `rgss-import` | rgss | | Reads RPG Maker XP/VX/VX Ace `Game.ini` and the archive header into `recipes/rgss.json` |
 | `rgss-export` | rgss | macos-arm64, macos-x64, windows-x64, linux-x64 | mkxp-z for macOS and Linux (you provide it once), the original game for Windows |
+| `unity-import` | unity | | Reports the build: Data folder, Unity version, Mono or IL2CPP, native plugins, Apple-only services, App Store / Apple Arcade |
+| `unity-export` | unity | macos-arm64, macos-x64, windows-x64, linux-x64 | Mono builds only, experimental: the game's Data with the Unity player of the same version from the user's own Unity install |
 | `html5-export` | rpgmaker, html5 | macos-arm64, macos-x64, windows-x64, linux-x64, web, android | The web root as a web folder, inside a native WebKit `.app`, with the NW.js runtime for Windows and Linux, or in a WebView player APK |
 
 **Android (experimental).** Shared code is in `engine/ptk_engine/android.py`
@@ -65,6 +67,24 @@ authorities, add permissions, replace the app name).
   with aapt2, javac (`--release 11`) and d8 against the newest platform and
   cached in the plugin cache. Orientation follows the game's window (portrait
   when taller than wide) unless `--set orientation=` is given.
+
+**Unity (experimental).** Mono builds keep the game's code in
+`Data/Managed` (IL), which runs with another platform's Unity player of the
+same version. The player is never downloaded by Porting Toolkit: it comes
+from the user's Unity install (Unity Hub, `/Applications/Unity/Hub/Editor/<v>`,
+Hub's secondary install path, or `--set unity=PATH`), from
+`PlaybackEngines/<Platform>StandaloneSupport/Variations/<win64|linux64|macos_x64arm64>_player_nondevelopment_mono`
+(paths read from Unity 2022.3's installers). When it is missing, the error
+names the module ("Windows Build Support (Mono)") and gives a
+`unityhub://<version>/<changeset>` link from Unity's public release service
+(`unity_lookup=false` skips it). The game's Data goes to `<Name>_Data`
+(Windows, Linux; MonoBleedingEdge inside it on Linux) or
+`Contents/Resources/Data` (macOS); `UnityEngine*.dll` and `unity default
+resources` come from the target player; the source platform's native
+`Plugins` are left out. Shaders cannot be added, so a build without the
+target's graphics API (Metal, Direct3D, Vulkan/OpenGL) shows pink or
+invisible objects; the export says so, and about native plugins, Apple
+services and App Store / Apple Arcade terms. IL2CPP builds are refused.
 
 **Ren'Py.** The layout follows Ren'Py's `launcher/game/distribute.rpy`:
 `<name>.exe` + `lib/py3-windows-x86_64/`, `<name>.sh` +

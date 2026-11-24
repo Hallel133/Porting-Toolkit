@@ -277,7 +277,8 @@ def _compile(pattern: str) -> re.Pattern[str]:
 def _variant(engine_id: str, index: GameIndex) -> str | None:
     f = index.find
     if engine_id == "unity":
-        if f("name", "gameassembly.dll") or f("path", "*/il2cpp_data/*"):
+        if (f("name", "gameassembly.dll") or f("name", "gameassembly.dylib") or f("name", "gameassembly.so")
+                or f("path", "*/il2cpp_data/*")):
             return "IL2CPP"
         if f("path", "*/managed/assembly-csharp.dll"):
             return "Mono"
