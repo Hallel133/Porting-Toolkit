@@ -28,7 +28,7 @@ export PATH="$HOME/.cargo/bin:$PATH"          # cargo is not on the default PATH
 cargo test --workspace                        # 78 Rust tests, starts the real Python engine
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-(cd engine && uv run pytest)                  # 156 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
+(cd engine && uv run pytest)                  # 163 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
 (cd engine && PTK_TOOL_TESTS=1 uv run pytest -k real)       # also runs real FFmpeg encodes
 (cd engine && PTK_GUI_TESTS=1 uv run pytest -k macos_app)   # also opens the wrapper app and checks the page loaded
 cargo run -q -p ptk-cli -- scan fixtures/games/unity-windows
@@ -113,10 +113,15 @@ Owner asked to plan and design new compression algorithms for new platforms and 
 - html5-export Android: WebView player in `engine/plugins/html5-export/android/` built once with aapt2/javac/d8.
 - Verified on this Mac: synthetic MZ game → APK, and synthetic Godot 4.4.1 game with the real template → APK; both pass `zipalign -c -P 16 4`, `apksigner verify` (v2+v3) and `aapt2 dump badging` (package, label, orientation, ABIs). **Not installed on a phone or emulator** (no emulator images here).
 
+## Done (2026-11-25, plan phase 5: Godot textures to ASTC for Android)
+- `formats/ctex.py` reads/writes Godot 4 `.ctex` (GST2) with Godot's mip size rules (`level_sizes`; checked against `Image::_get_dst_image_size`). `ptk_engine/texconv`: `ptk-bcdec` (C driver around the vendored `engine/third_party/bcdec/bcdec.h`, commit 80859ed3, MIT/Unlicense; compiled once with `cc`) decodes DXT1/3/5 and BC7 levels; astcenc (`-cl`, same LDR profile as Godot's astcenc module) encodes them. New pinned tool `astcenc` 5.7.1 (macOS universal zip, GitHub digest).
+- godot-export Android: `android_textures=astc` (default) adds `.astc.ctex` files and `path.astc=` ahead of the `path=` fallback; `decode` keeps only the fallback; `astc_block`, `astc_quality`.
+- Verified: decoder compiled and tested on real BC1 blocks; conversion and the remap order tested with a stand-in astcenc script (real astcenc not run here: Claude does not execute downloaded binaries). **Not checked on a phone.**
+
 ## Next task
 1. Owner: re-export Buckshot Roulette for macOS and check the gray screen is gone and Steam features work; check the web build's loading screen. Try the Game page, Settings → Defaults, Icon & poster.
 2. Owner: try a real Godot game and a real RPG Maker MV/MZ game (`ptk import <build>` then `ptk export`, or the app's Export tab); open the Godot `.app` on the Mac (not done by Claude). Check the macOS menu bar. Create the ptk-marketplace repo (see above).
-3. Owner: run a Windows/Linux export of a real game on a Windows PC / Linux machine (or Steam Deck); try a real Ren'Py, LÖVE and RPG Maker XP/VX/Ace game (for the last one, download mkxp-z once and pass --set mkxp=PATH). Install an Android build on a phone (`adb install -r`) and report what happens. Next (plan phase 5, research): Godot `.ctex` re-encoding (BC → ETC2/ASTC for Android). Owner should try `ptk assets` / Estimate savings on a real RPG Maker game and check the music still loops after `brew install vorbis-tools`.
+3. Owner: run a Windows/Linux export of a real game on a Windows PC / Linux machine (or Steam Deck); try a real Ren'Py, LÖVE and RPG Maker XP/VX/Ace game (for the last one, download mkxp-z once and pass --set mkxp=PATH). Install an Android build on a phone (`adb install -r`) and report what happens. The plan's 5 phases are done; next ideas: a real-device test round, Godot 3 Android, ETC2 for phones without ASTC, love.js/Ren'Py web. Owner should try `ptk assets` / Estimate savings on a real RPG Maker game and check the music still loops after `brew install vorbis-tools`.
 4. Not tested: real games (only synthetic pcks and fake HTML5 games), Godot 3 templates, threaded web builds in a browser, Electron games, Intel Macs, running the Windows/Linux exports (no machines here), running ptk itself on Windows/Linux (CI blocked on the account).
 
 ## Working agreement (after every change)

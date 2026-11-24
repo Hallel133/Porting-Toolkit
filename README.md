@@ -152,9 +152,17 @@ Toolkit builds once on your computer. Both need the Android SDK
 (`brew install openjdk`); `ptk tools` shows what is missing. APKs are signed
 with a debug key made on your computer (for testing); `--set keystore=...`
 uses your own key, `--set orientation=portrait`, `--set permissions=INTERNET`
-and `--set package=com.you.game` change the app. Desktop Godot games only have
-desktop texture formats; Godot 4.2+ decodes them on phones (with a warning:
-more memory), older versions are refused.
+and `--set package=com.you.game` change the app.
+
+Desktop Godot games only have desktop texture formats (S3TC/BPTC). The export
+converts them to **ASTC** for phones: each mip level is decoded with bcdec
+(compiled once with your C compiler) and encoded with ARM's astcenc (a pinned
+download, or your own), and the texture's remap lists ASTC first with the
+desktop file as a fallback that Godot 4.2+ decodes on phones without ASTC.
+`--set android_textures=decode` skips the conversion, `--set astc_block=8x8`
+makes smaller, blurrier textures, `--set astc_quality=medium` encodes more
+carefully (slower). Godot 4.0/4.1 games that would need the fallback are
+refused.
 
 ## Advanced options: compression algorithms
 
@@ -211,7 +219,7 @@ See [docs/marketplace.md](docs/marketplace.md).
 | `ptk import <build>` | Project from a folder, .app, .exe, .zip, .deb or .dmg (runs the import plugin) |
 | `ptk export [-t ID]` | Build for macOS, Windows, Linux or the web with export plugins (`--set key=value`, `--assets apply\|plan\|off`) |
 | `ptk assets [-t ID]` | Estimate what the advanced options save, per target |
-| `ptk tools [list\|install ID]` | Compression tools: where each one is, or install a pinned build |
+| `ptk tools [list\|install ID]` | Tools exports use (FFmpeg, cwebp, oxipng, astcenc, the Android SDK...): where each one is, or install a pinned build |
 | `ptk art --icon\|--poster <image>` | The port's icon and poster (shared in the `.ptk`, used by exports) |
 | `ptk serve <dir>` | Serve a web build on this computer, with the headers WebAssembly needs |
 | `ptk sdk new\|validate\|install` | SDKs: new platforms and their exporters |
@@ -230,7 +238,7 @@ Colors are off when output is not a terminal, with `NO_COLOR=1` or `--no-color`.
 
 1. macOS + CLI infrastructure + banner + file structure (done)
 2. Desktop GUI (egui) (done)
-3. **Import/export plugins** (now: Godot, Ren'Py, LÖVE, RPG Maker and HTML5 to macOS, Windows, Linux, the web and Android (experimental), with applied compression options), then re-encoding Godot's imported textures
+3. **Import/export plugins** (now: Godot, Ren'Py, LÖVE, RPG Maker and HTML5 to macOS, Windows, Linux, the web and Android (experimental, with ASTC textures for Godot), with applied compression options)
 4. Windows/Linux and the full community marketplace
 
 ## Documentation
@@ -298,7 +306,7 @@ MIT. See [LICENSE](LICENSE).
 - **LÖVE:** המשחק עם LÖVE 11.5 הרשמי: ‎.app חתום ל-Mac,‏ ‎.exe "מאוחד" ל-Windows, ו-AppImage ל-Linux.
 - **RPG Maker XP/VX/VX Ace:** ב-Mac וב-Linux המשחק רץ עם mkxp-z (קוד פתוח, GPL). ל-mkxp-z אין גרסאות רשמיות להורדה, אז צריך להוריד אותו פעם אחת בעצמך ולהעביר את המיקום עם `--set mkxp=PATH`, והתוכנה זוכרת אותו. ב-Windows המשחק המקורי פשוט עובד.
 - **מנועי HTML5:** ‏Construct,‏ GDevelop,‏ Twine,‏ Phaser,‏ Cocos ו-Defold מזוהים ומיוצאים כמו כל משחק HTML5.
-- **Android (ניסיוני):** משחקי Godot 4 נארזים עם תבנית ה-APK הרשמית של Godot, בדיוק כמו שהעורך של Godot עושה בלי Gradle. משחקי HTML5 רצים בנגן WebView קטן שהתוכנה בונה פעם אחת אצלך במחשב. צריך Android SDK ו-JDK (‏`ptk tools` מראה מה חסר). ה-APK נחתם במפתח בדיקה שנוצר אצלך במחשב, ואפשר להתקין אותו עם `adb install`.
+- **Android (ניסיוני):** משחקי Godot 4 נארזים עם תבנית ה-APK הרשמית של Godot, בדיוק כמו שהעורך של Godot עושה בלי Gradle. משחקי HTML5 רצים בנגן WebView קטן שהתוכנה בונה פעם אחת אצלך במחשב. צריך Android SDK ו-JDK (‏`ptk tools` מראה מה חסר). ה-APK נחתם במפתח בדיקה שנוצר אצלך במחשב, ואפשר להתקין אותו עם `adb install`. הטקסטורות של משחקי Godot מומרות מפורמטים של מחשב (S3TC/BPTC) ל-ASTC, הפורמט של טלפונים: התוכנה מפענחת כל רמת mip עם bcdec וקודדת אותה עם astcenc של ARM. טלפון בלי ASTC ממשיך לקבל את הקובץ המקורי ומפענח אותו בעצמו.
 - **Windows ו-Linux** (אפשר לבנות אותם מהמק): ב-Godot נוצרת תיקייה עם ‎.exe (או ‎.x86_64) ו-‎.pck מה-template הרשמי, יחד עם הספריות הנייטיביות של המשחק. במשחקי HTML5 המשחק רץ ב-NW.js, אותו runtime שאיתו RPG Maker מגיע. התוכנה מורידה גרסה נעולה ובודקת אותה לפי SHA-256. בשני המקרים נוצר גם zip ששומר על הרשאת ההרצה ב-Linux.
 
 באפליקציה: Export ואז **Export all**, ואחריו Open,‏ Play in browser או Show in Finder.
@@ -321,7 +329,7 @@ MIT. See [LICENSE](LICENSE).
 
 1. ‏macOS + תשתית CLI + באנר + מבנה קבצים (הושלם)
 2. ממשק גרפי (הושלם)
-3. תוספי ייבוא/ייצוא (עכשיו: Godot,‏ Ren'Py,‏ LÖVE,‏ RPG Maker ו-HTML5 ל-macOS,‏ Windows,‏ Linux, לווב ול-Android (ניסיוני), עם דחיסה אמיתית), ואחר כך דחיסה מחדש של הטקסטורות של Godot
+3. תוספי ייבוא/ייצוא (עכשיו: Godot,‏ Ren'Py,‏ LÖVE,‏ RPG Maker ו-HTML5 ל-macOS,‏ Windows,‏ Linux, לווב ול-Android (ניסיוני, עם טקסטורות ASTC למשחקי Godot), עם דחיסה אמיתית)
 4. ‏Windows/Linux וקהילה מלאה
 
 רישיון: MIT.

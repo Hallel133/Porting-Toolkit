@@ -20,7 +20,10 @@ Settings (``--set key=value``): ``templates`` (a folder or .tpz),
 ``threads`` (web), ``thin`` and ``sign`` (macOS, default true),
 ``zip`` (Windows/Linux, default true), and for Android ``package``,
 ``version_code``, ``orientation``, ``permissions`` (e.g. ``INTERNET,VIBRATE``),
-``abis`` (default ``arm64-v8a,armeabi-v7a``), ``keystore``,
+``abis`` (default ``arm64-v8a,armeabi-v7a``), ``android_textures``
+(``astc``, the default: desktop-only textures are converted to ASTC with
+astcenc; ``decode``: phones decode them), ``astc_block`` (4x4 or 8x8),
+``astc_quality`` (fastest/fast/medium/thorough), ``keystore``,
 ``keystore_pass``, ``key_alias``, ``key_pass``, ``android_sdk``.
 """
 
@@ -36,8 +39,8 @@ import sys
 import zipfile
 from pathlib import Path
 
-from ptk_engine import android
-from ptk_engine.formats import axml, godot
+from ptk_engine import android, texconv
+from ptk_engine.formats import axml, ctex, godot
 
 RELEASES = "https://github.com/godotengine/godot/releases/download"
 
@@ -507,10 +510,14 @@ class Plugin:
             ctx.fail(f"{missing} textures only have desktop formats (S3TC/BPTC), and Godot {major}.{minor} cannot "
                      "decode those on phones. Only the developer can fix it (Project Settings > Rendering > Textures "
                      "> Import ETC2 ASTC), or try anyway with --set force=true.")
-        if fixed:
-            ctx.warn(f"{fixed} textures only have desktop formats (S3TC/BPTC). Godot decodes them on phones without "
-                     "those formats, which uses more memory and loads slower. The developer can avoid it by "
-                     "enabling Project Settings > Rendering > Textures > Import ETC2 ASTC.")
+        astc_files: dict[str, bytes] = {}
+        converted = self.android_astc(ctx, staged_pck, imports, astc_files) if fixed else 0
+        if converted:
+            ctx.log(f"Converted {converted} textures to ASTC for phones.")
+        if fixed - converted:
+            ctx.warn(f"{fixed - converted} textures only have desktop formats (S3TC/BPTC). Godot decodes them on phones "
+                     "without those formats, which uses more memory and loads slower. The developer can avoid it "
+                     "by enabling Project Settings > Rendering > Textures > Import ETC2 ASTC.")
         for ext in pck.extensions():
             ctx.warn(f"{Path(ext).stem} is a native extension; an Android build of it is not included, so features "
                      "that need it will not work.")
@@ -551,6 +558,8 @@ class Plugin:
             else:
                 entries.append(android.Entry(name, None, android.should_compress(e.path),
                                              src=(staged, e.offset, e.size)))
+        for name, data in astc_files.items():
+            entries.append(android.Entry(name, data, False))
         entries.append(android.Entry("assets/_cl_", struct.pack("<I", 0), False))  # no extra command line
 
         ctx.clean_dir(ctx.output)
@@ -606,6 +615,57 @@ class Plugin:
                 + f'path="{desktop}"\n' + text[last.end():]
             changed[e.path] = text.encode("utf-8")
         return changed, len(changed), need
+
+    @staticmethod
+    def android_astc(ctx, pck, imports: dict[str, bytes], out: dict[str, bytes]) -> int:
+        """Converts the desktop-only textures to ASTC (``android_textures=astc``,
+        the default): a new ``.astc.ctex`` next to each, and ``path.astc`` in
+        its remap ahead of the ``path=`` fallback, so phones with ASTC (most)
+        load it and the others still decode the desktop one."""
+        mode = (ctx.setting("android_textures") or "astc").lower()
+        if mode not in ("astc", "decode"):
+            ctx.fail(f"android_textures={mode}: use astc or decode")
+        if mode == "decode":
+            return 0
+        try:
+            tc = texconv.Transcoder(ctx.cache / "texconv", ctx.toolbox, ctx.setting("astc_block") or "4x4",
+                                    ctx.setting("astc_quality") or "fast")
+        except texconv.TexconvError as e:
+            ctx.fail(str(e))
+        problem = tc.problem()
+        if problem:
+            ctx.warn(f"Textures were not converted to ASTC: {problem}.")
+            return 0
+        converted = 0
+        failed: list[str] = []
+        items = list(imports.items())
+        for i, (path, raw) in enumerate(items):
+            text = raw.decode("utf-8")
+            m = re.search(r'(?m)^path="([^"]*)"', text)
+            if not m:
+                continue
+            desktop = m.group(1)
+            data = godot.read_file(pck, desktop)
+            if data is None:
+                continue
+            ctx.progress(0.72 + 0.15 * i / max(len(items), 1), f"ASTC {i + 1}/{len(items)}: {Path(desktop).name}")
+            try:
+                astc = tc.to_astc(data)
+            except (texconv.TexconvError, ctex.CtexError) as e:
+                failed.append(f"{Path(path).stem}: {e}")
+                continue
+            if astc is None:
+                continue
+            new = re.sub(r"\.(s3tc|bptc)\.ctex$", ".astc.ctex", desktop)
+            if new == desktop:
+                new = desktop[:-len(".ctex")] + ".astc.ctex"
+            out["assets/" + new.removeprefix("res://")] = astc
+            imports[path] = (text[:m.start()] + f'path.astc="{new}"\n' + text[m.start():]).encode("utf-8")
+            converted += 1
+        if failed:
+            ctx.warn(f"{len(failed)} textures could not be converted to ASTC and stay in desktop formats "
+                     f"(first: {failed[0]}).")
+        return converted
 
     def android_icon(self, ctx, pck) -> Path | None:
         chosen = ctx.setting("icon")

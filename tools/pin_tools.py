@@ -23,6 +23,10 @@ RELEASES = {
         "macos-arm64": r"oxipng-{v}-aarch64-apple-darwin\.tar\.gz",
         "macos-x64": r"oxipng-{v}-x86_64-apple-darwin\.tar\.gz",
     }),
+    "astcenc": ("ARM-software/astc-encoder", {
+        "macos-arm64": r"astcenc-{v}-macos-universal\.zip",
+        "macos-x64": r"astcenc-{v}-macos-universal\.zip",
+    }),
 }
 
 

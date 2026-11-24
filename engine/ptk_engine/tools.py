@@ -82,6 +82,7 @@ def platform_key() -> str:
 
 
 _GH = "https://github.com/oxipng/oxipng/releases/download"
+_ASTC = "https://github.com/ARM-software/astc-encoder/releases/download"
 
 TOOLS: dict[str, Tool] = {t.id: t for t in [
     Tool("ffmpeg", "FFmpeg", "ffmpeg", "audio, video and JPEG", "LGPL-2.1-or-later (GPL with some codecs)",
@@ -96,6 +97,13 @@ TOOLS: dict[str, Tool] = {t.id: t for t in [
                                 "7039fcfc78e8aa1ed2b57d848057a0296f082e92b3e1807ac65402d10d926764", "tar.gz"),
              "macos-x64": Pin("10.2.1", f"{_GH}/v10.2.1/oxipng-10.2.1-x86_64-apple-darwin.tar.gz",
                               "111883bbe42b25e01cb1ca41f39f8094e4830b173f0e42be342ecc4ca48f3131", "tar.gz"),
+         }),
+    Tool("astcenc", "astcenc (ARM ASTC Encoder)", "astcenc", "ASTC textures for phones (Godot on Android)",
+         "Apache-2.0", ("-help",), r"astcenc v(\d+(?:\.\d+)+)", pins={
+             "macos-arm64": Pin("5.7.1", f"{_ASTC}/5.7.1/astcenc-5.7.1-macos-universal.zip",
+                                "cb2dd75e33fcc12ebaae9e2230649e30da10c152b029a6d2f3440f6d45ed5c45", "zip"),
+             "macos-x64": Pin("5.7.1", f"{_ASTC}/5.7.1/astcenc-5.7.1-macos-universal.zip",
+                              "cb2dd75e33fcc12ebaae9e2230649e30da10c152b029a6d2f3440f6d45ed5c45", "zip"),
          }),
     Tool("pngquant", "pngquant", "pngquant", "lossy PNG (fewer colours)", "GPL-3.0-or-later",
          ("--version",), r"(\d+\.\d+\.\d+)", homebrew="pngquant"),

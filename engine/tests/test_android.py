@@ -137,7 +137,7 @@ def run(tmp: Path, plugin: str, game: Path, settings: dict, engine="godot"):
     return run_plugin({
         "plugin": str(BUILTIN_DIR / plugin), "kind": "export", "engine": engine, "target": ANDROID,
         "manifest": {"name": "p", "version": "1.2.3", "game": {"title": "Moon Garden"}},
-        "settings": settings,
+        "settings": {"download_tools": "false", **settings},
         "folders": {"$GAME": str(game), "$PROJECT": str(tmp / "project"), "$OUTPUT": str(tmp / "out")},
         "cache_root": str(tmp / "cache"),
     }, lambda m, p: None)["result"]

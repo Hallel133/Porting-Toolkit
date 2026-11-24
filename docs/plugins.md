@@ -47,6 +47,18 @@ authorities, add permissions, replace the app name).
   since 4.2). Godot 3, and Godot 4.0/4.1 games that need the fallback, are
   refused (`--set force=true` tries anyway). `--set sign=false` leaves the APK
   unsigned.
+- ASTC for those textures (`android_textures=astc`, the default;
+  `ptk_engine/texconv`, `formats/ctex.py`): the `.ctex` (`GST2` header, then
+  `data_format`, size, mip count, `Image::Format` and every mip level padded to
+  its block size, as in Godot's `compressed_texture.cpp` and
+  `Image::_get_dst_image_size`) is read; each level of DXT1/DXT3/DXT5/BC7 is
+  decoded by `ptk-bcdec` (`engine/third_party/bcdec`, MIT/Unlicense, compiled
+  once with `cc`) and encoded by astcenc `-cl` (the LDR profile Godot's own
+  astcenc module uses), 4x4 or `astc_block=8x8`, preset `astc_quality=`; the
+  new `.astc.ctex` keeps the size, flags and mip count. The remap gets
+  `path.astc=` before the `path=` fallback, so ASTC phones load it and others
+  still decode the desktop file. Normal-map swizzles, BC4/BC5 and HDR formats
+  stay on the fallback. Results are cached by content in the plugin cache.
 - HTML5: `android/` holds the player (one Activity with a WebView serving
   `assets/www/` at `https://appassets.androidplatform.net/www/`, with a
   case-insensitive fallback from `assets/ptk-files.txt`); it is built once
