@@ -1,0 +1,14 @@
+[project]
+name = "ptk-rgss-import"
+version = "1.0.0"
+description = "Porting Toolkit built-in plugin: rgss-import"
+requires-python = ">=3.11"
+dependencies = []
+license = "MIT"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["rgss_import"]

@@ -69,4 +69,5 @@ class Plugin:
             "outputs": [str(saved)],
             "title": title,
             "icon": str(icon) if icon else None,
+            "engine_version": pck.version_string,
         }

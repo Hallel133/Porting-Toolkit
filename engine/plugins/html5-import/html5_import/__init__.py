@@ -25,7 +25,8 @@ class Plugin:
             game = html5.detect(ctx.game)
         except html5.Html5Error as e:
             if (ctx.engine or "") == "rpgmaker":
-                ctx.fail(f"{e}. RPG Maker XP, VX and VX Ace games are not HTML5; they need an RGSS runtime instead.")
+                ctx.fail(f"{e}. RPG Maker XP, VX and VX Ace games are not HTML5: import the game again "
+                         "(ptk import) so it is recognised as an RGSS game.")
             ctx.fail(str(e))
         for note in game.notes:
             ctx.warn(note)

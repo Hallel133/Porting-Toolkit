@@ -1362,8 +1362,7 @@ impl App {
                         "Engine",
                         RichText::new(
                             m.game
-                                .engine
-                                .clone()
+                                .engine_label()
                                 .unwrap_or_else(|| "not scanned yet".into()),
                         )
                         .color(TEAL),

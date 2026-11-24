@@ -121,7 +121,11 @@ pub fn record(project: &Path, game_dir: &Path, scan: &ScanResult) -> Result<Reco
     let mut m = Manifest::load(project)?;
     let files = hash_tree(game_dir).map_err(io_ctx(format!("hashing {}", game_dir.display())))?;
     if let Some(p) = scan.primary.as_ref().filter(|p| p.kind == "engine") {
+        if m.game.engine.as_deref() != Some(p.id.as_str()) {
+            m.game.engine_version = None;
+        }
         m.game.engine = Some(p.id.clone());
+        m.game.variant = p.variant.clone();
     }
     if m.game.title.is_none() {
         let p = game_dir

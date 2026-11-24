@@ -20,7 +20,43 @@ They ship in `engine/plugins/` and are listed as built-in (and reviewed).
 | `godot-import` | godot | | Finds the `.pck` (standalone, appended to an `.exe`, or in an `.app`), reads its Godot version and flags into `recipes/godot.json` |
 | `godot-export` | godot | macos-arm64, macos-x64, windows-x64, linux-x64, web | `.pck` + the official Godot export template of the same version |
 | `html5-import` | rpgmaker, html5 | | Finds the web root of RPG Maker MV/MZ, NW.js (`package.nw`) and Electron (`app.asar`) games into `recipes/html5.json` |
+| `renpy-import` | renpy | | Finds game/ and renpy/ (also in a Mac app), the Ren'Py version, the platform files the build has, and lists `.rpa` archives into `recipes/renpy.json` |
+| `renpy-export` | renpy | macos-arm64, macos-x64, windows-x64, linux-x64 | Ren'Py's own distribution layout, with platform files from the game or the SDK of the same version |
+| `love-import` | love | | Finds the `.love` (alone, fused into an `.exe`, in a Mac app, or a source folder) and reads `conf.lua` into `recipes/love.json` |
+| `love-export` | love | macos-arm64, macos-x64, windows-x64, linux-x64 | The game with the official LÖVE 11.5 build: Mac app, fused `.exe`, or AppImage + `game.love` |
+| `rgss-import` | rgss | | Reads RPG Maker XP/VX/VX Ace `Game.ini` and the archive header into `recipes/rgss.json` |
+| `rgss-export` | rgss | macos-arm64, macos-x64, windows-x64, linux-x64 | mkxp-z for macOS and Linux (you provide it once), the original game for Windows |
 | `html5-export` | rpgmaker, html5 | macos-arm64, macos-x64, windows-x64, linux-x64, web | The web root as a web folder, inside a native WebKit `.app`, or with the NW.js runtime for Windows and Linux |
+
+**Ren'Py.** The layout follows Ren'Py's `launcher/game/distribute.rpy`:
+`<name>.exe` + `lib/py3-windows-x86_64/`, `<name>.sh` +
+`lib/py3-linux-x86_64/<name>`, or `<Title>.app` with the native files in
+`Contents/MacOS`, `lib/python3.x` in `Contents/Resources/lib` and the game in
+`Contents/Resources/autorun` (Ren'Py 7 uses `py2-`). Platform files come from
+the build when it has them; otherwise the version's `renpy-<v>-sdk.zip` is
+downloaded once from renpy.org, checked against the SHA-256 in its
+`checksums.txt`, and only `lib/` and the launchers are unpacked (the zip is
+then deleted). `game/saves`, `game/cache` and logs are never copied. `.rpa`
+indexes are read with an unpickler that only allows plain values; archives
+are never extracted. `--set sdk=PATH`, `--set renpy_version=X.Y.Z`.
+
+**LÖVE.** `conf.lua` is read with regular expressions (`t.version`,
+`t.identity`, `t.window.title/width/height/icon`). Exports use LÖVE 11.5
+(SHA-256 of the three release assets pinned in the plugin); games made for
+another LÖVE get a warning and `--set love=PATH` uses a matching build. The
+Mac app keeps the framework symlinks of LÖVE's app and drops its `.love`
+file-type claims; Windows gets `love.exe` + `game.love` as one `.exe`; Linux
+gets the AppImage, `game.love` and a `--fused` start script.
+
+**RPG Maker XP/VX/VX Ace (`rgss`).** Only `Game.ini` (UTF-8 or Shift-JIS)
+and the first 8 bytes of `.rgssad`/`.rgss2a`/`.rgss3a` are read. mkxp-z
+publishes no release builds (only CI builds behind a GitHub sign-in), so
+nothing is pinned: `--set mkxp=PATH` points at its Mac app or Linux folder
+once and is remembered per computer. On macOS the game goes into
+`Contents/Game`, on Linux next to mkxp-z's executable, both with an
+`mkxp.json` (`rgssVersion`, `windowTitle`, `RTP`). `--set rtp=PATH` copies
+the RPG Maker RTP the game needs. A GPL-2.0 note with mkxp-z's source link
+goes into the build. Save files (`Save01.rvdata2`...) are never copied.
 
 **HTML5 on Windows and Linux.** The game runs in NW.js, the runtime RPG
 Maker MV/MZ ship with (Electron would break their `nw.gui` and save code).

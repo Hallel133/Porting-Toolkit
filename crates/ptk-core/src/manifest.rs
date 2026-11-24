@@ -121,6 +121,13 @@ pub struct GameInfo {
     /// Engine id detected by `ptk scan` (`unity`, `unreal`, ...).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub engine: Option<String>,
+    /// Flavour of the engine (`MZ`, `VX Ace`, `Construct 3`, `IL2CPP`, ...).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant: Option<String>,
+    /// Engine version the game was made with (`4.4.1`, `8.3.7`, `11.5`),
+    /// when the import plugin found it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_platform: Option<String>,
     /// License of the game's own files. Unless it is redistributable (an
@@ -528,6 +535,24 @@ impl Manifest {
     }
 }
 
+impl GameInfo {
+    /// "Ren'Py 8.3.7", "RPG Maker MV/MZ (MZ)": the engine as people say it.
+    pub fn engine_label(&self) -> Option<String> {
+        let id = self.engine.as_deref()?;
+        let name = crate::routes::route_for(Some(id))
+            .map(|r| r.name.to_string())
+            .unwrap_or_else(|| id.to_string());
+        let mut out = name;
+        if let Some(v) = self.variant.as_deref().filter(|v| !v.is_empty()) {
+            out.push_str(&format!(" ({v})"));
+        }
+        if let Some(v) = self.engine_version.as_deref().filter(|v| !v.is_empty()) {
+            out.push_str(&format!(" {v}"));
+        }
+        Some(out)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -678,5 +703,24 @@ mod tests {
         assert!(is_safe_relative_path("a/b.txt"));
         assert!(!is_safe_relative_path("a//b"));
         assert!(!is_safe_relative_path("C:/x"));
+    }
+
+    #[test]
+    fn engine_label() {
+        let mut g = GameInfo {
+            engine: Some("renpy".into()),
+            engine_version: Some("8.3.7".into()),
+            ..Default::default()
+        };
+        assert_eq!(g.engine_label().as_deref(), Some("Ren'Py 8.3.7"));
+        g.engine = Some("rgss".into());
+        g.variant = Some("VX Ace".into());
+        g.engine_version = None;
+        assert_eq!(
+            g.engine_label().as_deref(),
+            Some("RPG Maker XP/VX/VX Ace (VX Ace)")
+        );
+        g.engine = None;
+        assert!(g.engine_label().is_none());
     }
 }

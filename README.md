@@ -25,9 +25,11 @@ SHA-256 hashes, never original game files or decompiled game code. See
 
 ![ptk scan on a fake Unity game](docs/images/scan.png)
 
-> Status: **phase 3** (CLI + desktop GUI + plugins). Built-in plugins export
-> **Godot** and **HTML5** games (RPG Maker MV/MZ, NW.js, Electron) to **macOS**
-> and the **web**, without source code. Other engines need community plugins.
+> Status: **phase 3** (CLI + desktop GUI + plugins). Built-in plugins port
+> **Godot**, **Ren'Py**, **LÖVE**, **RPG Maker** (MV/MZ, and XP/VX/VX Ace with
+> mkxp-z) and **HTML5** games (Construct, GDevelop, Twine, NW.js, Electron...)
+> to **macOS**, **Windows**, **Linux** and the **web**, without source code.
+> Other engines need community plugins.
 
 ## Install from source (macOS)
 
@@ -101,7 +103,7 @@ logic lives:
 
 | Engine | Without source code |
 |---|---|
-| Godot, Ren'Py, RPG Maker | Yes: the game data is portable; pair it with the engine runtime for the target |
+| Godot, Ren'Py, LÖVE, RPG Maker, HTML5 engines | Yes: the game data is portable; pair it with the engine runtime for the target |
 | Unity, GameMaker | Depends: Unity Mono yes, IL2CPP no; GameMaker needs a runner for the target |
 | Unreal, RAGE, Source | No: native code. Needs the source, or a compatibility layer (Wine-style) |
 
@@ -119,7 +121,10 @@ Builds go to `PROJECT/build/<target>/` (`-o` changes it). In the app:
 | Plugin (built in) | Reads | macOS | Windows / Linux | Web |
 |---|---|---|---|---|
 | Godot | `.pck`, standalone or inside the `.exe` / `.app` (Godot 3 and 4) | `.app` from the official template of the same Godot version, thinned and ad-hoc signed | `<Title>.exe` / `<Title>.x86_64` + `<Title>.pck` from the official template, the game's native libraries, and a zip | `index.html` + `.wasm` + `.pck` (single-threaded, any static host) |
-| HTML5 | RPG Maker MV/MZ, NW.js (`package.nw`), Electron (`app.asar`) | `.app` with a small WebKit wrapper (needs the Xcode command line tools) | the game with the NW.js runtime (pinned, SHA-256 checked), and a zip | the game's web root |
+| HTML5 | RPG Maker MV/MZ, Construct, GDevelop, Twine, Phaser, NW.js (`package.nw`), Electron (`app.asar`) | `.app` with a small WebKit wrapper (needs the Xcode command line tools) | the game with the NW.js runtime (pinned, SHA-256 checked), and a zip | the game's web root |
+| Ren'Py | the game folder (also inside a Mac `.app`): version, platforms it has, `.rpa` archives (listed, never extracted) | `.app` with the game in `Contents/Resources/autorun` | `<name>.exe` / `<name>.sh` with Ren'Py's platform files | – |
+| LÖVE | `.love`, a fused `.exe`, a Mac app or a source folder; `conf.lua` (never run) | the LÖVE 11.5 app with `game.love` inside | fused `.exe` / the LÖVE AppImage + `game.love` | – |
+| RPG Maker XP/VX/VX Ace | `Game.ini` and the archive header (never decrypted) | mkxp-z's app with the game in `Contents/Game` | Windows: the original game; Linux: mkxp-z + the game | – |
 
 Godot templates come from the Godot editor's folder when installed;
 otherwise only the needed files (about 10 MB for the web, 120 MB for macOS)
@@ -194,8 +199,10 @@ See [docs/marketplace.md](docs/marketplace.md).
 | `ptk publish <path>` | Package a plugin, SDK or .ptk for the marketplace |
 
 `ptk scan` recognises Unity, Unreal, Godot, RAGE, Source, GameMaker, Ren'Py,
-RPG Maker (MV/MZ/VX/VX Ace/XP) and macOS `.app` / Mach-O, from names and
-executable headers only. It never opens or decodes game archives.
+LÖVE, RPG Maker (MV/MZ and XP/VX/VX Ace), HTML5 games (Construct 2/3,
+GDevelop, Phaser, Cocos, Defold, Twine, NW.js, Electron) and macOS `.app` /
+Mach-O, from names and executable headers only (Twine stories by the
+`<tw-storydata>` tag of their page). It never opens or decodes game archives.
 
 Colors are off when output is not a terminal, with `NO_COLOR=1` or `--no-color`.
 
@@ -203,7 +210,7 @@ Colors are off when output is not a terminal, with `NO_COLOR=1` or `--no-color`.
 
 1. macOS + CLI infrastructure + banner + file structure (done)
 2. Desktop GUI (egui) (done)
-3. **Import/export plugins** (now: Godot and HTML5 to macOS, Windows, Linux and the web, with applied compression options), then Ren'Py, LÖVE and RPG Maker XP/VX/Ace imports and Android exports
+3. **Import/export plugins** (now: Godot, Ren'Py, LÖVE, RPG Maker and HTML5 to macOS, Windows, Linux and the web, with applied compression options), then Android exports
 4. Windows/Linux and the full community marketplace
 
 ## Documentation
@@ -267,6 +274,10 @@ MIT. See [LICENSE](LICENSE).
 
 - **Godot** (גרסאות 3 ו-4): ה-‎.pck של המשחק, גם כשהוא ארוז בתוך ‎.exe או ‎.app, יחד עם ה-export template הרשמי של אותה גרסה. התוצאה היא ‎.app חתום (ad-hoc), או גרסת ווב (`index.html` + ‏‎.wasm + ‏‎.pck). ה-templates נלקחים מהתיקייה של עורך Godot אם הם מותקנים, ואם לא, מורידים מ-GitHub רק את הקבצים הדרושים.
 - **HTML5** (RPG Maker MV/MZ,‏ NW.js,‏ Electron): תיקיית ווב, או ‎.app עם עטיפת WebKit קטנה (דורש Xcode Command Line Tools).
+- **Ren'Py:** המשחק עם ה-runtime של אותה גרסה של Ren'Py. אם למשחק כבר יש את קבצי הפלטפורמה (build של "PC" כולל Windows ו-Linux), התוכנה לא מורידה כלום. אם חסרים קבצים, היא מורידה פעם אחת את ה-SDK מ-renpy.org ובודקת אותו לפי SHA-256. השמירות של השחקן לא מועתקות.
+- **LÖVE:** המשחק עם LÖVE 11.5 הרשמי: ‎.app חתום ל-Mac,‏ ‎.exe "מאוחד" ל-Windows, ו-AppImage ל-Linux.
+- **RPG Maker XP/VX/VX Ace:** ב-Mac וב-Linux המשחק רץ עם mkxp-z (קוד פתוח, GPL). ל-mkxp-z אין גרסאות רשמיות להורדה, אז צריך להוריד אותו פעם אחת בעצמך ולהעביר את המיקום עם `--set mkxp=PATH`, והתוכנה זוכרת אותו. ב-Windows המשחק המקורי פשוט עובד.
+- **מנועי HTML5:** ‏Construct,‏ GDevelop,‏ Twine,‏ Phaser,‏ Cocos ו-Defold מזוהים ומיוצאים כמו כל משחק HTML5.
 - **Windows ו-Linux** (אפשר לבנות אותם מהמק): ב-Godot נוצרת תיקייה עם ‎.exe (או ‎.x86_64) ו-‎.pck מה-template הרשמי, יחד עם הספריות הנייטיביות של המשחק. במשחקי HTML5 המשחק רץ ב-NW.js, אותו runtime שאיתו RPG Maker מגיע. התוכנה מורידה גרסה נעולה ובודקת אותה לפי SHA-256. בשני המקרים נוצר גם zip ששומר על הרשאת ההרצה ב-Linux.
 
 באפליקציה: Export ואז **Export all**, ואחריו Open,‏ Play in browser או Show in Finder.
@@ -289,7 +300,7 @@ MIT. See [LICENSE](LICENSE).
 
 1. ‏macOS + תשתית CLI + באנר + מבנה קבצים (הושלם)
 2. ממשק גרפי (הושלם)
-3. תוספי ייבוא/ייצוא (עכשיו: Godot ו-HTML5 ל-macOS,‏ Windows,‏ Linux ולווב, עם דחיסה אמיתית), ואחר כך ייבוא של Ren'Py,‏ LÖVE ו-RPG Maker XP/VX/Ace, ו-Android
+3. תוספי ייבוא/ייצוא (עכשיו: Godot,‏ Ren'Py,‏ LÖVE,‏ RPG Maker ו-HTML5 ל-macOS,‏ Windows,‏ Linux ולווב, עם דחיסה אמיתית), ואחר כך Android
 4. ‏Windows/Linux וקהילה מלאה
 
 רישיון: MIT.

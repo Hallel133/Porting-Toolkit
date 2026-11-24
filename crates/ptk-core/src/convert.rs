@@ -140,6 +140,9 @@ pub struct RunResult {
     /// A cached copy of the game's own icon (import plugins).
     #[serde(default)]
     pub icon: Option<PathBuf>,
+    /// The engine version the game was made with (import plugins).
+    #[serde(default)]
+    pub engine_version: Option<String>,
     /// What the advanced options did to the game's files (exports).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assets: Option<Box<AssetReport>>,
@@ -539,6 +542,17 @@ fn apply_import(
     file_title: Option<&str>,
     result: &RunResult,
 ) -> Result<()> {
+    if let Some(v) = result
+        .engine_version
+        .as_ref()
+        .filter(|v| !v.trim().is_empty())
+    {
+        let mut m = Manifest::load(project)?;
+        if m.game.engine_version.as_deref() != Some(v.trim()) {
+            m.game.engine_version = Some(v.trim().to_owned());
+            m.save(project)?;
+        }
+    }
     if let Some(title) = result.title.as_ref().filter(|t| !t.trim().is_empty()) {
         let mut m = Manifest::load(project)?;
         let guessed = [

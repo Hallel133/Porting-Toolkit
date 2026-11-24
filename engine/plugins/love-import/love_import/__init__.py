@@ -42,5 +42,6 @@ class Plugin:
             "recipe": recipe,
             "outputs": [str(saved)],
             "title": game.title or None,
+            "engine_version": game.love_version,
             "icon": str(icon) if icon else None,
         }

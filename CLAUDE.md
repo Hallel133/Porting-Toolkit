@@ -25,10 +25,10 @@ A community tool to manage, convert, export and import game projects between pla
 ## Commands
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"          # cargo is not on the default PATH on the owner's Mac
-cargo test --workspace                        # 77 Rust tests, starts the real Python engine
+cargo test --workspace                        # 78 Rust tests, starts the real Python engine
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-(cd engine && uv run pytest)                  # 105 Python tests (+1 skipped; compiles the Swift wrapper on macOS)
+(cd engine && uv run pytest)                  # 146 Python tests (+1 skipped; compiles the Swift wrapper on macOS)
 (cd engine && PTK_TOOL_TESTS=1 uv run pytest -k real)       # also runs real FFmpeg encodes
 (cd engine && PTK_GUI_TESTS=1 uv run pytest -k macos_app)   # also opens the wrapper app and checks the page loaded
 cargo run -q -p ptk-cli -- scan fixtures/games/unity-windows
@@ -99,10 +99,17 @@ Owner asked to plan and design new compression algorithms for new platforms and 
 - html5-import now returns the title (RPG Maker: `data/System.json` `gameTitle`).
 - Verified: real NW.js downloads for win-x64 and linux-x64 matched their SHA-256 and built folders/zips for a synthetic MZ project (oxipng was auto-installed from its pin on the way). Not run on Windows or Linux (no machines here); no real Godot template was downloaded for Windows/Linux in this round.
 
+## Done (2026-11-24, plan phase 3: importers)
+- 3a: html5 detection knows Construct 2/3, GDevelop, Phaser, Cocos, Defold and Twine (scan reads top-level `.html` for `<tw-storydata`, signature rule kind `mark`); `Html5Game.framework`. RPG Maker XP/VX/VX Ace moved to the new engine id `rgss` (old `rpgmaker` = MV/MZ only). New engine `love`. Routes for rgss, love, html5. Fixtures: love-windows, construct3, gdevelop, twine.
+- 3b: `formats/love.py` + love-import/love-export. LÖVE 11.5 pinned (SHA-256 computed from the release assets; GitHub publishes no digest for them). Verified with real downloads: signed Mac app, fused exe, AppImage + script.
+- 3c: `formats/renpy.py` (layout, version, platforms, options.rpy title, safe RPA listing) + renpy-import/renpy-export following `launcher/game/distribute.rpy` of 8.5. SDK zip downloaded only when the build lacks the target's files, checked against renpy.org `checksums.txt` SHA-256, only lib/ + launchers unpacked, zip deleted. Verified: real 8.3.7 SDK, signed Mac app from a synthetic PC build.
+- 3d: `formats/rgss.py` + rgss-import/rgss-export. mkxp-z has no release builds (0 GitHub releases; CI artifacts need sign-in): `--set mkxp=PATH`, remembered in the plugin cache (`mkxp-<os>.txt`); macOS game in `Contents/Game` (from mkxp-z's `filesystemImplApple.mm`), Linux next to the executable; `mkxp.json`; GPL note. Windows = original game minus saves. Not run with a real mkxp-z build.
+- Manifest `game.variant` (from scan) and `game.engine_version` (import result `engine_version`); `GameInfo::engine_label()` shown on the Game page.
+
 ## Next task
 1. Owner: re-export Buckshot Roulette for macOS and check the gray screen is gone and Steam features work; check the web build's loading screen. Try the Game page, Settings → Defaults, Icon & poster.
 2. Owner: try a real Godot game and a real RPG Maker MV/MZ game (`ptk import <build>` then `ptk export`, or the app's Export tab); open the Godot `.app` on the Mac (not done by Claude). Check the macOS menu bar. Create the ptk-marketplace repo (see above).
-3. Owner: run a Windows/Linux export of a real game on a Windows PC / Linux machine (or Steam Deck). Next (plan phases 3-5): importers (HTML5 engines, LÖVE, Ren'Py, RGSS via mkxp-z), Android APK (AXML patching, zipalign, apksigner), then Godot `.ctex` re-encoding. Owner should try `ptk assets` / Estimate savings on a real RPG Maker game and check the music still loops after `brew install vorbis-tools`.
+3. Owner: run a Windows/Linux export of a real game on a Windows PC / Linux machine (or Steam Deck); try a real Ren'Py, LÖVE and RPG Maker XP/VX/Ace game (for the last one, download mkxp-z once and pass --set mkxp=PATH). Next (plan phases 4-5): Android APK (AXML patching, zipalign, apksigner), then Godot `.ctex` re-encoding. Owner should try `ptk assets` / Estimate savings on a real RPG Maker game and check the music still loops after `brew install vorbis-tools`.
 4. Not tested: real games (only synthetic pcks and fake HTML5 games), Godot 3 templates, threaded web builds in a browser, Electron games, Intel Macs, running the Windows/Linux exports (no machines here), running ptk itself on Windows/Linux (CI blocked on the account).
 
 ## Working agreement (after every change)

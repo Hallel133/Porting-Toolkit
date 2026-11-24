@@ -34,4 +34,5 @@ class Plugin:
             "recipe": recipe,
             "outputs": [str(saved)],
             "title": game.title,
+            "engine_version": game.short_version,
         }
