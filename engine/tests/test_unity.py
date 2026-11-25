@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import plistlib
 import zipfile
@@ -184,7 +185,7 @@ def test_missing_unity_and_il2cpp_are_explained(tmp_path):
     from ptk_engine import EngineError
     with pytest.raises(EngineError, match="Windows Build Support \\(Mono\\)"):
         run(tmp_path, "unity-export", mac_game(tmp_path), "export", WINDOWS,
-            {"unity": str(tmp_path / "nowhere")}, tmp_path / "out")
+            {"unity": str(tmp_path / "nowhere"), "unity_download": "false"}, tmp_path / "out")
     with pytest.raises(EngineError, match="IL2CPP"):
         run(tmp_path, "unity-export", mac_game(tmp_path / "x", il2cpp=True), "export", WINDOWS, {}, tmp_path / "o2")
 
@@ -193,3 +194,75 @@ def test_unity_plugins_are_found():
     ids = lambda **kw: [r["plugin"]["id"] for r in find_plugins(dirs=[], **kw)]  # noqa: E731
     assert ids(kind="import", engine="unity", target=None) == ["unity-import"]
     assert ids(kind="export", engine="unity", target="linux-x64") == ["unity-export"]
+
+
+# -- the player downloaded from Unity -------------------------------------------------------
+
+
+def fake_module(tmp: Path) -> Path:
+    """Unity's release service answer, with a Windows Mono module .pkg."""
+    import base64
+    import hashlib
+
+    from ptk_engine.formats import xar
+    v = "./Variations/win64_player_nondevelopment_mono"
+    payload = xar.cpio_odc([
+        (".", 0o40755, b""), ("./Variations", 0o40755, b""), (v, 0o40755, b""),
+        (f"{v}/WindowsPlayer.exe", 0o100755, b"MZ-player"), (f"{v}/UnityPlayer.dll", 0o100644, b"MZ-unityplayer"),
+        (f"{v}/Data/Managed/UnityEngine.CoreModule.dll", 0o100644, b"MZ-engine-windows"),
+        ("./Variations/win64_player_development_mono/WindowsPlayer.exe", 0o100755, b"dev"),
+        ("./Bee/Bee.Toolchain.Windows.dll", 0o100644, b"editor only"),
+    ])
+    pkg = tmp / "UnitySetup-Windows-Mono-Support-for-Editor.pkg"
+    pkg.write_bytes(xar.build_pkg(payload))
+    md5 = base64.b64encode(hashlib.md5(pkg.read_bytes()).digest()).decode()
+    module = {"id": "windows-mono", "url": pkg.as_uri(), "integrity": f"md5-{md5}",
+              "downloadSize": {"value": pkg.stat().st_size, "unit": "BYTE"}}
+    release = {"results": [{"version": VERSION, "downloads": [
+        {"platform": "MAC_OS", "architecture": "ARM64", "modules": [module]}]}]}
+    service = tmp / "releases.json"
+    service.write_text(json.dumps(release))
+    return service
+
+
+def test_player_is_downloaded_once_after_accepting_unitys_terms(tmp_path):
+    from ptk_engine import EngineError
+    service = fake_module(tmp_path)
+    settings = {"unity": str(tmp_path / "nowhere"), "unity_service": service.as_uri()}
+    with pytest.raises(EngineError, match="accept_unity_terms=true"):
+        run(tmp_path, "unity-export", mac_game(tmp_path), "export", WINDOWS, settings, tmp_path / "o1")
+    r = run(tmp_path, "unity-export", mac_game(tmp_path), "export", WINDOWS,
+            {**settings, "accept_unity_terms": "true"}, tmp_path / "o2")
+    assert "downloaded from Unity" in r["notes"][0]
+    exe = tmp_path / "o2" / "Moon Garden" / "Moon Garden.exe"
+    assert exe.read_bytes() == b"MZ-player"
+    players = tmp_path / "cache" / "unity-export" / "players" / VERSION / "PlaybackEngines" / "WindowsStandaloneSupport"
+    assert not (players / "Bee").exists() and not (players / "Variations" / "win64_player_development_mono").exists()
+    # Remembered: no second acceptance, no second download.
+    (tmp_path / "UnitySetup-Windows-Mono-Support-for-Editor.pkg").unlink()
+    run(tmp_path, "unity-export", mac_game(tmp_path), "export", WINDOWS, settings, tmp_path / "o3")
+    assert (tmp_path / "o3" / "Moon Garden" / "Moon Garden.exe").is_file()
+
+
+def test_a_module_with_the_wrong_checksum_is_refused(tmp_path):
+    from ptk_engine import EngineError
+    service = fake_module(tmp_path)
+    data = json.loads(service.read_text())
+    data["results"][0]["downloads"][0]["modules"][0]["integrity"] = "md5-AAAAAAAAAAAAAAAAAAAAAA=="
+    service.write_text(json.dumps(data))
+    with pytest.raises(EngineError, match="checksum"):
+        run(tmp_path, "unity-export", mac_game(tmp_path), "export", WINDOWS,
+            {"unity": str(tmp_path / "nowhere"), "unity_service": service.as_uri(), "accept_unity_terms": "true"},
+            tmp_path / "o")
+
+
+def test_pkg_reader_keeps_links_inside(tmp_path):
+    from ptk_engine.formats import xar
+    pkg = tmp_path / "evil.pkg"
+    pkg.write_bytes(xar.build_pkg(xar.cpio_odc([("./a/link", 0o120777, b"../../../etc/passwd"),
+                                                ("./a/ok", 0o100644, b"x")])))
+    with pytest.raises(xar.XarError, match="outside"):
+        xar.extract_payload(pkg, tmp_path / "out", lambda p: True)
+    pkg.write_bytes(xar.build_pkg(xar.cpio_odc([("../escape", 0o100644, b"x"), ("./a/ok", 0o100644, b"x")])))
+    assert xar.extract_payload(pkg, tmp_path / "out2", lambda p: True) == 1
+    assert not (tmp_path / "escape").exists()

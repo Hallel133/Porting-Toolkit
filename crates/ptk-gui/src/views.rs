@@ -1,6 +1,8 @@
 //! The pages. Each one is a column of rounded cards that reflows to the
 //! window width (two or three columns when there is room, one when narrow).
 
+use std::path::{Path, PathBuf};
+
 use eframe::egui::{self, Align, Color32, Layout, RichText, Ui, vec2};
 use ptk_core::category::CATEGORIES;
 use ptk_core::doctor::Status;
@@ -8,7 +10,7 @@ use ptk_core::manifest::{AssetAction, CategoryOptions, Level, OWN_WORK_LICENSE};
 use ptk_core::market::EntryKind;
 use ptk_core::targets::{TargetSource, TargetStatus};
 
-use crate::app::{App, MarketTab, ProjectSort, SettingsTab, View};
+use crate::app::{App, MarketTab, ProjectSort, SettingsTab, ToastKind, View};
 use crate::menu::Command;
 use crate::theme::*;
 use crate::widgets::{
@@ -73,15 +75,25 @@ fn split(ui: &mut Ui, ratio: f32, min_total: f32, mut f: impl FnMut(&mut Ui, usi
     });
 }
 
-/// One entry per plugin id: the newest version, and on a tie the installed
-/// copy (what the engine runs; see `runtime.find_plugins`).
-fn newest_copies(list: &[ptk_core::plugins::ListedPlugin]) -> Vec<ptk_core::plugins::ListedPlugin> {
+/// One entry per plugin id: the copy that runs (the pinned one, else the
+/// newest version, and on a tie the installed copy; see
+/// `runtime.find_plugins`).
+fn newest_copies(
+    list: &[ptk_core::plugins::ListedPlugin],
+    pins: &std::collections::BTreeMap<String, PathBuf>,
+) -> Vec<ptk_core::plugins::ListedPlugin> {
+    let pinned = |p: &ptk_core::plugins::ListedPlugin| {
+        pins.get(&p.id)
+            .is_some_and(|d| same_dir(d, Path::new(&p.path)))
+    };
     let mut out: Vec<ptk_core::plugins::ListedPlugin> = Vec::new();
     for p in list {
         match out.iter_mut().find(|q| q.id == p.id) {
             Some(q) => {
-                if ptk_core::market::version_newer(&p.version, &q.version)
-                    || (p.version == q.version && q.builtin && !p.builtin)
+                if pinned(p)
+                    || (!pinned(q)
+                        && (ptk_core::market::version_newer(&p.version, &q.version)
+                            || (p.version == q.version && q.builtin && !p.builtin)))
                 {
                     *q = p.clone();
                 }
@@ -92,15 +104,11 @@ fn newest_copies(list: &[ptk_core::plugins::ListedPlugin]) -> Vec<ptk_core::plug
     out
 }
 
-/// The version that runs instead of `p`, when another copy of it wins.
-fn shadowed_by(
-    list: &[ptk_core::plugins::ListedPlugin],
-    p: &ptk_core::plugins::ListedPlugin,
-) -> Option<String> {
-    newest_copies(list)
-        .into_iter()
-        .find(|q| q.id == p.id && q.path != p.path)
-        .map(|q| q.version)
+fn same_dir(a: &Path, b: &Path) -> bool {
+    a == b
+        || a.canonicalize()
+            .ok()
+            .is_some_and(|x| b.canonicalize().ok() == Some(x))
 }
 
 /// `count` cards in rows of `cols`.
@@ -964,7 +972,7 @@ impl App {
         // Export plugins that take this engine, newest copy of each id first
         // (an old installed copy never hides a newer built-in one).
         let for_engine: Vec<ptk_core::plugins::ListedPlugin> = match &self.plugins {
-            Some(Ok(list)) => newest_copies(list)
+            Some(Ok(list)) => newest_copies(list, &self.app_settings.plugin_versions)
                 .into_iter()
                 .filter(|p| p.kind == "export" && p.valid)
                 .filter(|p| {
@@ -1275,6 +1283,7 @@ impl App {
         }
         ui.add_space(14.0);
         let mut play = None;
+        let mut accept: Option<String> = None;
         card(ui, |ui| {
             card_title(ui, "Builds");
             for (i, (target, r)) in self.export_results.iter().enumerate() {
@@ -1325,6 +1334,25 @@ impl App {
                             badge(ui, target, LIGHT_BLUE);
                         });
                         ui.label(RichText::new(e).color(ERROR));
+                        // A third party's terms (Unity's player): the user accepts
+                        // them here once, and the plugin remembers it.
+                        if e.contains("accept_unity_terms=true") {
+                            ui.horizontal(|ui| {
+                                if primary(
+                                    ui,
+                                    self.busy.is_none(),
+                                    "Accept Unity's terms and export",
+                                )
+                                .clicked()
+                                {
+                                    accept = Some(target.clone());
+                                }
+                                ui.hyperlink_to(
+                                    "Read the terms",
+                                    "https://unity.com/legal/terms-of-service",
+                                );
+                            });
+                        }
                     }
                 }
             }
@@ -1338,6 +1366,15 @@ impl App {
         });
         if let Some(dir) = play {
             self.play_in_browser(&dir);
+        }
+        if let Some(t) = accept {
+            if !self.export_settings.contains("accept_unity_terms") {
+                if !self.export_settings.is_empty() && !self.export_settings.ends_with('\n') {
+                    self.export_settings.push('\n');
+                }
+                self.export_settings.push_str("accept_unity_terms=true\n");
+            }
+            self.export_targets(ui.ctx(), vec![t], ptk_core::convert::AssetsMode::Apply);
         }
     }
 
@@ -2309,6 +2346,9 @@ impl App {
     fn installed_plugins(&mut self, ui: &mut Ui) {
         let mut pick = None;
         let mut refresh = false;
+        let mut use_copy: Option<(String, Option<PathBuf>)> = None;
+        let mut remove: Option<String> = None;
+        let pins = self.app_settings.plugin_versions.clone();
         card(ui, |ui| {
             ui.horizontal(|ui| {
                 card_title(ui, "Installed");
@@ -2321,7 +2361,12 @@ impl App {
                 Some(Err(e)) => widgets::message(ui, ERROR, e),
                 Some(Ok(list)) if list.is_empty() => hint(ui, "No plugins installed yet."),
                 Some(Ok(list)) => {
-                    for p in list {
+                    // One row per plugin: the copy that runs, with its other
+                    // versions folded under it.
+                    for p in newest_copies(list, &pins) {
+                        let copies: Vec<&ptk_core::plugins::ListedPlugin> =
+                            list.iter().filter(|q| q.id == p.id).collect();
+                        let is_pinned = pins.contains_key(&p.id);
                         ui.horizontal(|ui| {
                             ui.label(RichText::new("🔌").size(18.0).color(TEAL));
                             ui.vertical(|ui| {
@@ -2343,21 +2388,108 @@ impl App {
                                     } else if !p.reviewed {
                                         badge(ui, "not reviewed", TEXT_FAINT);
                                     }
-                                    if let Some(newer) = shadowed_by(list, p) {
-                                        badge(ui, "not used", WARN).on_hover_text(format!(
-                                            "Version {newer} of {} is also here and is the one that runs. \
-                                             You can delete this older copy:\n{}",
-                                            p.id, p.path
-                                        ));
+                                    if is_pinned {
+                                        badge(ui, "chosen version", LIGHT_BLUE).on_hover_text(
+                                            "You chose this version; newer ones are not used",
+                                        );
                                     }
                                 });
+                                if copies.len() > 1 {
+                                    egui::CollapsingHeader::new(
+                                        RichText::new(format!("{} versions", copies.len()))
+                                            .size(12.0)
+                                            .color(TEXT_WEAK),
+                                    )
+                                    .id_salt(("versions", &p.id))
+                                    .show(ui, |ui| {
+                                        let mut sorted = copies.clone();
+                                        sorted.sort_by(|a, b| {
+                                            if ptk_core::market::version_newer(
+                                                &a.version, &b.version,
+                                            ) {
+                                                std::cmp::Ordering::Less
+                                            } else if a.version == b.version {
+                                                std::cmp::Ordering::Equal
+                                            } else {
+                                                std::cmp::Ordering::Greater
+                                            }
+                                        });
+                                        for c in sorted {
+                                            ui.horizontal(|ui| {
+                                                ui.label(
+                                                    RichText::new(&c.version).color(Color32::WHITE),
+                                                )
+                                                .on_hover_text(&c.path);
+                                                ui.label(
+                                                    RichText::new(if c.builtin {
+                                                        "built-in"
+                                                    } else {
+                                                        "installed"
+                                                    })
+                                                    .size(11.5)
+                                                    .color(TEXT_WEAK),
+                                                );
+                                                if c.path == p.path {
+                                                    badge(ui, "in use", GREEN);
+                                                } else if ui
+                                                    .small_button("Use this version")
+                                                    .clicked()
+                                                {
+                                                    use_copy = Some((
+                                                        p.id.clone(),
+                                                        Some(PathBuf::from(&c.path)),
+                                                    ));
+                                                }
+                                                if !c.builtin
+                                                    && c.path != p.path
+                                                    && ui
+                                                        .small_button("Remove")
+                                                        .on_hover_text(
+                                                            "Moves this copy to the Trash",
+                                                        )
+                                                        .clicked()
+                                                {
+                                                    remove = Some(c.path.clone());
+                                                }
+                                            });
+                                        }
+                                        if is_pinned
+                                            && ui.small_button("Always use the newest").clicked()
+                                        {
+                                            use_copy = Some((p.id.clone(), None));
+                                        }
+                                    });
+                                }
                             });
                         });
                         ui.add_space(6.0);
                     }
+                    hint(
+                        ui,
+                        "To add another version of a plugin, install it from the Marketplace or from a folder (Check a plugin).",
+                    );
                 }
             }
         });
+        if let Some((id, dir)) = use_copy {
+            match dir {
+                Some(d) => {
+                    self.app_settings.plugin_versions.insert(id, d);
+                }
+                None => {
+                    self.app_settings.plugin_versions.remove(&id);
+                }
+            }
+        }
+        if let Some(path) = remove {
+            match ptk_core::plugins::uninstall(Path::new(&path)) {
+                Ok(()) => {
+                    self.notify(format!("Moved {path} to the Trash"), ToastKind::Ok);
+                    refresh = true;
+                }
+                Err(e) => self.notify(e.to_string(), ToastKind::Error),
+            }
+        }
         if refresh {
             self.refresh_plugins(ui.ctx());
         }

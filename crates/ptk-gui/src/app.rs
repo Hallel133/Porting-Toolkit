@@ -83,7 +83,7 @@ impl View {
             "home" | "welcome" => Some(View::Projects),
             "project" | "overview" | "options" => Some(View::Overview),
             "share" => Some(View::Export),
-            "plugins" | "market" => Some(View::Marketplace),
+            "plugins" | "market" | "installed" => Some(View::Marketplace),
             "doctor" | "targets" | "about" => Some(View::Settings),
             _ => None,
         };
@@ -288,6 +288,8 @@ pub enum ToastKind {
 pub struct Config {
     pub state_file: Option<PathBuf>,
     pub view: Option<View>,
+    /// `--view installed`: the Marketplace's Installed tab.
+    pub installed_tab: bool,
     pub project: Option<PathBuf>,
     pub game: Option<PathBuf>,
     /// Start the job of the first view (scan, doctor, plugin list).
@@ -446,7 +448,11 @@ impl App {
             plugin_validation: None,
             pending: None,
             settings_tab: SettingsTab::Defaults,
-            market_tab: MarketTab::Browse,
+            market_tab: if config.installed_tab {
+                MarketTab::Installed
+            } else {
+                MarketTab::Browse
+            },
             rows: Vec::new(),
             selected: None,
             filter: String::new(),

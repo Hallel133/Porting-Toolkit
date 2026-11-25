@@ -273,6 +273,7 @@ pub fn candidates(
             "dirs": search_dirs(),
             "known_targets": registry.ids(),
             "prefer": target.and_then(|t| t.export_backend.clone()),
+            "pins": crate::settings::AppSettings::load().plugin_versions,
         }),
     )?;
     serde_json::from_value(raw).map_err(|e| Error::Invalid(format!("unexpected plugin list: {e}")))

@@ -28,6 +28,10 @@ pub struct AppSettings {
     /// Where new projects go (default: `~/Porting Toolkit`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub projects_dir: Option<PathBuf>,
+    /// The plugin copy (folder) chosen for an id when several versions are
+    /// present; otherwise the newest runs.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub plugin_versions: BTreeMap<String, PathBuf>,
     /// Unknown fields from newer versions survive a save.
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,

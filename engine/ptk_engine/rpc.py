@@ -174,6 +174,7 @@ class Server:
             _optional_list(params, "dirs") or [],
             _optional_list(params, "known_targets"),
             params.get("prefer"),
+            params.get("pins") if isinstance(params.get("pins"), dict) else None,
         )
 
     def plugin_run(self, params: dict) -> dict:

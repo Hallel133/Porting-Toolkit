@@ -736,3 +736,15 @@ def test_an_old_installed_copy_does_not_hide_a_newer_builtin(tmp_path):
     found = find_plugins("export", "html5", "web", [str(tmp_path / "99.0.0")])
     html5 = next(r for r in found if r["plugin"]["id"] == "html5-export")
     assert not html5["builtin"] and html5["plugin"]["version"] == "99.0.0"
+
+
+def test_a_pinned_version_runs_instead_of_the_newest(tmp_path):
+    dst = tmp_path / "html5-export"
+    shutil.copytree(BUILTIN_DIR / "html5-export", dst)
+    toml = dst / "plugin.toml"
+    toml.write_text(re.sub(r'(?m)^version = ".*"$', 'version = "0.9.0"', toml.read_text(), count=1))
+    pick = lambda pins: next(r for r in find_plugins("export", "html5", "web", [str(tmp_path)], pins=pins)  # noqa: E731
+                             if r["plugin"]["id"] == "html5-export")
+    assert pick(None)["builtin"]
+    assert pick({"html5-export": str(dst)})["plugin"]["version"] == "0.9.0"
+    assert pick({"html5-export": str(tmp_path / "gone")})["builtin"]

@@ -1,9 +1,14 @@
 """Unity export (Mono, experimental): the game's Data with another platform's player.
 
-The player comes from the user's own Unity installation of the game's exact
-version (Unity Hub installs it, under Unity's terms, which the user accepts
-there): ``PlaybackEngines/<Platform>StandaloneSupport/Variations/<release
-mono player>``. Layouts, as Unity 2022.3 installs them:
+The player is Unity's own, of the game's exact version:
+``PlaybackEngines/<Platform>StandaloneSupport/Variations/<release mono
+player>``. It comes from a Unity installation when there is one (Unity Hub,
+or ``unity=PATH``); otherwise, once the user accepts Unity's terms
+(``accept_unity_terms=true``, remembered), from Unity's "Build Support"
+module for that version on download.unity3d.com: the URL and MD5 come from
+Unity's release service, and only the player is taken out of the module's
+.pkg (``ptk_engine.formats.xar``), without installing anything. Layouts, as
+Unity 2022.3 installs them:
 
 - Windows: ``WindowsPlayer.exe`` (renamed ``<Name>.exe``), ``UnityPlayer.dll``,
   ``UnityCrashHandler64.exe``, ``MonoBleedingEdge/``; the game in ``<Name>_Data``.
@@ -17,23 +22,34 @@ The game's assemblies (``Managed/``) stay; the engine's own
 player. Shaders cannot be added: a build only has those of its platform's
 graphics APIs, which is why this is experimental.
 
-Settings: ``unity=PATH`` (a Unity install folder), ``bundle_id``, ``sign``,
-``zip``.
+Settings: ``unity=PATH`` (a Unity install folder), ``accept_unity_terms``,
+``unity_download=false`` (never download), ``bundle_id``, ``sign``, ``zip``.
 """
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import plistlib
 import re
 import shutil
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-from ptk_engine.formats import unity
+from ptk_engine.formats import unity, xar
 
 NAMES = {"windows": "Windows", "linux": "Linux", "macos": "Mac"}
 #: What the source build's shaders most likely cover, and what the target needs.
 APIS = {"windows": "Direct3D 11/12", "linux": "Vulkan or OpenGL", "macos": "Metal"}
+#: Unity's Build Support module per target, and the editor host whose
+#: release entry lists it as a .pkg (any computer can read a .pkg here).
+MODULES = {"windows": ("windows-mono", "MAC_OS"), "linux": ("linux-mono", "MAC_OS"),
+           "macos": ("mac-mono", "LINUX")}
+SUPPORT = {"windows": "WindowsStandaloneSupport", "linux": "LinuxStandaloneSupport",
+           "macos": "MacStandaloneSupport"}
+PLAYER_PREFIXES = {"windows": ("win64",), "linux": ("linux64",),
+                   "macos": ("macos_x64arm64", "macosx64arm64", "macos_arm64", "macos_x64", "macosx64")}
+TERMS_URL = "https://unity.com/legal/terms-of-service"
 
 
 def safe_name(title: str) -> str:
@@ -75,28 +91,152 @@ class Plugin:
             out = self.pc(ctx, variation, data, name, os_)
         self.warnings(ctx, info, os_)
         ctx.progress(1.0, "Done")
-        out["notes"].insert(0, f"Unity {version} {NAMES[os_]} player (Mono) from {support.parent.parent if os_ != 'macos' else support}.")
+        source = "downloaded from Unity" if self.players_dir(ctx, version) in support.parents \
+            else f"from {support.parent.parent if os_ != 'macos' else support}"
+        out["notes"].insert(0, f"Unity {version} {NAMES[os_]} player (Mono) {source}.")
         return out
 
     # -- the player ------------------------------------------------------------------
 
     def player(self, ctx, version: str, os_: str) -> tuple[Path, Path]:
+        found = self.installed_player(ctx, version, os_)
+        if found:
+            return found
+        if ctx.flag("unity_download", True):
+            root = self.download_player(ctx, version, os_)
+            support = unity.support_dir(root, os_)
+            variation = unity.player_variation(support, os_) if support else None
+            if support and variation:
+                return support, variation
+            ctx.fail(f"Unity's {NAMES[os_]} module for {version} has no release Mono player")
+        self.no_player(ctx, version, os_)
+
+    def installed_player(self, ctx, version: str, os_: str) -> tuple[Path, Path] | None:
+        extra = [ctx.setting("unity")] if ctx.setting("unity") else []
+        extra.append(str(self.players_dir(ctx, version)))
+        for root in unity.editor_roots(version, extra):
+            if not root.is_dir():
+                continue
+            support = unity.support_dir(root, os_)
+            if support:
+                variation = unity.player_variation(support, os_)
+                if variation:
+                    return support, variation
+        return None
+
+    @staticmethod
+    def players_dir(ctx, version: str) -> Path:
+        return ctx.cache / "players" / version
+
+    # -- downloading the player from Unity -------------------------------------------------
+
+    @staticmethod
+    def release(ctx, version: str) -> dict:
+        url = ctx.setting("unity_service") or \
+            f"https://services.api.unity.com/unity/editor/release/v1/releases?version={version}&limit=1"
+        r = ctx.download(url, dest=ctx.cache / "releases" / f"{version}.json")
+        try:
+            results = json.loads(r.read_text(encoding="utf-8"))["results"]
+        except (ValueError, KeyError):
+            r.unlink(missing_ok=True)
+            ctx.fail("Unity's release service sent an unexpected answer")
+        match = [x for x in results if x.get("version") == version]
+        if not match:
+            r.unlink(missing_ok=True)
+            ctx.fail(f"Unity's release service does not know Unity {version}")
+        return match[0]
+
+    @staticmethod
+    def module(release: dict, os_: str) -> dict:
+        mod_id, host = MODULES[os_]
+        for d in release.get("downloads") or []:
+            if d.get("platform") != host:
+                continue
+            for m in d.get("modules") or []:
+                if m.get("id") == mod_id and str(m.get("url", "")).endswith(".pkg"):
+                    return m
+        raise LookupError(mod_id)
+
+    def accepted(self, ctx) -> bool:
+        marker = ctx.cache / "unity-terms-accepted"
+        if ctx.flag("accept_unity_terms", False):
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.write_text(TERMS_URL + "\n")
+            return True
+        return marker.is_file()
+
+    def download_player(self, ctx, version: str, os_: str) -> Path:
+        root = self.players_dir(ctx, version)
+        done = root / f".{os_}-complete"
+        if done.is_file():
+            return root
+        rel = self.release(ctx, version)
+        try:
+            mod = self.module(rel, os_)
+        except LookupError:
+            ctx.fail(f"Unity {version} has no {NAMES[os_]} Mono Build Support module to download")
+        size = ((mod.get("downloadSize") or {}).get("value") or 0) / 1e6
+        if not self.accepted(ctx):
+            ctx.fail(f"Unity's {NAMES[os_]} player for {version} is downloaded from Unity "
+                     f"({size:.0f} MB, {mod['url'].rsplit('/', 1)[-1]}) and is covered by the Unity Terms "
+                     f"of Service ({TERMS_URL}). To accept them and continue, export again with "
+                     "accept_unity_terms=true (asked once).")
+        ctx.progress(0.05, f"Downloading Unity's {NAMES[os_]} player ({size:.0f} MB, once)")
+        pkg = ctx.download(mod["url"])
+        try:
+            self.check_md5(pkg, str(mod.get("integrity") or ""))
+        except ValueError as e:
+            pkg.unlink(missing_ok=True)
+            ctx.fail(str(e))
+        ctx.progress(0.12, "Taking the player out of Unity's module")
+        support = root / "PlaybackEngines" / SUPPORT[os_]
+        shutil.rmtree(support, ignore_errors=True)
+
+        def want(p: PurePosixPath) -> bool:
+            parts = p.parts
+            if parts[0] == "MonoBleedingEdge":
+                return True
+            if parts[0] != "Variations" or len(parts) == 1:
+                return False
+            v = parts[1].lower()
+            return v == "mono" or ("nondevelopment" in v and "mono" in v
+                                   and v.startswith(PLAYER_PREFIXES[os_]))
+
+        try:
+            n = xar.extract_payload(pkg, support, want)
+        except xar.XarError as e:
+            shutil.rmtree(support, ignore_errors=True)
+            ctx.fail(f"could not read Unity's module {pkg.name}: {e}")
+        ctx.log(f"Took {n} files of Unity's {NAMES[os_]} player out of {pkg.name}.")
+        pkg.unlink(missing_ok=True)
+        done.write_text(mod["url"] + "\n")
+        return root
+
+    @staticmethod
+    def check_md5(path: Path, integrity: str) -> None:
+        """Unity publishes ``md5-<base64>`` for each module."""
+        if not integrity.startswith("md5-"):
+            raise ValueError(f"Unity published no checksum for {path.name}")
+        h = hashlib.md5(usedforsecurity=False)
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        if base64.b64encode(h.digest()).decode() != integrity[4:]:
+            raise ValueError(f"{path.name} does not match the checksum Unity published")
+
+    def no_player(self, ctx, version: str, os_: str) -> None:
         extra = [ctx.setting("unity")] if ctx.setting("unity") else []
         checked = []
         for root in unity.editor_roots(version, extra):
             if not root.is_dir():
                 continue
             checked.append(str(root))
-            support = unity.support_dir(root, os_)
-            if support:
-                variation = unity.player_variation(support, os_)
-                if variation:
-                    return support, variation
         module = {"windows": "Windows Build Support (Mono)", "linux": "Linux Build Support (Mono)",
                   "macos": "Mac Build Support (Mono)"}[os_]
         link = self.hub_link(ctx, version)
         where = f" (found Unity in {', '.join(checked)}, without it)" if checked else ""
-        ctx.fail(f"Unity {version} with \"{module}\" is needed{where}. Install it in Unity Hub"
+        ctx.fail(f"Unity {version} with \"{module}\" is needed{where}. Remove unity_download=false to "
+                 f"download only its player, or install it in Unity Hub"
                  + (f": {link}" if link else f" (Installs > Install Editor > Archive > {version})")
                  + ", or pass --set unity=PATH to a Unity install folder.")
 

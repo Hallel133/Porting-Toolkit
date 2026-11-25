@@ -123,6 +123,41 @@ pub fn list(engine: &mut EngineClient, dirs: &[PathBuf]) -> Result<(Vec<ListedPl
     Ok((decode(raw.clone(), "plugin list")?, raw))
 }
 
+/// Removes an installed plugin folder (moved to the Trash on macOS). Only
+/// folders inside the installed-plugins folder can be removed.
+pub fn uninstall(dir: &Path) -> Result<()> {
+    let root = paths::plugins_dir()
+        .canonicalize()
+        .map_err(io_ctx("plugins folder"))?;
+    let dir = dir
+        .canonicalize()
+        .map_err(io_ctx(dir.display().to_string()))?;
+    if dir.parent() != Some(root.as_path()) || !dir.join("plugin.toml").is_file() {
+        return Err(Error::Invalid(format!(
+            "{} is not an installed plugin",
+            dir.display()
+        )));
+    }
+    if cfg!(target_os = "macos") {
+        let script = format!(
+            "tell application \"Finder\" to delete (POSIX file \"{}\")",
+            dir.display()
+                .to_string()
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"")
+        );
+        let ok = std::process::Command::new("osascript")
+            .args(["-e", &script])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if ok && !dir.exists() {
+            return Ok(());
+        }
+    }
+    fs::remove_dir_all(&dir).map_err(io_ctx(dir.display().to_string()))
+}
+
 /// Creates a plugin skeleton (`kind` is `import` or `export`).
 pub fn create(
     engine: &mut EngineClient,

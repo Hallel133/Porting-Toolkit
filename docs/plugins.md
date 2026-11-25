@@ -27,7 +27,7 @@ They ship in `engine/plugins/` and are listed as built-in (and reviewed).
 | `rgss-import` | rgss | | Reads RPG Maker XP/VX/VX Ace `Game.ini` and the archive header into `recipes/rgss.json` |
 | `rgss-export` | rgss | macos-arm64, macos-x64, windows-x64, linux-x64 | mkxp-z for macOS and Linux (you provide it once), the original game for Windows |
 | `unity-import` | unity | | Reports the build: Data folder, Unity version, Mono or IL2CPP, native plugins, Apple-only services, App Store / Apple Arcade |
-| `unity-export` | unity | macos-arm64, macos-x64, windows-x64, linux-x64 | Mono builds only, experimental: the game's Data with the Unity player of the same version from the user's own Unity install |
+| `unity-export` | unity | macos-arm64, macos-x64, windows-x64, linux-x64 | Mono builds only, experimental: the game's Data with the Unity player of the same version (from a Unity install, or downloaded once from Unity) |
 | `html5-export` | rpgmaker, html5 | macos-arm64, macos-x64, windows-x64, linux-x64, web, android | The web root as a web folder, inside a native WebKit `.app`, with the NW.js runtime for Windows and Linux, or in a WebView player APK |
 
 **Android (experimental).** Shared code is in `engine/ptk_engine/android.py`
@@ -70,13 +70,19 @@ authorities, add permissions, replace the app name).
 
 **Unity (experimental).** Mono builds keep the game's code in
 `Data/Managed` (IL), which runs with another platform's Unity player of the
-same version. The player is never downloaded by Porting Toolkit: it comes
-from the user's Unity install (Unity Hub, `/Applications/Unity/Hub/Editor/<v>`,
-Hub's secondary install path, or `--set unity=PATH`), from
-`PlaybackEngines/<Platform>StandaloneSupport/Variations/<win64|linux64|macos_x64arm64>_player_nondevelopment_mono`
-(paths read from Unity 2022.3's installers). When it is missing, the error
-names the module ("Windows Build Support (Mono)") and gives a
-`unityhub://<version>/<changeset>` link from Unity's public release service
+same version, from
+`PlaybackEngines/<Platform>StandaloneSupport/Variations/<win64|linux64|macos_x64arm64>_player_nondevelopment_mono`.
+A Unity install is used when there is one (Unity Hub,
+`/Applications/Unity/Hub/Editor/<v>`, Hub's secondary install path, or
+`--set unity=PATH`). Otherwise the player is downloaded once, after the user
+accepts the Unity Terms of Service (`accept_unity_terms=true`, remembered;
+the GUI shows an Accept button): Unity's release service gives the version's
+"Build Support (Mono)" module (a .pkg on download.unity3d.com, checked
+against Unity's published MD5), and `ptk_engine.formats.xar` takes only the
+release Mono player out of the .pkg's gzip'd cpio Payload, without
+installing anything. It is cached in the plugin's cache under
+`players/<version>`. `unity_download=false` turns this off; the error then
+names the module and gives a `unityhub://<version>/<changeset>` link
 (`unity_lookup=false` skips it). The game's Data goes to `<Name>_Data`
 (Windows, Linux; MonoBleedingEdge inside it on Linux) or
 `Contents/Resources/Data` (macOS); `UnityEngine*.dll` and `unity default

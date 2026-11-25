@@ -52,14 +52,18 @@ def _formats(path: Path) -> dict:
 
 
 def find_plugins(kind: str, engine: str | None, target: str | None, dirs: list[str],
-                 known_targets: list[str] | None = None, prefer: str | None = None) -> list[dict]:
+                 known_targets: list[str] | None = None, prefer: str | None = None,
+                 pins: dict[str, str] | None = None) -> list[dict]:
     """Valid plugins of ``kind`` for an engine (and, for export, a target).
 
     When several folders hold the same id, the newest version wins; on a
     tie user folders come first, so an installed copy replaces the
     built-in one, but an old installed copy never hides a newer built-in.
-    ``prefer`` (a target's ``export_backend``) moves that plugin to the front.
+    ``pins`` (``{id: folder}``, the user's choice of version) overrides
+    that when the pinned folder is still there. ``prefer`` (a target's
+    ``export_backend``) moves that plugin to the front.
     """
+    pinned = {k: str(Path(v).expanduser().resolve()) for k, v in (pins or {}).items()}
     search = [Path(d).expanduser() for d in dirs]
     if (b := builtin_dir()) is not None:
         search.append(b)
@@ -84,10 +88,13 @@ def find_plugins(kind: str, engine: str | None, target: str | None, dirs: list[s
             if kind == "export" and target and target not in (info.get("targets") or []):
                 continue
             report["builtin"] = is_builtin(child)
+            is_pin = pinned.get(pid) == str(child.resolve())
+            report["pinned"] = is_pin
             if pid not in best:
                 order.append(pid)
                 best[pid] = report
-            elif version_key(info.get("version")) > version_key(best[pid]["plugin"].get("version")):
+            elif is_pin or (not best[pid].get("pinned")
+                            and version_key(info.get("version")) > version_key(best[pid]["plugin"].get("version"))):
                 best[pid] = report
     found = [best[pid] for pid in order]
     if prefer:

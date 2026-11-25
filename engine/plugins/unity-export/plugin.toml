@@ -3,9 +3,9 @@ schema_version = 1
 [plugin]
 id = "unity-export"
 name = "Unity export (Mono, experimental)"
-version = "1.0.0"
+version = "1.1.0"
 kind = "export"
-description = "Moves a Unity Mono game to another platform with the Unity player of the same version from your own Unity installation (Unity Hub). Experimental: the build's shaders may not cover the target's graphics API."
+description = "Moves a Unity Mono game to another platform with the Unity player of the same version: from a Unity installation, or downloaded once from Unity (only the player, no Unity install needed). Experimental: the build's shaders may not cover the target's graphics API."
 license = "MIT"
 authors = ["Porting Toolkit contributors"]
 entry = "unity_export:Plugin"
@@ -17,10 +17,10 @@ inputs = ["unity"]
 outputs = ["app", "folder", "zip"]
 targets = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"]
 
-# Asks Unity's public release service for the version's changeset, to make a
-# unityhub:// install link when the right Unity is not installed.
+# Unity's public release service (module URLs and checksums) and Unity's
+# download server (the Build Support module the player is taken from).
 [permissions]
 read = ["$GAME", "$PROJECT"]
 write = ["$OUTPUT"]
-network = ["services.api.unity.com"]
+network = ["services.api.unity.com", "download.unity3d.com"]
 subprocess = true   # codesign, for the macOS app
