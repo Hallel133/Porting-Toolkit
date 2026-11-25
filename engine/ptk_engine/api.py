@@ -211,7 +211,8 @@ class Context:
             if entry.is_dir():
                 n += self.copy_tree(entry, target, skip)
             elif entry.is_file():
-                shutil.copy2(entry, target)
+                from .build.clone import copy_file
+                copy_file(entry, target)  # an APFS clone when it can: instant, and keeps the date
                 n += 1
         return n
 

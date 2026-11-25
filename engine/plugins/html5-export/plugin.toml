@@ -3,13 +3,13 @@ schema_version = 1
 [plugin]
 id = "html5-export"
 name = "HTML5 export"
-version = "1.2.0"
+version = "2.0.0"
 kind = "export"
 description = "Publishes an HTML5 game (RPG Maker MV/MZ, NW.js, Electron) as a web folder, wraps it in a small native macOS app built with WebKit, or packages it with the NW.js runtime for Windows and Linux."
 license = "MIT"
 authors = ["Porting Toolkit contributors"]
 entry = "html5_export:Plugin"
-api = 1
+api = 2
 homepage = "https://github.com/Hallel133/Porting-Toolkit"
 
 [formats]

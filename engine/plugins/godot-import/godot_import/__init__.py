@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+from ptk_engine.sdk import ImportPlugin
 from ptk_engine.formats import godot
 
 
@@ -17,8 +18,10 @@ def describe(pck: godot.Pck) -> str:
     return f"Godot {pck.version_string} game, {len(pck.files)} files ({where})"
 
 
-class Plugin:
-    def run(self, ctx):
+class Plugin(ImportPlugin):
+    recipe_name = "godot"
+
+    def detect(self, ctx):
         ctx.progress(0.1, "Looking for the .pck")
         candidates = godot.find(ctx.game)
         if not candidates:
@@ -54,7 +57,14 @@ class Plugin:
             "boot_splash": str(settings.get("application/boot_splash/image") or "") or None,
             "autoloads": sorted(k.split("/", 1)[1] for k in settings if k.startswith("autoload/")),
         }
-        saved = ctx.save_recipe("godot", recipe)
+        self.found = {"path": path, "pck": pck, "icon_res": icon_res, "title": title}
+        return recipe
+
+    def report(self, ctx, recipe):
+        path = self.found["path"]
+        pck = self.found["pck"]
+        icon_res = self.found["icon_res"]
+        title = self.found["title"]
         # The game's own icon, for this computer only (never in the project).
         icon = None
         data = godot.read_file(pck, icon_res) if icon_res.lower().endswith((".png", ".jpg", ".jpeg", ".webp")) else None
@@ -62,11 +72,9 @@ class Plugin:
             key = hashlib.sha256(f"{path.resolve()}|{pck.size}".encode()).hexdigest()[:16]
             icon = ctx.cache / "icons" / f"{key}{Path(icon_res).suffix.lower()}"
             ctx.write_bytes(icon, data)
-        ctx.progress(1.0, "Done")
         return {
             "summary": describe(pck),
             "recipe": recipe,
-            "outputs": [str(saved)],
             "title": title,
             "icon": str(icon) if icon else None,
             "engine_version": pck.version_string,

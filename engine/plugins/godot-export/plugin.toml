@@ -3,13 +3,13 @@ schema_version = 1
 [plugin]
 id = "godot-export"
 name = "Godot export"
-version = "1.2.0"
+version = "2.0.0"
 kind = "export"
 description = "Pairs the game's .pck with the official Godot export template of the same version: a signed .app for macOS, a Windows or Linux game folder (and zip), or an HTML5 build for the web."
 license = "MIT"
 authors = ["Porting Toolkit contributors"]
 entry = "godot_export:Plugin"
-api = 1
+api = 2
 homepage = "https://github.com/Hallel133/Porting-Toolkit"
 
 [formats]

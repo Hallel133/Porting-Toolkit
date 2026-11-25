@@ -253,6 +253,15 @@ check ──▶ prepare ──▶ layout ──▶ [sync: write only what change
   members of the previous one; `ptk_engine.build.codesign_if_changed(app, ctx.run)`
   signs a macOS app only when it changed.
 
+An exporter that builds its output step by step (patching a template,
+unpacking a runtime) can subclass **`StagedExportPlugin`** instead and write
+`stage(ctx)` the way an API 1 `run` was written. `ctx.output` is then a staging
+folder made of APFS clones; the base class syncs it into the real output (a file
+whose date changed but whose bytes did not is left alone), and runs `ctx.zip_dir`
+and ad-hoc `codesign` calls afterwards on the real output, so they are
+incremental too. The built-in Godot, HTML5, LÖVE, Ren'Py and RGSS exporters work
+this way; the Unity exporter declares its output with `layout`.
+
 An **import** plugin subclasses `ImportPlugin`: `detect(ctx)` returns the
 recipe (saved as `recipes/<recipe_name>.json`) and `report(ctx, recipe)`
 returns `summary`, `title`, `engine_version` and `warnings`.

@@ -748,3 +748,32 @@ def test_a_pinned_version_runs_instead_of_the_newest(tmp_path):
     assert pick(None)["builtin"]
     assert pick({"html5-export": str(dst)})["plugin"]["version"] == "0.9.0"
     assert pick({"html5-export": str(tmp_path / "gone")})["builtin"]
+
+
+# -- API 2: a second export writes nothing ------------------------------------------------------
+
+
+def test_staged_exporters_rewrite_only_what_changed(tmp_path, godot_game):
+    game = nwjs_folder(tmp_path / "html5-game")
+    project = tmp_path / "html5-project"
+    project.mkdir()
+    out = tmp_path / "web"
+    first, _ = run(tmp_path, "html5-export", game, project, "export", WEB, output=out)
+    assert first["result"]["build"]["rebuilt"] and first["result"]["serve"] == str(out)
+    second, _ = run(tmp_path, "html5-export", game, project, "export", WEB, output=out)
+    b = second["result"]["build"]
+    assert b["removed"] == 0 and b["written"] <= 2, b  # only generated files with a new date
+    assert (out / "index.html").read_text() == PAGE
+    (game / "data" / "info.json").write_text('{"changed": true}')
+    third, _ = run(tmp_path, "html5-export", game, project, "export", WEB, output=out)
+    assert third["result"]["build"]["written"] >= 1
+    assert json.loads((out / "data" / "info.json").read_text()) == {"changed": True}
+
+    gdir, gproject = godot_game
+    templates = fake_templates(tmp_path)
+    run(tmp_path, "godot-import", gdir, gproject, "import")
+    gout = tmp_path / "godot-web"
+    run(tmp_path, "godot-export", gdir, gproject, "export", WEB, {"templates": str(templates)}, gout)
+    again, _ = run(tmp_path, "godot-export", gdir, gproject, "export", WEB, {"templates": str(templates)}, gout)
+    assert again["result"]["build"]["removed"] == 0
+    assert again["result"]["build"]["unchanged"] >= 3, again["result"]["build"]

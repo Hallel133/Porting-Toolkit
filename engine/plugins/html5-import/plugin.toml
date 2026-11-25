@@ -3,13 +3,13 @@ schema_version = 1
 [plugin]
 id = "html5-import"
 name = "HTML5 import"
-version = "1.0.0"
+version = "2.0.0"
 kind = "import"
 description = "Finds the web root of RPG Maker MV/MZ, NW.js and Electron games (folders, package.nw or app.asar) so they can run in a browser or a native Mac app."
 license = "MIT"
 authors = ["Porting Toolkit contributors"]
 entry = "html5_import:Plugin"
-api = 1
+api = 2
 homepage = "https://github.com/Hallel133/Porting-Toolkit"
 
 [formats]

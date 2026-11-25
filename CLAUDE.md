@@ -28,7 +28,7 @@ export PATH="$HOME/.cargo/bin:$PATH"          # cargo is not on the default PATH
 cargo test --workspace                        # 88 Rust tests, starts the real Python engine
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-(cd engine && uv run pytest)                  # 193 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
+(cd engine && uv run pytest)                  # 196 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
 (cd engine && PTK_TOOL_TESTS=1 uv run pytest -k real)       # also runs real FFmpeg encodes
 (cd engine && PTK_GUI_TESTS=1 uv run pytest -k macos_app)   # also opens the wrapper app and checks the page loaded
 cargo run -q -p ptk-cli -- scan fixtures/games/unity-windows
@@ -157,6 +157,13 @@ Owner asked to plan and design new compression algorithms for new platforms and 
 - `engine/ptk_engine/sdk.py`: `ExportPlugin` (check → prepare → layout → sync → finish → seal; `media_profile`, `variant`, helpers `media()`/`zip()`, `estimate()` for assets=plan) and `ImportPlugin` (detect → report; recipe saved by the base). `Problem(message, severity, action={setting,value,label,url})`; errors raise `ProblemsError`, which the host sends as `problems` with the error (RPC error data too).
 - `plugins.py`: `PLUGIN_API = 2`, `SUPPORTED_APIS = (1, 2)`, API 1 validates with a deprecation warning; `plugin.new` writes API 2 skeletons. `Build.seal()` keeps files made after sync (code signatures) as "extras", zip `.ptkindex` and app `.ptksign` sidecars survive syncs.
 - RPC `plugin.check` (host `phase = "check"`, no `$OUTPUT`); Rust `convert::check` → `CheckResult{problems, ok, api1}`; `ptk export --check [--json]`; `RunResult.build` (`BuildStats`). GUI Export page runs checks in the background (key: project + targets; cleared after an export or a fix), shows problems under each exporter badge with the fix button (`App::apply_setting`). docs/plugins.md has the API 2 guide.
+
+## Done (2026-11-26, all built-in plugins on API 2, plan phase D)
+- All 12 built-in plugins are `api = 2`, version 2.0.0. Importers are `ImportPlugin` (detect → report; the base saves the recipe). unity-export is a declarative `ExportPlugin`; godot/html5/love/renpy/rgss exporters are `StagedExportPlugin` (sdk.py): their old `run` became `stage(ctx)` building into a staging folder of clones (`ctx.copy_tree` now clones), then the base syncs it into the real output (`add_tree(by_date=True)`: a staged file with a new date but the same size and SHA-256 is left alone) and runs deferred `ctx.zip_dir` / ad-hoc `codesign` on the real output (incremental zip, `codesign_if_changed`); result paths are remapped. Helper names that clashed were renamed (`renpy stage_game`, love/rgss `package`).
+- **Unity Mac fix:** mac→macOS now repacks the original app (Frameworks, PlugIns incl. AkUnitySoundEngine/Wwise, Burst, MonoBleedingEdge, Data) with the original Info.plist plus a new identity, drops `_CodeSignature`/`_MASReceipt`/`embedded.provisionprofile`, ad-hoc signs; the old path dropped every native plugin (the owner saw only the background and no sound). Notes give the Player.log path. Check: terms not accepted = error with an "Accept Unity's terms" action; shaders/plugins/Apple services = warnings.
+- Real runs (temp PTK_HOME): The Lost City → macos-arm64 2.2 s, re-export 0.95 s with 0 files written, 14 PlugIns kept, `codesign --verify --deep --strict` OK. → windows-x64 4.2 s, re-export 1.1 s. **The owner has not opened the repacked app yet**; Apple Arcade's FairPlay/subscription check may still refuse a re-signed copy.
+- Export page: problems under each exporter (errors with fix buttons, warnings folded).
+- **Mistake:** commit a870333 included the owner's untracked `docs/debug screenshots/` (they show the username); removed in 61fe1d5 and added to `.git/info/exclude`, but they remain in history until the owner approves a history rewrite + force push.
 
 ## Next task
 0. Owner: ask GitHub Support to lift the flag on the Hallel133 account (it hides both repos from the public and disables Actions). Then publish a first entry with `ptk market submit`.

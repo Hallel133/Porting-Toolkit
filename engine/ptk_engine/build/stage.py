@@ -46,6 +46,8 @@ class Entry:
     target: str | None = None
     mode: int | None = None
     fp: list = field(default_factory=list)
+    #: A staged copy: when only its date changed, its content decides.
+    by_date: bool = False
 
 
 @dataclass
@@ -72,9 +74,19 @@ def _rel(dest: str | PurePosixPath) -> str:
     return norm
 
 
-def _file_fp(path: Path) -> list:
+def _file_fp(path: Path, by_date: bool = False) -> list:
     st = path.stat()
+    if by_date:  # a staging copy: clones and copy2 keep the source's date, not its inode
+        return ["file", st.st_size, st.st_mtime_ns]
     return ["file", st.st_size, st.st_mtime_ns, st.st_ino]
+
+
+def _sha(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def _out_fp(path: Path) -> list | None:
@@ -96,12 +108,12 @@ class Build:
 
     # -- declaring the output ---------------------------------------------------------
 
-    def add_file(self, src: Path, dest: str, mode: int | None = None) -> str:
+    def add_file(self, src: Path, dest: str, mode: int | None = None, by_date: bool = False) -> str:
         src = Path(src)
         if not src.is_file():
             raise BuildError(f"{src} is not a file")
         rel = _rel(dest)
-        self.entries[rel] = Entry("file", src=src, mode=mode, fp=_file_fp(src) + [mode])
+        self.entries[rel] = Entry("file", src=src, mode=mode, fp=_file_fp(src, by_date) + [mode], by_date=by_date)
         return rel
 
     def add_bytes(self, dest: str, data: bytes, mode: int | None = None) -> str:
@@ -127,14 +139,14 @@ class Build:
         return rel
 
     def add_tree(self, src: Path, dest: str = "", skip: Callable[[Path], bool] | None = None,
-                 links: bool = False) -> int:
+                 links: bool = False, by_date: bool = False) -> int:
         """Every file under ``src`` at ``dest/<relative path>``. ``skip(path)``
         leaves out a file or a whole folder. Links are skipped unless
         ``links`` (then kept as links when they stay inside ``src``)."""
         src = Path(src)
         if not src.is_dir():
             raise BuildError(f"{src} is not a folder")
-        base = PurePosixPath(str(dest).strip("/")) if dest not in ("", ".") else None
+        base = PurePosixPath(str(dest).strip("/")) if str(dest) not in ("", ".") else None
         n = 0
         for dirpath, dirnames, filenames in os.walk(src):
             d = Path(dirpath)
@@ -162,7 +174,7 @@ class Build:
                         n += 1
                     continue
                 if p.is_file():
-                    self.add_file(p, out, mode=0o755 if os.access(p, os.X_OK) else None)
+                    self.add_file(p, out, mode=0o755 if os.access(p, os.X_OK) else None, by_date=by_date)
                     n += 1
         return n
 
@@ -232,9 +244,11 @@ class Build:
         return {}  # an older marker: rebuild once
 
     def _save_state(self, outs: dict[str, list | None], fps: dict[str, list], extras: list[str] | None = None) -> None:
+        shas = getattr(self, "_shas", {})
         state = {"version": STATE_VERSION, "note": "Made by Porting Toolkit. This folder is updated on each export.",
                  "variant": self.variant, "artifacts": sorted(self.artifacts), "extras": sorted(extras or []),
-                 "entries": {k: {"fp": fps[k], "out": outs.get(k)} for k in sorted(fps)}}
+                 "entries": {k: {"fp": fps[k], "out": outs.get(k), **({"sha": shas[k]} if k in shas else {})}
+                             for k in sorted(fps)}}
         tmp = self.state_path.with_name(STATE_FILE + ".tmp")
         tmp.write_text(json.dumps(state, indent=0), encoding="utf-8")
         os.replace(tmp, self.state_path)
@@ -297,19 +311,30 @@ class Build:
 
         outs: dict[str, list | None] = {}
         fps: dict[str, list] = {}
+        self._shas: dict[str, str] = {}
         for rel in sorted(self.entries):
             e = self.entries[rel]
             out = self.root / rel
             prev = old.get(rel)
             current = _out_fp(out)
             fps[rel] = e.fp
-            if same_variant and prev and prev.get("fp") == e.fp and current is not None \
-                    and prev.get("out") == current:
+            intact = same_variant and prev is not None and current is not None and prev.get("out") == current
+            if intact and prev.get("fp") == e.fp:
                 outs[rel] = current
+                if "sha" in prev:
+                    self._shas[rel] = prev["sha"]
+                rep.unchanged += 1
+                continue
+            if intact and e.by_date and prev.get("sha") and prev["fp"][:2] == e.fp[:2] \
+                    and prev["fp"][-1:] == e.fp[-1:] and _sha(e.src) == prev["sha"]:
+                outs[rel] = current  # a fresh copy of the same bytes: keep the output as it is
+                self._shas[rel] = prev["sha"]
                 rep.unchanged += 1
                 continue
             self._write(rel, e, out, rep)
             outs[rel] = _out_fp(out)
+            if e.by_date and e.kind == "file":
+                self._shas[rel] = _sha(e.src)
             rep.written.append(rel)
         self._save_state(outs, fps)
         self._fps = fps

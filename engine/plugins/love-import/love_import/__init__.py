@@ -9,14 +9,17 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+from ptk_engine.sdk import ImportPlugin
 from ptk_engine.formats import love
 
 KINDS = {"love": "a .love file", "fused": "fused into the executable", "app": "inside a Mac app",
          "folder": "a source folder"}
 
 
-class Plugin:
-    def run(self, ctx):
+class Plugin(ImportPlugin):
+    recipe_name = "love"
+
+    def detect(self, ctx):
         ctx.progress(0.2, "Looking for the .love")
         try:
             game = love.detect(ctx.game)
@@ -29,18 +32,21 @@ class Plugin:
             ctx.warn(f"The game was made for LÖVE {v}; exports use LÖVE 11.5, which may not run it. "
                      "Pass --set love=PATH with a LÖVE build of the game's version if it does not start.")
         recipe = {"engine": "love", **game.to_dict()}
-        saved = ctx.save_recipe("love", recipe)
+        self.found = {"game": game, "v": v}
+        return recipe
+
+    def report(self, ctx, recipe):
+        game = self.found["game"]
+        v = self.found["v"]
         icon = None
         if game.icon and game.icon.lower().endswith((".png", ".jpg", ".jpeg")):
             data = love.read(ctx.game, recipe, game.icon)
             if data:
                 key = hashlib.sha256(f"{Path(ctx.game).resolve()}|{game.source}|{game.size}".encode()).hexdigest()[:16]
                 icon = ctx.write_bytes(ctx.cache / "icons" / f"{key}{Path(game.icon).suffix.lower()}", data)
-        ctx.progress(1.0, "Done")
         return {
             "summary": f"LÖVE {v or '(version not set)'} game, {game.files} files, {KINDS[game.kind]}",
             "recipe": recipe,
-            "outputs": [str(saved)],
             "title": game.title or None,
             "engine_version": game.love_version,
             "icon": str(icon) if icon else None,

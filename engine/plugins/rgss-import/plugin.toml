@@ -3,13 +3,13 @@ schema_version = 1
 [plugin]
 id = "rgss-import"
 name = "RPG Maker XP/VX/VX Ace import"
-version = "1.0.0"
+version = "2.0.0"
 kind = "import"
 description = "Reads an RPG Maker XP, VX or VX Ace game's Game.ini (title, RGSS version, RTP) and the header of its archive (never decrypting it)."
 license = "MIT"
 authors = ["Porting Toolkit contributors"]
 entry = "rgss_import:Plugin"
-api = 1
+api = 2
 homepage = "https://github.com/Hallel133/Porting-Toolkit"
 
 [formats]

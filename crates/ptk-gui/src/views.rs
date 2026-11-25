@@ -1154,16 +1154,17 @@ impl App {
                                                 &format!("{pname} · {tag}"),
                                                 if blocked { WARN } else { GREEN },
                                             );
-                                            for p in &problems {
-                                                let (mark, color) = if p.severity == "error" {
-                                                    ("✖", ERROR)
-                                                } else {
-                                                    ("▲", WARN)
-                                                };
+                                            let warnings: Vec<_> = problems
+                                                .iter()
+                                                .filter(|p| p.severity != "error")
+                                                .collect();
+                                            for p in
+                                                problems.iter().filter(|p| p.severity == "error")
+                                            {
                                                 ui.label(
-                                                    RichText::new(format!("{mark} {}", p.message))
+                                                    RichText::new(format!("✖ {}", p.message))
                                                         .size(12.0)
-                                                        .color(color),
+                                                        .color(ERROR),
                                                 );
                                                 if let Some(a) = &p.action {
                                                     ui.horizontal(|ui| {
@@ -1178,6 +1179,31 @@ impl App {
                                                         }
                                                     });
                                                 }
+                                            }
+                                            if !warnings.is_empty() {
+                                                egui::CollapsingHeader::new(
+                                                    RichText::new(format!(
+                                                        "▲ {} {}",
+                                                        warnings.len(),
+                                                        if warnings.len() == 1 {
+                                                            "warning"
+                                                        } else {
+                                                            "warnings"
+                                                        }
+                                                    ))
+                                                    .size(12.0)
+                                                    .color(WARN),
+                                                )
+                                                .id_salt(("check-warnings", id))
+                                                .show(ui, |ui| {
+                                                    for p in warnings {
+                                                        ui.label(
+                                                            RichText::new(&p.message)
+                                                                .size(12.0)
+                                                                .color(WARN),
+                                                        );
+                                                    }
+                                                });
                                             }
                                         });
                                     }

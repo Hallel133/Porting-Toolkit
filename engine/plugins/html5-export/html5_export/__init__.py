@@ -39,6 +39,7 @@ import zipfile
 import zlib
 from pathlib import Path
 
+from ptk_engine.sdk import StagedExportPlugin, error
 from ptk_engine import android
 from ptk_engine.formats import axml, html5
 
@@ -100,8 +101,19 @@ def skip_desktop_only(path: Path) -> bool:
     return path.name in DESKTOP_ONLY or path.name.startswith("._") or path.name == ".DS_Store"
 
 
-class Plugin:
-    def run(self, ctx):
+class Plugin(StagedExportPlugin):
+    def check(self, ctx):
+        target = ctx.target or {}
+        if target.get("os") not in ("macos", "web", "windows", "linux", "android"):
+            return [error(f"html5-export builds for macOS, Windows, Linux, Android and the web, not {target.get('id')}")]
+        if not ctx.recipe("html5"):
+            try:
+                html5.detect(ctx.game)
+            except html5.Html5Error as e:
+                return [error(str(e))]
+        return []
+
+    def stage(self, ctx):
         target = ctx.target or {}
         if target.get("os") not in ("macos", "web", "windows", "linux", "android"):
             ctx.fail(f"html5-export builds for macOS, Windows, Linux, Android and the web, not {target.get('id')}")

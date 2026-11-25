@@ -3,13 +3,13 @@ schema_version = 1
 [plugin]
 id = "renpy-export"
 name = "Ren'Py export"
-version = "1.0.0"
+version = "2.0.0"
 kind = "export"
 description = "Builds a Ren'Py game for Windows, Linux or macOS with the Ren'Py runtime of the same version: from the game's own platform files, or from the official SDK (checked against renpy.org's SHA-256)."
 license = "MIT"
 authors = ["Porting Toolkit contributors"]
 entry = "renpy_export:Plugin"
-api = 1
+api = 2
 homepage = "https://github.com/Hallel133/Porting-Toolkit"
 
 [formats]

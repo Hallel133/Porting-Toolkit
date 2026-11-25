@@ -23,6 +23,7 @@ import re
 import shutil
 from pathlib import Path
 
+from ptk_engine.sdk import StagedExportPlugin, error
 from ptk_engine.formats import love
 
 LOVE_VERSION = "11.5"
@@ -44,8 +45,19 @@ def slug(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "game"
 
 
-class Plugin:
-    def run(self, ctx):
+class Plugin(StagedExportPlugin):
+    def check(self, ctx):
+        target = ctx.target or {}
+        if target.get("os") not in LOVE:
+            return [error(f"love-export builds for macOS, Windows and Linux, not {target.get('id')}")]
+        if not ctx.recipe("love"):
+            try:
+                love.detect(ctx.game)
+            except love.LoveError as e:
+                return [error(str(e))]
+        return []
+
+    def stage(self, ctx):
         target = ctx.target or {}
         os_ = target.get("os")
         if os_ not in LOVE:
@@ -194,7 +206,7 @@ class Plugin:
             if p.is_file() and p.name.lower() not in WINDOWS_SKIP:
                 shutil.copy2(p, folder / p.name)
         ctx.write_text(folder / "README.txt", README["windows"].format(title=title, exe=exe.name, v=LOVE_VERSION))
-        return self.finish(ctx, folder, {exe.name}, [
+        return self.package(ctx, folder, {exe.name}, [
             "The .exe keeps LÖVE's icon and is not signed, so Windows SmartScreen may ask before the first "
             "start (More info, then Run anyway).",
             "Saves go to %APPDATA%\\<identity> (the identity in conf.lua).",
@@ -223,12 +235,12 @@ class Plugin:
         if icon and (game_dir / icon).is_file() and icon.lower().endswith(".png"):
             shutil.copyfile(game_dir / icon, folder / "icon.png")
         ctx.write_text(folder / "README.txt", README["linux"].format(title=title, exe=script.name, v=LOVE_VERSION))
-        return self.finish(ctx, folder, {script.name, runtime.name}, [
+        return self.package(ctx, folder, {script.name, runtime.name}, [
             f"Start it with ./{script.name}. LÖVE's AppImage needs FUSE 2 (most desktops and the Steam Deck "
             "have it; otherwise install libfuse2).",
         ])
 
-    def finish(self, ctx, folder: Path, executables: set[str], notes: list[str]) -> dict:
+    def package(self, ctx, folder: Path, executables: set[str], notes: list[str]) -> dict:
         outputs = [str(folder)]
         if ctx.flag("zip", True):
             ctx.progress(0.9, "Zipping")

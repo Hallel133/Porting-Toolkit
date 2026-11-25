@@ -39,6 +39,7 @@ import sys
 import zipfile
 from pathlib import Path
 
+from ptk_engine.sdk import StagedExportPlugin, error
 from ptk_engine import android, texconv
 from ptk_engine.formats import axml, ctex, godot
 
@@ -171,8 +172,16 @@ def fill_plist(text: str, values: dict[str, str]) -> str:
     return re.sub(r"\$[a-z][a-z_0-9]*", "", text)
 
 
-class Plugin:
-    def run(self, ctx):
+class Plugin(StagedExportPlugin):
+    def check(self, ctx):
+        target = ctx.target or {}
+        if target.get("os") not in ("macos", "windows", "linux", "android", "web"):
+            return [error(f"godot-export builds for macOS, Windows, Linux, Android and the web, not {target.get('id')}")]
+        if not godot.find(ctx.game):
+            return [error("no Godot .pck found in the game (run the import again?)")]
+        return []
+
+    def stage(self, ctx):
         assets = ctx.process_assets(ctx.temp, "godot")
         if ctx.assets_mode == "plan":
             return {"summary": "Godot games keep their imported resources", "assets": assets}

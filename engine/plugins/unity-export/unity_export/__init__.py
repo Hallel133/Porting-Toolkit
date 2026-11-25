@@ -36,7 +36,9 @@ import re
 import shutil
 from pathlib import Path, PurePosixPath
 
+from ptk_engine.build import codesign_if_changed
 from ptk_engine.formats import unity, xar
+from ptk_engine.sdk import ExportPlugin, error, warning
 
 NAMES = {"windows": "Windows", "linux": "Linux", "macos": "Mac"}
 #: What the source build's shaders most likely cover, and what the target needs.
@@ -60,56 +62,94 @@ def slug(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "game"
 
 
-class Plugin:
-    def run(self, ctx):
+class Plugin(ExportPlugin):
+    # -- check: everything that would stop or limit the export ---------------------------
+
+    def check(self, ctx):
         os_ = (ctx.target or {}).get("os")
         if os_ not in NAMES:
-            ctx.fail(f"unity-export builds for macOS, Windows and Linux, not {(ctx.target or {}).get('id')}")
+            return [error(f"unity-export builds for macOS, Windows and Linux, not {(ctx.target or {}).get('id')}")]
         info = ctx.recipe("unity")
         if not info or "shaders" not in info:  # recipes from before the shader check
             try:
                 info = unity.detect(ctx.game).to_dict()
             except unity.UnityError as e:
-                ctx.fail(str(e))
+                return [error(str(e))]
+        self.os, self.info = os_, info
         if info.get("backend") != "mono":
-            ctx.fail("this is an IL2CPP build: its code is native to its platform, so it cannot be moved "
-                     "without the source")
-        version = info.get("version")
-        if not version:
-            ctx.fail("the Unity version was not found (globalgamemanagers)")
+            return [error("this is an IL2CPP build: its code is native to its platform, so it cannot be moved "
+                          "without the source")]
+        self.version = info.get("version")
+        if not self.version:
+            return [error("the Unity version was not found (globalgamemanagers)")]
         game_root = ctx.game if ctx.game.is_dir() else ctx.game.parent
-        data = game_root / info["data"]
-        if not data.is_dir():
-            ctx.fail(f"the game's Data folder is missing: {data}")
-        support, variation = self.player(ctx, version, os_)
+        self.game_root = game_root
+        self.data = game_root / info["data"]
+        if not self.data.is_dir():
+            return [error(f"the game's Data folder is missing: {self.data}")]
+        # The same platform: the game's own player, plugins and all, is reused.
+        self.same = info.get("platform") == os_
+        problems = []
+        self.found = None if self.same else self.installed_player(ctx, self.version, os_)
+        if not self.same and not self.found:
+            if not ctx.flag("unity_download", True):
+                problems.append(error(self.no_player_message(ctx, self.version, os_)))
+            elif not (self.players_dir(ctx, self.version) / f".{os_}-complete").is_file() \
+                    and not self.accepted(ctx):
+                problems.append(error(
+                    f"Unity's {NAMES[os_]} player for {self.version} is downloaded from Unity once (no Unity "
+                    f"install needed). It is covered by the Unity Terms of Service ({TERMS_URL}); to accept "
+                    "them, use the button in the app or export with --set accept_unity_terms=true (asked once).",
+                    {"setting": "accept_unity_terms", "value": "true", "label": "Accept Unity's terms",
+                     "url": TERMS_URL}))
+        problems += [warning(w) for w in self.limits(info, os_)]
+        return problems
+
+    def prepare(self, ctx):
+        if self.same:
+            self.support = self.variation = None
+            return
+        if self.found:
+            self.support, self.variation = self.found
+            return
+        root = self.download_player(ctx, self.version, self.os)
+        support = unity.support_dir(root, self.os)
+        variation = unity.player_variation(support, self.os) if support else None
+        if not (support and variation):
+            ctx.fail(f"Unity's {NAMES[self.os]} module for {self.version} has no release Mono player")
+        self.support, self.variation = support, variation
+
+    def layout(self, ctx, build):
+        info = self.info
         title = ctx.title if ctx.title not in ("", "Game") else (info.get("product") or info.get("name") or "Game")
-        name = safe_name(title)
-        ctx.progress(0.2, "Copying the game's data")
-        if os_ == "macos":
-            out = self.macos(ctx, support, variation, data, name, title, info)
+        self.title, self.name = title, safe_name(title)
+        ctx.progress(0.2, "Laying out the build")
+        if self.os == "macos" and self.same:
+            self.layout_mac_repack(ctx, build)
+        elif self.os == "macos":
+            self.layout_mac(ctx, build)
         else:
-            out = self.pc(ctx, variation, data, name, os_)
-        self.warnings(ctx, info, os_)
-        ctx.progress(1.0, "Done")
-        source = "downloaded from Unity" if self.players_dir(ctx, version) in support.parents \
-            else f"from {support.parent.parent if os_ != 'macos' else support}"
-        out["notes"].insert(0, f"Unity {version} {NAMES[os_]} player (Mono) {source}.")
+            self.layout_pc(ctx, build)
+
+    def finish(self, ctx, build):
+        out = self.finish_mac(ctx, build) if self.os == "macos" else self.finish_pc(ctx, build)
+        if self.same:
+            source = "the game's own"
+        elif self.players_dir(ctx, self.version) in self.support.parents:
+            source = "downloaded from Unity"
+        else:
+            source = f"from {self.support.parent.parent if self.os != 'macos' else self.support}"
+        out["notes"].insert(0, f"Unity {self.version} {NAMES[self.os]} player (Mono), {source}.")
+        out["notes"].append(self.log_hint())
         return out
 
-    # -- the player ------------------------------------------------------------------
-
-    def player(self, ctx, version: str, os_: str) -> tuple[Path, Path]:
-        found = self.installed_player(ctx, version, os_)
-        if found:
-            return found
-        if ctx.flag("unity_download", True):
-            root = self.download_player(ctx, version, os_)
-            support = unity.support_dir(root, os_)
-            variation = unity.player_variation(support, os_) if support else None
-            if support and variation:
-                return support, variation
-            ctx.fail(f"Unity's {NAMES[os_]} module for {version} has no release Mono player")
-        self.no_player(ctx, version, os_)
+    def log_hint(self) -> str:
+        company = self.info.get("company") or "<Company>"
+        product = self.info.get("product") or "<Product>"
+        where = {"macos": f"~/Library/Logs/{company}/{product}/Player.log",
+                 "windows": f"%USERPROFILE%\\AppData\\LocalLow\\{company}\\{product}\\Player.log",
+                 "linux": f"~/.config/unity3d/{company}/{product}/Player.log"}[self.os]
+        return f"If the game shows nothing or has no sound, Unity's log says why: {where}"
 
     def installed_player(self, ctx, version: str, os_: str) -> tuple[Path, Path] | None:
         extra = [ctx.setting("unity")] if ctx.setting("unity") else []
@@ -224,7 +264,7 @@ class Plugin:
         if base64.b64encode(h.digest()).decode() != integrity[4:]:
             raise ValueError(f"{path.name} does not match the checksum Unity published")
 
-    def no_player(self, ctx, version: str, os_: str) -> None:
+    def no_player_message(self, ctx, version: str, os_: str) -> str:
         extra = [ctx.setting("unity")] if ctx.setting("unity") else []
         checked = []
         for root in unity.editor_roots(version, extra):
@@ -235,10 +275,10 @@ class Plugin:
                   "macos": "Mac Build Support (Mono)"}[os_]
         link = self.hub_link(ctx, version)
         where = f" (found Unity in {', '.join(checked)}, without it)" if checked else ""
-        ctx.fail(f"Unity {version} with \"{module}\" is needed{where}. Remove unity_download=false to "
-                 f"download only its player, or install it in Unity Hub"
-                 + (f": {link}" if link else f" (Installs > Install Editor > Archive > {version})")
-                 + ", or pass --set unity=PATH to a Unity install folder.")
+        return (f"Unity {version} with \"{module}\" is needed{where}. Remove unity_download=false to "
+                f"download only its player, or install it in Unity Hub"
+                + (f": {link}" if link else f" (Installs > Install Editor > Archive > {version})")
+                + ", or pass --set unity=PATH to a Unity install folder.")
 
     @staticmethod
     def hub_link(ctx, version: str) -> str | None:
@@ -256,128 +296,158 @@ class Plugin:
 
     # -- Windows and Linux --------------------------------------------------------------
 
-    def pc(self, ctx, variation: Path, data: Path, name: str, os_: str) -> dict:
-        ctx.clean_dir(ctx.output)
-        folder = ctx.output / name
-        folder.mkdir()
-        data_out = folder / f"{name}_Data"
-        self.copy_data(ctx, data, data_out, variation / "Data", os_)
-        if os_ == "windows":
-            exe = folder / f"{name}.exe"
-            shutil.copy2(variation / "WindowsPlayer.exe", exe)
+    def add_data(self, build, dest: str, player_data: Path) -> None:
+        """The game's Data without the source platform's native plugins, with
+        the target player's engine assemblies and default resources."""
+        src = self.data
+
+        def skip(p: Path) -> bool:
+            rel = p.relative_to(src).as_posix()
+            return rel in ("Plugins", "MonoBleedingEdge") or p.name.startswith("._") or p.name == ".DS_Store"
+
+        build.add_tree(src, dest, skip=skip)
+        managed = player_data / "Managed"
+        if managed.is_dir():
+            for dll in sorted(managed.glob("UnityEngine*.dll")):
+                build.add_file(dll, f"{dest}/Managed/{dll.name}")
+        res = player_data / "Resources"
+        if res.is_dir():
+            build.add_tree(res, f"{dest}/Resources")
+
+    def layout_pc(self, ctx, build) -> None:
+        name, variation = self.name, self.variation
+        data_out = f"{name}/{name}_Data"
+        self.add_data(build, data_out, variation / "Data")
+        if self.os == "windows":
+            self.exe = f"{name}.exe"
+            build.add_file(variation / "WindowsPlayer.exe", f"{name}/{self.exe}", mode=0o755)
             for p in sorted(variation.iterdir()):
                 if p.name in ("WindowsPlayer.exe", "Data") or p.suffix == ".pdb":
                     continue
                 if p.is_dir():
-                    shutil.copytree(p, folder / p.name)
+                    build.add_tree(p, f"{name}/{p.name}")
                 else:
-                    shutil.copy2(p, folder / p.name)
-            start = exe.name
+                    build.add_file(p, f"{name}/{p.name}")
+            self.start = self.exe
         else:
-            exe = folder / f"{name}.x86_64"
-            shutil.copy2(variation / "LinuxPlayer", exe)
-            exe.chmod(0o755)
-            shutil.copy2(variation / "UnityPlayer.so", folder / "UnityPlayer.so")
+            self.exe = f"{name}.x86_64"
+            build.add_file(variation / "LinuxPlayer", f"{name}/{self.exe}", mode=0o755)
+            build.add_file(variation / "UnityPlayer.so", f"{name}/UnityPlayer.so")
             mono = variation / "Data" / "MonoBleedingEdge"
             if mono.is_dir():
-                shutil.copytree(mono, data_out / "MonoBleedingEdge", dirs_exist_ok=True)
-            start = f"./{exe.name}"
+                build.add_tree(mono, f"{data_out}/MonoBleedingEdge")
+            self.start = f"./{self.exe}"
+        if ctx.flag("zip", True):
+            build.artifact(self.zip_name(ctx))
+
+    def zip_name(self, ctx) -> str:
+        return f"{self.name}-{ctx.target.get('id')}.zip"
+
+    def finish_pc(self, ctx, build) -> dict:
+        folder = build.root / self.name
         outputs = [str(folder)]
         if ctx.flag("zip", True):
             ctx.progress(0.9, "Zipping")
-            outputs.append(str(ctx.zip_dir(folder, ctx.output / f"{name}-{ctx.target.get('id')}.zip",
-                                           executables={exe.name})))
-        notes = [f"Start it with {start}."]
-        if os_ == "windows":
+            outputs.append(str(self.zip(ctx, build, self.name, self.zip_name(ctx), {self.exe})))
+        notes = [f"Start it with {self.start}."]
+        if self.os == "windows":
             notes.append("The .exe keeps Unity's icon and is not signed, so Windows SmartScreen may ask once.")
         return {"outputs": outputs, "open": str(folder), "notes": notes,
                 "summary": f"Built {folder.name}/ for {ctx.target.get('name')} - experimental"}
 
-    def copy_data(self, ctx, src: Path, dst: Path, player_data: Path, os_: str) -> None:
-        """The game's Data without the source platform's native plugins, with
-        the target player's engine assemblies and default resources."""
-        def skip(p: Path) -> bool:
-            rel = p.relative_to(src).as_posix()
-            return rel == "Plugins" or rel == "MonoBleedingEdge" or p.name.startswith("._") or p.name == ".DS_Store"
-
-        ctx.copy_tree(src, dst, skip=skip)
-        managed = player_data / "Managed"
-        if managed.is_dir():
-            replaced = 0
-            for dll in managed.glob("UnityEngine*.dll"):
-                shutil.copy2(dll, dst / "Managed" / dll.name)
-                replaced += 1
-            ctx.log(f"Replaced {replaced} Unity engine assemblies with the {NAMES[os_]} player's.")
-        res = player_data / "Resources"
-        if res.is_dir():
-            shutil.copytree(res, dst / "Resources", dirs_exist_ok=True)
-
     # -- macOS ----------------------------------------------------------------------------
 
-    def macos(self, ctx, support: Path, variation: Path, data: Path, name: str, title: str, info: dict) -> dict:
-        player_app = next(iter(sorted(variation.glob("*.app"))), None)
+    def layout_mac(self, ctx, build) -> None:
+        """Another platform's game in Unity's own macOS player."""
+        player_app = next(iter(sorted(self.variation.glob("*.app"))), None)
         if player_app is None:
-            ctx.fail(f"{variation} has no UnityPlayer.app")
-        app = ctx.clean_dir(ctx.output / f"{name}.app")
-        shutil.copytree(player_app, app, symlinks=True, dirs_exist_ok=True)
-        contents = app / "Contents"
-        exe = contents / "MacOS" / name
-        (contents / "MacOS" / "UnityPlayer").rename(exe)
-        mono = support / "MonoBleedingEdge"
+            ctx.fail(f"{self.variation} has no UnityPlayer.app")
+        app = f"{self.name}.app"
+        self.app = app
+        build.add_tree(player_app, app, links=True, skip=lambda p: p.name == "_CodeSignature")
+        build.remove(f"{app}/Contents/MacOS/UnityPlayer")
+        build.add_file(player_app / "Contents" / "MacOS" / "UnityPlayer", f"{app}/Contents/MacOS/{self.name}",
+                       mode=0o755)
+        mono = self.support / "MonoBleedingEdge"
         if mono.is_dir():
-            shutil.copytree(mono, contents / "MonoBleedingEdge", dirs_exist_ok=True)
-        engine_data = support / "Variations" / "mono"
-        self.copy_data(ctx, data, contents / "Resources" / "Data", engine_data, "macos")
-        if (contents / "Resources" / "unity default resources").exists() and not \
-                (contents / "Resources" / "Data" / "Resources" / "unity default resources").exists():
-            (contents / "Resources" / "Data" / "Resources").mkdir(parents=True, exist_ok=True)
-            shutil.copy2(contents / "Resources" / "unity default resources",
-                         contents / "Resources" / "Data" / "Resources" / "unity default resources")
-        version = str(ctx.manifest.get("version") or "1.0.0")
-        plist = {
-            "CFBundleDevelopmentRegion": "English",
-            "CFBundleExecutable": name,
-            "CFBundleIdentifier": ctx.setting("bundle_id") or f"org.portingtoolkit.{slug(title)}",
+            build.add_tree(mono, f"{app}/Contents/MonoBleedingEdge")
+        data = f"{app}/Contents/Resources/Data"
+        self.add_data(build, data, self.support / "Variations" / "mono")
+        resources = player_app / "Contents" / "Resources" / "unity default resources"
+        if resources.is_file() and f"{data}/Resources/unity default resources" not in build.entries:
+            build.add_file(resources, f"{data}/Resources/unity default resources")
+        build.add_bytes(f"{app}/Contents/Info.plist", plistlib.dumps(self.plist(ctx, {
+            "CFBundleExecutable": self.name, "CFBundleDevelopmentRegion": "English",
+            "LSMinimumSystemVersion": "10.13", "NSHighResolutionCapable": True,
+            "NSPrincipalClass": "NSApplication"})))
+        build.add_text(f"{app}/Contents/PkgInfo", "APPL????")
+
+    def layout_mac_repack(self, ctx, build) -> None:
+        """A Mac game for macOS again: the original app as it is (player,
+        frameworks, native plugins such as sound engines), with a new
+        identity and without the App Store's receipt and signature."""
+        src_app = self.game_root / self.info["app"] if self.info.get("app") else self.game_root
+        app = f"{self.name}.app"
+        self.app = app
+        drop = {"_CodeSignature", "_MASReceipt", "embedded.provisionprofile"}
+        build.add_tree(src_app, app, links=True, skip=lambda p: p.name in drop or p.name.startswith("._"))
+        with open(src_app / "Contents" / "Info.plist", "rb") as f:
+            original = plistlib.load(f)
+        build.add_bytes(f"{app}/Contents/Info.plist", plistlib.dumps(self.plist(ctx, original)))
+
+    def plist(self, ctx, base: dict) -> dict:
+        version = str(ctx.manifest.get("version") or base.get("CFBundleShortVersionString") or "1.0.0")
+        out = dict(base)
+        out.update({
+            "CFBundleIdentifier": ctx.setting("bundle_id") or f"org.portingtoolkit.{slug(self.title)}",
+            "CFBundleName": self.title[:15],
+            "CFBundleDisplayName": self.title,
             "CFBundleInfoDictionaryVersion": "6.0",
-            "CFBundleName": title[:15],
-            "CFBundleDisplayName": title,
             "CFBundlePackageType": "APPL",
             "CFBundleShortVersionString": version,
             "CFBundleVersion": version,
             "LSApplicationCategoryType": "public.app-category.games",
-            "LSMinimumSystemVersion": "10.13",
-            "NSHighResolutionCapable": True,
-            "NSPrincipalClass": "NSApplication",
-        }
-        (contents / "Info.plist").write_bytes(plistlib.dumps(plist))
-        (contents / "PkgInfo").write_text("APPL????")
-        signed = False
+        })
+        return out
+
+    def finish_mac(self, ctx, build) -> dict:
+        app = build.root / self.app
+        notes = []
         if ctx.flag("sign", True) and ctx.which("codesign"):
-            ctx.run(["codesign", "--force", "--deep", "--sign", "-", "--timestamp=none", app])
-            signed = True
-        return {"outputs": [str(app)], "open": str(app),
-                "summary": f"Built {app.name} - experimental",
-                "notes": ["Signed ad-hoc: it runs on this Mac." if signed else "Not signed."]}
+            ctx.progress(0.9, "Signing")
+            signed = codesign_if_changed(app, ctx.run)
+            notes.append("Signed ad-hoc: it runs on this Mac." if signed else "Already signed (nothing changed).")
+        else:
+            notes.append("Not signed.")
+        if self.same:
+            notes.append("The game's own player, frameworks and native plugins are kept.")
+        return {"outputs": [str(app)], "open": str(app), "summary": f"Built {app.name} - experimental",
+                "notes": notes}
 
     # -- what to expect -----------------------------------------------------------------------
 
     @staticmethod
-    def warnings(ctx, info: dict, os_: str) -> None:
+    def limits(info: dict, os_: str) -> list[str]:
+        out = []
         src = info.get("platform")
         drawable = unity.can_draw(info, os_)
         if drawable is False:
             apis = ", ".join((info.get("shaders") or {}).get("apis") or [])
-            ctx.warn(f"This build's shaders are {apis} only, and {NAMES[os_]} needs {APIS[os_]}: objects will "
-                     "show pink or invisible. Only the game's developer can add that graphics API.")
+            out.append(f"This build's shaders are {apis} only, and {NAMES[os_]} needs {APIS[os_]}: objects will "
+                       "show pink or invisible. Only the game's developer can add that graphics API.")
         elif src != os_ and drawable is None:
-            ctx.warn(f"Unity builds only carry shaders for their own platform's graphics APIs. This {NAMES[src]} "
-                     f"build must also have {APIS[os_]} shaders, or objects will show pink or invisible on "
-                     f"{NAMES[os_]}. Test it before sharing.")
+            out.append(f"Unity builds only carry shaders for their own platform's graphics APIs. This {NAMES[src]} "
+                       f"build must also have {APIS[os_]} shaders, or objects will show pink or invisible on "
+                       f"{NAMES[os_]}. Test it before sharing.")
         plugins = [p for p in info.get("plugins") or [] if p not in (info.get("apple_services") or [])]
-        if plugins:
-            ctx.warn(f"Native plugins not carried over (built for {NAMES[src]}): {', '.join(plugins)}. Features "
-                     "that use them (sound engines, controllers, video...) may fail.")
+        if plugins and src != os_:
+            out.append(f"Native plugins not carried over (built for {NAMES[src]}): {', '.join(plugins)}. Features "
+                       "that use them (sound engines, controllers, video...) may fail.")
         if info.get("apple_services"):
-            ctx.warn("Apple services (" + ", ".join(info["apple_services"]) + ") do not exist on other platforms.")
+            out.append("Apple services (" + ", ".join(info["apple_services"]) + ") need the App Store's signature: "
+                       "outside the App Store they may stop the game at start (FairPlay) or fail (Game Center, "
+                       "iCloud).")
         if info.get("app_store"):
-            ctx.warn("This is an App Store / Apple Arcade build; its terms limit it to Apple devices.")
+            out.append("This is an App Store / Apple Arcade build; its terms limit it to Apple devices, and its "
+                       "subscription check may refuse to start a re-signed copy.")
+        return out

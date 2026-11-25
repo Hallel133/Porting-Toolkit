@@ -3,13 +3,13 @@ schema_version = 1
 [plugin]
 id = "rgss-export"
 name = "RPG Maker XP/VX/VX Ace export"
-version = "1.0.0"
+version = "2.0.0"
 kind = "export"
 description = "Runs RPG Maker XP, VX and VX Ace games on macOS and Linux with mkxp-z (an open-source RGSS player you download once), and packages the original game for Windows."
 license = "MIT"
 authors = ["Porting Toolkit contributors"]
 entry = "rgss_export:Plugin"
-api = 1
+api = 2
 homepage = "https://github.com/Hallel133/Porting-Toolkit"
 
 [formats]

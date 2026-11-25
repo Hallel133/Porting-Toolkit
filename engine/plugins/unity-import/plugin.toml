@@ -3,13 +3,13 @@ schema_version = 1
 [plugin]
 id = "unity-import"
 name = "Unity import"
-version = "1.0.0"
+version = "2.0.0"
 kind = "import"
 description = "Reports what a Unity build is made of: Unity version, Mono or IL2CPP, native plugins and Apple-only services, and whether it can be moved to another platform without source code."
 license = "MIT"
 authors = ["Porting Toolkit contributors"]
 entry = "unity_import:Plugin"
-api = 1
+api = 2
 homepage = "https://github.com/Hallel133/Porting-Toolkit"
 
 [formats]

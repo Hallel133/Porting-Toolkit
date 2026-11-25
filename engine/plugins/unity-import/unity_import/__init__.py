@@ -5,13 +5,16 @@ Nothing from the game is copied into the project.
 
 from __future__ import annotations
 
+from ptk_engine.sdk import ImportPlugin
 from ptk_engine.formats import unity
 
 PLATFORMS = {"windows": "Windows", "linux": "Linux", "macos": "macOS"}
 
 
-class Plugin:
-    def run(self, ctx):
+class Plugin(ImportPlugin):
+    recipe_name = "unity"
+
+    def detect(self, ctx):
         ctx.progress(0.2, "Looking for the Data folder")
         try:
             game = unity.detect(ctx.game)
@@ -26,7 +29,11 @@ class Plugin:
                          f"{PLATFORMS[game.platform]} only; another platform needs their own builds, so the "
                          "features that use them will not work there.")
         recipe = {"engine": "unity", **game.to_dict()}
-        saved = ctx.save_recipe("unity", recipe)
+        self.found = {"game": game}
+        return recipe
+
+    def report(self, ctx, recipe):
+        game = self.found["game"]
         drawable = [PLATFORMS[t] for t in PLATFORMS
                     if t != game.platform and unity.can_draw(game.to_dict(), t) is not False]
         if game.backend != "mono":
@@ -39,12 +46,10 @@ class Plugin:
                        "(experimental)")
         else:
             verdict = "can move to other platforms with the Unity player of the same version (experimental)"
-        ctx.progress(1.0, "Done")
         return {
             "summary": f"Unity {game.version or '?'} {game.backend.upper() if game.backend == 'il2cpp' else 'Mono'} "
                        f"game for {PLATFORMS[game.platform]}: {verdict}",
             "recipe": recipe,
-            "outputs": [str(saved)],
             "title": game.product,
             "engine_version": game.version,
         }

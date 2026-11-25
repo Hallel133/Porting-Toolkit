@@ -7,6 +7,7 @@ window size from package.json.
 
 from __future__ import annotations
 
+from ptk_engine.sdk import ImportPlugin
 from ptk_engine.formats import html5
 
 FLAVORS = {
@@ -18,8 +19,10 @@ FLAVORS = {
 }
 
 
-class Plugin:
-    def run(self, ctx):
+class Plugin(ImportPlugin):
+    recipe_name = "html5"
+
+    def detect(self, ctx):
         ctx.progress(0.2, "Looking for the web root")
         try:
             game = html5.detect(ctx.game)
@@ -33,16 +36,18 @@ class Plugin:
         if game.uses_node and game.flavor != "electron":
             ctx.warn("The page calls Node.js (require/process); those parts will not work in a browser.")
         recipe = {"engine": ctx.engine or "html5", **game.to_dict()}
-        saved = ctx.save_recipe("html5", recipe)
+        self.found = {"game": game}
+        return recipe
+
+    def report(self, ctx, recipe):
+        game = self.found["game"]
         where = game.container if game.container != "folder" else "a folder"
         root = game.root or "(top level)"
-        ctx.progress(1.0, "Done")
         kind = FLAVORS.get(game.flavor, game.flavor)
         if game.framework:
             kind = game.framework if game.flavor == "web" else f"{game.framework} ({kind})"
         return {
             "summary": f"{kind} game: {game.entry} in {root}, from {where}",
             "recipe": recipe,
-            "outputs": [str(saved)],
             "title": game.title,
         }

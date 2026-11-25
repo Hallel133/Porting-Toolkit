@@ -333,3 +333,53 @@ def test_metal_only_games_are_reported_and_warned(tmp_path):
     (data / "sharedassets0.assets").write_bytes(serialized_file([(48, shader_object([14, 4, 18]))]))
     r = run(tmp_path, "unity-import", app, "import")
     assert "can move to Windows, Linux" in r["summary"]
+
+
+# -- API 2: checks, incremental output, the Mac repack ----------------------------------------
+
+
+def test_check_offers_the_terms_and_a_second_export_writes_nothing(tmp_path):
+    service = fake_module(tmp_path)
+    settings = {"unity": str(tmp_path / "nowhere"), "unity_service": service.as_uri()}
+    game = mac_game(tmp_path)
+    (tmp_path / "project").mkdir(exist_ok=True)
+    common = {"plugin": str(BUILTIN_DIR / "unity-export"), "kind": "export", "engine": "unity", "target": WINDOWS,
+              "manifest": {"name": "p", "version": "1.0.0", "game": {"title": "Moon Garden"}},
+              "cache_root": str(tmp_path / "cache")}
+    folders = {"$GAME": str(game), "$PROJECT": str(tmp_path / "project")}
+    r = run_plugin({**common, "phase": "check", "settings": {"unity_lookup": "false", **settings},
+                    "folders": folders}, lambda m, p: None)["result"]
+    assert not r["ok"]
+    action = r["problems"][0]["action"]
+    assert (action["setting"], action["value"]) == ("accept_unity_terms", "true")
+    assert any("Native plugins" in p["message"] for p in r["problems"] if p["severity"] == "warning")
+    out = tmp_path / "out"
+    accepted = {**settings, "accept_unity_terms": "true"}
+    first = run(tmp_path, "unity-export", game, "export", WINDOWS, accepted, out)
+    assert first["build"]["rebuilt"] and first["build"]["written"] > 0
+    second = run(tmp_path, "unity-export", game, "export", WINDOWS, accepted, out)
+    assert second["build"]["written"] == 0 and second["build"]["removed"] == 0
+    assert any("Player.log" in n for n in second["notes"])
+
+
+def test_mac_to_mac_keeps_the_games_own_player_and_plugins(tmp_path):
+    app = mac_game(tmp_path)
+    write(app, {"Contents/PlugIns/AkUnitySoundEngine.bundle/Contents/MacOS/AkUnitySoundEngine": b"\xcf\xfawwise",
+                "Contents/Frameworks/UnityPlayer.dylib": b"\xcf\xfaplayer",
+                "Contents/_CodeSignature/CodeResources": b"apple",
+                "Contents/_MASReceipt/receipt": b"receipt"})
+    with open(app / "Contents" / "Info.plist", "wb") as f:
+        plistlib.dump({"CFBundleExecutable": "Moon Garden", "CFBundleIdentifier": "com.apple.arcade.moon",
+                       "NSMicrophoneUsageDescription": "voice"}, f)
+    out = tmp_path / "out"
+    r = run(tmp_path, "unity-export", app, "export", MAC, {"sign": "false"}, out)
+    built = out / "Moon Garden.app" / "Contents"
+    assert (built / "PlugIns/AkUnitySoundEngine.bundle/Contents/MacOS/AkUnitySoundEngine").read_bytes() == \
+        b"\xcf\xfawwise"
+    assert (built / "Frameworks/UnityPlayer.dylib").is_file()
+    assert not (built / "_CodeSignature").exists() and not (built / "_MASReceipt").exists()
+    plist = plistlib.loads((built / "Info.plist").read_bytes())
+    assert plist["CFBundleIdentifier"] == "org.portingtoolkit.moon-garden"
+    assert plist["NSMicrophoneUsageDescription"] == "voice" and plist["CFBundleExecutable"] == "Moon Garden"
+    assert "the game's own" in r["notes"][0]
+    assert any("FairPlay" in w or "subscription" in w for w in r["warnings"])

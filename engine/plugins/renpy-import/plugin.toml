@@ -3,13 +3,13 @@ schema_version = 1
 [plugin]
 id = "renpy-import"
 name = "Ren'Py import"
-version = "1.0.0"
+version = "2.0.0"
 kind = "import"
 description = "Finds a Ren'Py game's engine and game folders, its Ren'Py version and the platforms the build already has, and lists its .rpa archives (never extracting them)."
 license = "MIT"
 authors = ["Porting Toolkit contributors"]
 entry = "renpy_import:Plugin"
-api = 1
+api = 2
 homepage = "https://github.com/Hallel133/Porting-Toolkit"
 
 [formats]

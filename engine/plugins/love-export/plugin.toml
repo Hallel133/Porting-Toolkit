@@ -3,13 +3,13 @@ schema_version = 1
 [plugin]
 id = "love-export"
 name = "LÖVE export"
-version = "1.0.0"
+version = "2.0.0"
 kind = "export"
 description = "Packages a LÖVE game with the official LÖVE 11.5 build for each platform: a signed Mac app, a fused Windows .exe, or a Linux AppImage with the game next to it."
 license = "MIT"
 authors = ["Porting Toolkit contributors"]
 entry = "love_export:Plugin"
-api = 1
+api = 2
 homepage = "https://github.com/Hallel133/Porting-Toolkit"
 
 [formats]

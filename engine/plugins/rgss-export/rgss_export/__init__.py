@@ -27,6 +27,7 @@ import re
 import shutil
 from pathlib import Path
 
+from ptk_engine.sdk import StagedExportPlugin, error
 from ptk_engine.formats import rgss
 
 SOURCE = "https://github.com/mkxp-z/mkxp-z"
@@ -53,8 +54,19 @@ def slug(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "game"
 
 
-class Plugin:
-    def run(self, ctx):
+class Plugin(StagedExportPlugin):
+    def check(self, ctx):
+        target = ctx.target or {}
+        if target.get("os") not in ("macos", "windows", "linux"):
+            return [error(f"rgss-export builds for macOS, Windows and Linux, not {target.get('id')}")]
+        if not ctx.recipe("rgss"):
+            try:
+                rgss.detect(ctx.game)
+            except rgss.RgssError as e:
+                return [error(str(e))]
+        return []
+
+    def stage(self, ctx):
         os_ = (ctx.target or {}).get("os")
         if os_ not in ("macos", "windows", "linux"):
             ctx.fail(f"rgss-export builds for macOS, Windows and Linux, not {(ctx.target or {}).get('id')}")
@@ -164,7 +176,7 @@ class Plugin:
         ctx.clean_dir(ctx.output)
         folder = ctx.output / name
         shutil.copytree(stage, folder)
-        return self.finish(ctx, folder, set(), [
+        return self.package(ctx, folder, set(), [
             "The original Game.exe runs the game on Windows; nothing was changed except the advanced options.",
         ])
 
@@ -220,12 +232,12 @@ class Plugin:
         (folder / "mkxp.json").write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         (folder / "mkxp-z-LICENSE.txt").write_text(GPL_NOTE, encoding="utf-8")
         exe = self._linux_exe(folder)
-        return self.finish(ctx, folder, {exe.name} if exe else set(), [
+        return self.package(ctx, folder, {exe.name} if exe else set(), [
             f"Start it with ./{exe.name if exe else 'mkxp-z'}.",
             "mkxp-z is GPL-2.0: when you share this build, point people to its source (mkxp-z-LICENSE.txt).",
         ])
 
-    def finish(self, ctx, folder: Path, executables: set[str], notes: list[str]) -> dict:
+    def package(self, ctx, folder: Path, executables: set[str], notes: list[str]) -> dict:
         outputs = [str(folder)]
         if ctx.flag("zip", True):
             ctx.progress(0.9, "Zipping")

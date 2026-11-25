@@ -130,6 +130,94 @@ class ExportPlugin:
         return ctx.zip_dir(build.root / folder_rel, build.root / name, executables)
 
 
+class StagedExportPlugin(ExportPlugin):
+    """For exporters that build their output step by step (templates to
+    patch, runtimes to unpack) rather than declare it.
+
+    ``stage(ctx)`` builds into ``ctx.output`` as an API 1 ``run`` would, but
+    ``ctx.output`` is a staging folder of APFS clones (instant on macOS). The
+    base class then syncs it into the real output, so only files that
+    changed are written; zips (``ctx.zip_dir``) and ad-hoc signing
+    (``ctx.run(["codesign", ...])``) are done afterwards on the real output,
+    incrementally. Paths in the result are mapped to the real output.
+    """
+
+    def stage(self, ctx: Context) -> dict:
+        raise NotImplementedError
+
+    def layout(self, ctx: Context, build: Build) -> None:  # pragma: no cover - see run
+        raise NotImplementedError
+
+    def run(self, ctx: Context) -> dict:
+        import subprocess
+
+        from .build import codesign_if_changed
+
+        problems = self.check(ctx)
+        errors = [p for p in problems if p.severity == "error"]
+        if errors:
+            raise ProblemsError(errors)
+        for p in problems:
+            ctx.warn(p.message)
+        self.prepare(ctx)
+        if ctx.output is None:  # an estimate: stage() returns the report
+            return self.stage(ctx)
+        real = Path(ctx.output)
+        staging = ctx.temp / "ptk-stage"
+        staging.mkdir(parents=True, exist_ok=True)
+        zips: list[tuple[str, str, set | None]] = []
+        signs: list[tuple[str, list]] = []
+        real_zip, real_run = ctx.zip_dir, ctx.run
+
+        def rel(path) -> str:
+            return Path(path).resolve().relative_to(staging.resolve()).as_posix()
+
+        def staged_zip(src, dest, executables=None):
+            zips.append((rel(src), rel(dest), executables))
+            return real / rel(dest)
+
+        def staged_run(args, *a, **kw):
+            argv = [str(x) for x in args]
+            if argv and Path(argv[0]).name == "codesign" and "--sign" in argv and argv[argv.index("--sign") + 1] == "-":
+                ent = argv[argv.index("--entitlements") + 1] if "--entitlements" in argv else None
+                signs.append((rel(argv[-1]), [ent] if ent else []))
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            return real_run(args, *a, **kw)
+
+        ctx.output, ctx.zip_dir, ctx.run = staging, staged_zip, staged_run
+        try:
+            result = self.stage(ctx) or {}
+        finally:
+            ctx.output, ctx.zip_dir, ctx.run = real, real_zip, real_run
+        ctx.progress(None, "Writing the output")
+        build = ctx.build(root=real, variant=self.variant(ctx))
+        build.add_tree(staging, "", links=True, by_date=True, skip=lambda p: p.name == ".ptk-output")
+        for _, dest, _ in zips:
+            build.artifact(dest)
+        report = build.sync()
+        for app, ent in signs:
+            codesign_if_changed(real / app, ctx.run, Path(ent[0]) if ent else None)
+        for src, dest, executables in zips:
+            ctx.zip_dir(real / src, real / dest, executables)
+        build.seal()
+        result = _remap(result, str(staging.resolve()), str(real))
+        result = _remap(result, str(staging), str(real))
+        result.setdefault("outputs", [])
+        result["build"] = {"written": len(report.written), "unchanged": report.unchanged,
+                           "removed": len(report.removed), "cloned": report.cloned, "rebuilt": report.rebuilt}
+        return result
+
+
+def _remap(value, old: str, new: str):
+    if isinstance(value, str):
+        return new + value[len(old):] if value == old or value.startswith(old + "/") else value
+    if isinstance(value, list):
+        return [_remap(v, old, new) for v in value]
+    if isinstance(value, dict):
+        return {k: _remap(v, old, new) for k, v in value.items()}
+    return value
+
+
 class ImportPlugin:
     #: The recipe file name (``recipes/<name>.json``).
     recipe_name: str = "import"
@@ -154,4 +242,4 @@ class ImportPlugin:
         return {"problems": [], "ok": True}
 
 
-__all__ = ["ExportPlugin", "ImportPlugin", "Problem", "ProblemsError", "error", "warning"]
+__all__ = ["ExportPlugin", "ImportPlugin", "StagedExportPlugin", "Problem", "ProblemsError", "error", "warning"]

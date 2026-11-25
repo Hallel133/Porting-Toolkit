@@ -33,6 +33,7 @@ import stat
 import zipfile
 from pathlib import Path
 
+from ptk_engine.sdk import StagedExportPlugin, error
 from ptk_engine.formats import renpy
 
 DL = "https://www.renpy.org/dl"
@@ -63,8 +64,19 @@ def sha256_for(checksums: str, filename: str) -> str | None:
     return None
 
 
-class Plugin:
-    def run(self, ctx):
+class Plugin(StagedExportPlugin):
+    def check(self, ctx):
+        target = ctx.target or {}
+        if target.get("os") not in PLATFORM:
+            return [error(f"renpy-export builds for macOS, Windows and Linux, not {target.get('id')}")]
+        if not ctx.recipe("renpy"):
+            try:
+                renpy.detect(ctx.game)
+            except renpy.RenpyError as e:
+                return [error(str(e))]
+        return []
+
+    def stage(self, ctx):
         os_ = (ctx.target or {}).get("os")
         if os_ not in PLATFORM:
             ctx.fail(f"renpy-export builds for macOS, Windows and Linux, not {(ctx.target or {}).get('id')}")
@@ -79,7 +91,7 @@ class Plugin:
         self.py = int(info.get("py") or 3)
         root = ctx.game / info["root"] if info.get("root") else ctx.game
         ctx.progress(0.05, "Copying the game")
-        stage = self.stage(ctx, root)
+        stage = self.stage_game(ctx, root)
         assets = ctx.process_assets(stage / "game", "renpy")
         if ctx.assets_mode == "plan":
             return {"summary": "Estimated the advanced options (nothing was built)", "assets": assets}
@@ -100,7 +112,7 @@ class Plugin:
 
     # -- shared files -----------------------------------------------------------------
 
-    def stage(self, ctx, root: Path) -> Path:
+    def stage_game(self, ctx, root: Path) -> Path:
         """game/, renpy/, <name>.py and the other shared files, without saves or logs."""
         stage = ctx.temp / "stage"
         stage.mkdir()
