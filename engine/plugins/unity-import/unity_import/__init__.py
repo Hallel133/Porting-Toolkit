@@ -27,8 +27,18 @@ class Plugin:
                          "features that use them will not work there.")
         recipe = {"engine": "unity", **game.to_dict()}
         saved = ctx.save_recipe("unity", recipe)
-        verdict = ("can move to other platforms with the Unity player of the same version (experimental)"
-                   if game.backend == "mono" else "cannot move without source code (IL2CPP)")
+        drawable = [PLATFORMS[t] for t in PLATFORMS
+                    if t != game.platform and unity.can_draw(game.to_dict(), t) is not False]
+        if game.backend != "mono":
+            verdict = "cannot move without source code (IL2CPP)"
+        elif not drawable:
+            verdict = (f"its code could move, but its shaders are {', '.join(game.shaders['apis'])} only, "
+                       "so other platforms would not draw it")
+        elif game.shaders:
+            verdict = (f"can move to {', '.join(drawable)} with the Unity player of the same version "
+                       "(experimental)")
+        else:
+            verdict = "can move to other platforms with the Unity player of the same version (experimental)"
         ctx.progress(1.0, "Done")
         return {
             "summary": f"Unity {game.version or '?'} {game.backend.upper() if game.backend == 'il2cpp' else 'Mono'} "

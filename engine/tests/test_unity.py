@@ -266,3 +266,70 @@ def test_pkg_reader_keeps_links_inside(tmp_path):
     pkg.write_bytes(xar.build_pkg(xar.cpio_odc([("../escape", 0o100644, b"x"), ("./a/ok", 0o100644, b"x")])))
     assert xar.extract_payload(pkg, tmp_path / "out2", lambda p: True) == 1
     assert not (tmp_path / "escape").exists()
+
+
+# -- shaders ---------------------------------------------------------------------------------
+
+
+def shader_object(platforms: list[int], blob: bytes = b"lz4" * 10) -> bytes:
+    """A Shader's tail as Unity 2022 writes it, after some parsed-form bytes."""
+    import struct
+    n = len(platforms)
+    out = b"parsed form \x05\x00\x00\x00" * 3 + bytes(-len(b"parsed form \x05\x00\x00\x00" * 3) % 4)
+    out += struct.pack(f"<I{n}I", n, *platforms)
+    for _ in range(3):  # offsets, compressedLengths, decompressedLengths: vector<vector<UInt32>>
+        out += struct.pack("<I", n) + b"".join(struct.pack("<II", 1, 7) for _ in range(n))
+    out += struct.pack("<I", len(blob)) + blob + bytes(-len(blob) % 4)
+    return out + struct.pack("<II?", 0, 0, True)  # dependencies, textures, baked
+
+
+def serialized_file(objects: list[tuple[int, bytes]]) -> bytes:
+    """A Unity serialized file (format 22, no type trees)."""
+    import struct
+    classes = sorted({c for c, _ in objects})
+    meta = b"2022.3.62f2\0" + struct.pack("<i?i", 2, False, len(classes))
+    for c in classes:
+        meta += struct.pack("<i?h", c, False, -1) + bytes(16)
+    meta += struct.pack("<i", len(objects))
+    data, table = b"", b""
+    for i, (cid, body) in enumerate(objects):
+        pad = bytes(-(len(meta) + len(table)) % 4)
+        table += pad + struct.pack("<qqIi", i + 1, len(data), len(body), classes.index(cid))
+        data += body + bytes(-len(body) % 8)
+    meta += table + struct.pack("<i", 0) * 3
+    data_off = (48 + len(meta) + 15) & ~15
+    head = struct.pack(">IIII", 0, 0, 22, 0) + bytes(4) + struct.pack(">IqQq", len(meta), data_off + len(data), data_off, 0)
+    return head + meta + bytes(data_off - 48 - len(meta)) + data
+
+
+def test_shader_apis_are_read_from_the_builds_files(tmp_path):
+    data = tmp_path / "Data"
+    data.mkdir()
+    (data / "sharedassets0.assets").write_bytes(serialized_file(
+        [(48, shader_object([14])), (28, b"texture" * 9), (48, shader_object([14, 4]))]))
+    (data / "resources.assets").write_bytes(serialized_file([(48, shader_object([14]))]))
+    (data / "sharedassets0.assets.resS").write_bytes(b"\x00" * 64)
+    r = unity.shader_report(data)
+    assert (r.codes, r.apis, r.shaders, r.unknown) == ([4, 14], ["Direct3D 11/12", "Metal"], 3, 0)
+    assert r.covers("windows") and r.covers("macos") and not r.covers("linux")
+    (data / "resources.assets").write_bytes(serialized_file([(48, b"not a shader tail")]))
+    (data / "sharedassets0.assets").unlink()
+    assert unity.shader_report(data).unknown == 1
+    assert unity.shader_report(tmp_path / "nothing") is None
+
+
+def test_metal_only_games_are_reported_and_warned(tmp_path):
+    from ptk_engine import EngineError  # noqa: F401
+    app = mac_game(tmp_path)
+    data = app / "Contents/Resources/Data"
+    (data / "sharedassets0.assets").write_bytes(serialized_file([(48, shader_object([14]))]))
+    g = unity.detect(app)
+    assert g.shaders["apis"] == ["Metal"] and any("Shaders: Metal only" in n for n in g.notes)
+    r = run(tmp_path, "unity-import", app, "import")
+    assert "would not draw it" in r["summary"]
+    root = unity_install(tmp_path)
+    r = run(tmp_path, "unity-export", app, "export", WINDOWS, {"unity": str(root)}, tmp_path / "win")
+    assert any("Metal only, and Windows needs Direct3D" in w for w in r["warnings"])
+    (data / "sharedassets0.assets").write_bytes(serialized_file([(48, shader_object([14, 4, 18]))]))
+    r = run(tmp_path, "unity-import", app, "import")
+    assert "can move to Windows, Linux" in r["summary"]

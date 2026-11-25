@@ -45,6 +45,8 @@ class UnityGame:
     plugins: list[str] = field(default_factory=list)  # native plugins of the source platform
     apple_services: list[str] = field(default_factory=list)
     app_store: bool = False  # a Mac App Store / Apple Arcade build
+    #: Graphics APIs of the build's shaders (``ShaderReport.to_dict()``), or None.
+    shaders: dict | None = None
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -138,7 +140,29 @@ def _finish(g: UnityGame, data: Path) -> UnityGame:
                        "services (iCloud saves, Game Center, the subscription check) do not exist elsewhere.")
     if g.version is None:
         g.notes.append("The Unity version was not found in globalgamemanagers.")
+    try:
+        report = shader_report(data)
+    except OSError:
+        report = None
+    if report and report.codes:
+        g.shaders = report.to_dict()
+        missing = [NAMES[t] for t in ("windows", "linux", "macos") if not report.covers(t)]
+        if missing:
+            g.notes.append(f"Shaders: {', '.join(report.apis)} only ({report.shaders} shaders). "
+                           f"{' and '.join(missing)} cannot draw them, so objects would show pink or "
+                           "invisible there; only the game's developer can add those graphics APIs.")
     return g
+
+
+NAMES = {"windows": "Windows", "linux": "Linux", "macos": "macOS"}
+
+
+def can_draw(info: dict, target_os: str) -> bool | None:
+    """Whether a target can draw a detected game's shaders (None: not known)."""
+    codes = (info.get("shaders") or {}).get("codes") or []
+    if not codes:
+        return None
+    return bool(set(codes) & TARGET_APIS.get(target_os, set()))
 
 
 # -- the Unity installation that provides the target players ------------------------------
@@ -184,3 +208,219 @@ def player_variation(support: Path, target: str) -> Path | None:
             if n.startswith(p) and "nondevelopment" in n and "mono" in n:
                 return d
     return None
+
+
+# -- which graphics APIs the build's shaders cover -------------------------------------------
+#
+# A Unity build keeps compiled shader code only for the graphics APIs it was
+# built with. Each Shader object (class 48) in the game's serialized files
+# ends with ``platforms`` (ShaderCompilerPlatform values), the per-platform
+# offsets and lengths, and an LZ4 ``compressedBlob``. Player builds usually
+# have no type trees, so the object is not parsed field by field: its tail is
+# matched instead (the counts must agree and the blob must fit the object).
+
+SHADER_CLASS = 48
+#: ShaderCompilerPlatform -> name (Unity 2019.3+).
+SHADER_PLATFORMS = {4: "Direct3D 11/12", 5: "OpenGL ES 2", 8: "Direct3D 11 9.x", 9: "OpenGL ES 3",
+                    11: "PS4", 12: "Xbox One", 14: "Metal", 15: "OpenGL Core", 18: "Vulkan",
+                    19: "Switch", 20: "Xbox One D3D12", 21: "Game Core Xbox One",
+                    22: "Game Core Series X", 23: "PS5", 24: "PS5 NGGC", 25: "WebGPU"}
+#: What each desktop target can draw with (Unity picks the first it supports).
+TARGET_APIS = {"windows": {4, 18, 15}, "linux": {18, 15}, "macos": {14},
+               "web": {9, 25}, "android": {9, 18}}
+
+
+class _Reader:
+    def __init__(self, data: bytes, little: bool):
+        self.d, self.p, self.e = data, 0, "<" if little else ">"
+
+    def u8(self) -> int:
+        self.p += 1
+        return self.d[self.p - 1]
+
+    def _n(self, fmt: str, size: int) -> int:
+        import struct
+        v = struct.unpack_from(self.e + fmt, self.d, self.p)[0]
+        self.p += size
+        return v
+
+    def i16(self) -> int:
+        return self._n("h", 2)
+
+    def i32(self) -> int:
+        return self._n("i", 4)
+
+    def u32(self) -> int:
+        return self._n("I", 4)
+
+    def i64(self) -> int:
+        return self._n("q", 8)
+
+    def cstr(self) -> str:
+        end = self.d.index(b"\0", self.p)
+        s = self.d[self.p:end].decode("utf-8", "replace")
+        self.p = end + 1
+        return s
+
+    def align(self) -> None:
+        self.p = (self.p + 3) & ~3
+
+
+def serialized_objects(path: Path) -> list[tuple[int, int, int]]:
+    """``(class id, absolute offset, size)`` of every object in a Unity
+    serialized file (format 9..22+), read from its header only."""
+    import struct
+    with open(path, "rb") as f:
+        head = f.read(48)
+        if len(head) < 48:
+            return []
+        _meta, _size, version, data_off = struct.unpack(">IIII", head[:16])
+        if not 9 <= version <= 40:
+            return []
+        little = head[16] == 0
+        if version >= 22:
+            meta_size, _fsize, data_off = struct.unpack(">IqQ", head[20:40])
+            start = 48
+        else:
+            meta_size, start = _meta, 20
+        f.seek(start)
+        r = _Reader(f.read(meta_size + 64), little)
+    try:
+        r.cstr()  # unity version
+        r.i32()  # target platform
+        type_tree = bool(r.u8()) if version >= 13 else True
+        classes = []
+        for _ in range(r.i32()):
+            cid = r.i32()
+            if version >= 16:
+                r.u8()
+            if version >= 17:
+                r.i16()
+            if version >= 13:
+                if (version < 16 and cid < 0) or (version >= 16 and cid == 114):
+                    r.p += 16
+                r.p += 16
+            if type_tree:
+                nodes, strings = r.i32(), r.i32()
+                r.p += nodes * (32 if version >= 19 else 24) + strings
+                if version >= 21:
+                    r.p += 4 * r.i32()
+            classes.append(cid)
+        if 7 <= version < 14:
+            r.i32()
+        objects = []
+        for _ in range(r.i32()):
+            if version >= 14:
+                r.align()
+                r.i64()
+            else:
+                r.i32()
+            off = r.i64() if version >= 22 else r.u32()
+            size = r.u32()
+            tid = r.i32()
+            cid = classes[tid] if version >= 16 and 0 <= tid < len(classes) else tid
+            if version < 16:  # the type id is the class id; a u16 copy follows
+                r.p += 2
+            if version < 11:
+                r.p += 2
+            if 11 <= version < 17:
+                r.i16()
+            if version in (15, 16):
+                r.u8()
+            objects.append((cid, data_off + off, size))
+        return objects
+    except (IndexError, ValueError, struct.error):
+        return []
+
+
+def _shader_tail(obj: bytes) -> list[int] | None:
+    """The ``platforms`` of a Shader object, matched from its end."""
+    import struct
+    n_bytes = len(obj)
+
+    def u32(i: int) -> int | None:
+        return struct.unpack_from("<I", obj, i)[0] if i + 4 <= n_bytes else None
+
+    def skip_lists(i: int, count: int, nested: bool) -> int | None:
+        if u32(i) != count:
+            return None
+        i += 4
+        if not nested:
+            return i + 4 * count
+        for _ in range(count):
+            m = u32(i)
+            if m is None or m > 4096:
+                return None
+            i += 4 + 4 * m
+        return i
+
+    best = None
+    for i in range(0, n_bytes - 8, 4):
+        n = u32(i)
+        if not n or n > 12:
+            continue
+        plats = [u32(i + 4 + 4 * k) for k in range(n)]
+        if any(p not in SHADER_PLATFORMS for p in plats) or len(set(plats)) != n:
+            continue
+        for nested in (True, False):
+            j = i + 4 + 4 * n
+            for _ in range(3):  # offsets, compressedLengths, decompressedLengths
+                j = skip_lists(j, n, nested) if j is not None else None
+            if j is None:
+                continue
+            blob = u32(j)
+            if blob is not None and 0 < blob and j + 4 + blob <= n_bytes:
+                end = j + 4 + blob
+                if best is None or end > best[0]:
+                    best = (end, plats)
+    return best[1] if best else None
+
+
+@dataclass
+class ShaderReport:
+    apis: list[str]  # graphics APIs found, by name
+    codes: list[int]  # their ShaderCompilerPlatform values
+    shaders: int  # Shader objects read
+    unknown: int  # Shader objects whose platforms were not found
+
+    def covers(self, target_os: str) -> bool | None:
+        """Whether a target can draw these shaders (None: not known)."""
+        if not self.codes:
+            return None
+        return bool(set(self.codes) & TARGET_APIS.get(target_os, set()))
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+def shader_report(data_dir: Path) -> ShaderReport | None:
+    """The graphics APIs of the Shader objects in a Data folder (None when
+    it has no loose serialized files, e.g. a compressed data.unity3d)."""
+    data_dir = Path(data_dir)
+    files = [p for p in sorted(data_dir.iterdir()) if p.is_file() and p.suffix not in (".resS", ".resource", ".json")
+             and not p.name.startswith(".") and p.name not in ("app.info", "boot.config")] \
+        if data_dir.is_dir() else []
+    files += sorted((data_dir / "Resources").glob("unity_builtin_extra"))
+    codes: set[int] = set()
+    shaders = unknown = 0
+    seen_any = False
+    for path in files:
+        objs = serialized_objects(path)
+        if not objs:
+            continue
+        seen_any = True
+        with open(path, "rb") as f:
+            for cid, off, size in objs:
+                if cid != SHADER_CLASS:
+                    continue
+                shaders += 1
+                f.seek(off)
+                plats = _shader_tail(f.read(size))
+                if plats is None:
+                    unknown += 1
+                else:
+                    codes.update(plats)
+    if not seen_any:
+        return None
+    ordered = sorted(codes)
+    return ShaderReport([SHADER_PLATFORMS[c] for c in ordered], ordered, shaders, unknown)

@@ -81,7 +81,7 @@ the GUI shows an Accept button): Unity's release service gives the version's
 against Unity's published MD5), and `ptk_engine.formats.xar` takes only the
 release Mono player out of the .pkg's gzip'd cpio Payload, without
 installing anything. It is cached in the plugin's cache under
-`players/<version>`. `unity_download=false` turns this off; the error then
+`players/<version>`. The import also reads which graphics APIs the build's shaders were compiled for (from the Shader objects in the Data folder's serialized files) and says which platforms can draw the game; a Mac build is usually Metal only. `unity_download=false` turns this off; the error then
 names the module and gives a `unityhub://<version>/<changeset>` link
 (`unity_lookup=false` skips it). The game's Data goes to `<Name>_Data`
 (Windows, Linux; MonoBleedingEdge inside it on Linux) or

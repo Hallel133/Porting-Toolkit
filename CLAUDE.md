@@ -28,7 +28,7 @@ export PATH="$HOME/.cargo/bin:$PATH"          # cargo is not on the default PATH
 cargo test --workspace                        # 86 Rust tests, starts the real Python engine
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-(cd engine && uv run pytest)                  # 177 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
+(cd engine && uv run pytest)                  # 179 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
 (cd engine && PTK_TOOL_TESTS=1 uv run pytest -k real)       # also runs real FFmpeg encodes
 (cd engine && PTK_GUI_TESTS=1 uv run pytest -k macos_app)   # also opens the wrapper app and checks the page loaded
 cargo run -q -p ptk-cli -- scan fixtures/games/unity-windows
@@ -140,6 +140,10 @@ Owner asked to plan and design new compression algorithms for new platforms and 
 ## Done (2026-11-25, plugin versions and a standalone Unity export)
 - Installed shows one row per plugin id (the copy that runs) with "N versions" folded under it: Use this version (pin, `AppSettings.plugin_versions` id -> folder, passed to `plugin.find` as `pins`), Always use the newest, Remove (installed copies only; `plugins::uninstall` moves to the Trash on macOS). `--view installed` opens that tab.
 - unity-export 1.1.0 no longer needs Unity installed: when no install has the player, it downloads once the version's "Build Support (Mono)" .pkg from download.unity3d.com (URL + MD5 from services.api.unity.com; Windows/Linux modules from the MAC_OS entry, Mac from the LINUX entry) and takes only the release Mono player out of it with the new pure-Python `formats/xar.py` (xar TOC + gzip'd cpio odc; links must stay inside). Needs `accept_unity_terms=true` once (remembered in the plugin cache; the GUI shows "Accept Unity's terms and export"). Cached in `$CACHE/players/<version>`. `unity_download=false` restores the old error. Real run on 2026-11-25 (temp PTK_HOME, owner approved the 182 MB download): The Lost City -> windows-x64 downloaded UnitySetup-Windows-Mono-Support-for-Editor-2022.3.62f2.pkg, MD5 matched, 301 player files taken out, 68 engine assemblies replaced; output 432 MB folder + 238 MB zip with a PE32+ `The Lost City.exe`, UnityPlayer.dll, MonoBleedingEdge, `The Lost City_Data` (no Plugins). **Not run on Windows.** A byte search of the game's .assets found Metal shader text and no DXBC, so it is most likely Metal-only and would draw pink on Windows (heuristic: Unity may LZ4-compress shader blobs).
+
+## Done (2026-11-25, Unity shader check)
+- `formats/unity.py` reads the object table of the Data folder's serialized files (format 9..22, no type trees needed) and, for each Shader (class 48), matches the object's tail (`platforms`, three offset/length lists, LZ4 blob that must fit) to get its ShaderCompilerPlatform values (Metal=14, D3D11=4, Vulkan=18, GLCore=15...). `detect` stores `shaders` and a note; unity-import's summary says which platforms can draw it; unity-export warns definitely when the target cannot (recipes without `shaders` are re-detected).
+- Real games: The Lost City 158 shaders and Sasquatch 272, all parsed, both Metal only. Multi-API builds are covered by synthetic tests only (no such real game on this Mac).
 
 ## Next task
 0. Owner: ask GitHub Support to lift the flag on the Hallel133 account (it hides both repos from the public and disables Actions). Then publish a first entry with `ptk market submit`.

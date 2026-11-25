@@ -66,7 +66,7 @@ class Plugin:
         if os_ not in NAMES:
             ctx.fail(f"unity-export builds for macOS, Windows and Linux, not {(ctx.target or {}).get('id')}")
         info = ctx.recipe("unity")
-        if not info:
+        if not info or "shaders" not in info:  # recipes from before the shader check
             try:
                 info = unity.detect(ctx.game).to_dict()
             except unity.UnityError as e:
@@ -364,7 +364,12 @@ class Plugin:
     @staticmethod
     def warnings(ctx, info: dict, os_: str) -> None:
         src = info.get("platform")
-        if src != os_:
+        drawable = unity.can_draw(info, os_)
+        if drawable is False:
+            apis = ", ".join((info.get("shaders") or {}).get("apis") or [])
+            ctx.warn(f"This build's shaders are {apis} only, and {NAMES[os_]} needs {APIS[os_]}: objects will "
+                     "show pink or invisible. Only the game's developer can add that graphics API.")
+        elif src != os_ and drawable is None:
             ctx.warn(f"Unity builds only carry shaders for their own platform's graphics APIs. This {NAMES[src]} "
                      f"build must also have {APIS[os_]} shaders, or objects will show pink or invisible on "
                      f"{NAMES[os_]}. Test it before sharing.")
