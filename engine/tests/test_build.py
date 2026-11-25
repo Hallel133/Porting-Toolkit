@@ -174,3 +174,23 @@ def test_signing_stamp(tmp_path):
     (app / "Contents" / "MacOS" / "Game").write_bytes(b"changed")
     assert needs_signing(app) and fingerprint(app)
     assert codesign_if_changed(app, calls.append) and len(calls) == 2
+
+
+def test_files_made_after_sync_are_kept_by_seal(tmp_path):
+    g = game(tmp_path)
+    out = tmp_path / "out"
+    b = declare(out, g)
+    b.sync()
+    sig = out / "Game" / "data" / "_CodeSignature" / "CodeResources"
+    sig.parent.mkdir()
+    sig.write_text("signed")
+    (out / "Game.zip").write_text("zip")
+    (out / "Game.zip.ptkindex").write_text("{}")
+    (out / "Game.ptksign").write_text("stamp")
+    b.seal()
+    r = declare(out, g).sync()
+    assert r.removed == [] and sig.is_file() and (out / "Game.zip.ptkindex").is_file()
+    assert (out / "Game.ptksign").is_file()
+    # A new variant rewrites everything and drops what an exporter added.
+    declare(out, g, variant="v2").sync()
+    assert not sig.exists()

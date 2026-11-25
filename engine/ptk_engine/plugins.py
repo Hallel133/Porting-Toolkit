@@ -16,8 +16,10 @@ from .signatures import ENGINE_IDS
 
 PLUGIN_FILE = "plugin.toml"
 SCHEMA_VERSION = 1
-#: Version of the API a plugin is written against (see api.py).
-PLUGIN_API = 1
+#: Version of the API new plugins are written against (see sdk.py).
+PLUGIN_API = 2
+#: Versions that still run. API 1 (a class with run(ctx)) is deprecated.
+SUPPORTED_APIS = (1, 2)
 KINDS = ("import", "export")
 
 ID_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
@@ -130,9 +132,12 @@ def validate_plugin(path: str, known_targets: list[str] | None = None) -> dict:
     authors = p.get("authors", [])
     if not isinstance(authors, list) or not all(isinstance(a, str) for a in authors):
         errors.append("plugin.authors must be a list of names")
-    api = p.get("api", PLUGIN_API)
-    if api != PLUGIN_API:
-        errors.append(f"plugin.api {api!r} is not supported (this ptk supports {PLUGIN_API})")
+    api = p.get("api", 1)
+    if api not in SUPPORTED_APIS:
+        errors.append(f"plugin.api {api!r} is not supported (this ptk supports {', '.join(map(str, SUPPORTED_APIS))})")
+    elif api == 1:
+        warnings.append("plugin API 1 is deprecated: it still runs, but API 2 (ptk_engine.sdk) rebuilds only what "
+                        "changed and can report problems before an export; see docs/plugins.md")
 
     entry = p.get("entry")
     if not isinstance(entry, str) or not ENTRY_RE.match(entry):
@@ -290,7 +295,7 @@ description = "Describe what this plugin {verb}."
 license = "MIT"
 authors = []
 entry = "{module}:Plugin"
-api = 1
+api = 2
 
 [formats]
 {formats}
@@ -320,24 +325,52 @@ build-backend = "hatchling.build"
 packages = ["{module}"]
 """
 
-MODULE = '''\
-"""{name}: a Porting Toolkit {kind} plugin.
+MODULE_EXPORT = '''\
+"""{name}: a Porting Toolkit export plugin (API 2).
 
-Keep the class name in sync with plugin.toml `entry`. The context API is
-described in docs/plugins.md ("Writing a plugin").
+Keep the class name in sync with plugin.toml `entry`. The lifecycle and the
+context API are described in docs/plugins.md ("Writing a plugin").
 """
 
+from ptk_engine.sdk import ExportPlugin, error, warning  # noqa: F401
 
-class Plugin:
-    """Entry point named in plugin.toml."""
 
-    def run(self, ctx):
-        # ctx.game, ctx.project, ctx.output, ctx.cache, ctx.temp: folders
-        # ctx.target: the target being built (export plugins)
-        # ctx.manifest, ctx.settings: the project and `--set key=value`
-        # ctx.progress(0.5, "..."), ctx.log("..."), ctx.fail("...")
-        ctx.progress(1.0, "Nothing to do yet")
-        return {{"outputs": [], "summary": "{name} ran"}}
+class Plugin(ExportPlugin):
+    def check(self, ctx):
+        # Fast and without side effects: what would stop this export?
+        if ctx.game is None:
+            return [error("no game folder")]
+        return []
+
+    def layout(self, ctx, build):
+        # Declare the output; only what changed since the last export is written.
+        build.add_tree(ctx.game, "{name}")
+        build.add_text("{name}/README.txt", "Built with Porting Toolkit\\n")
+        build.artifact("{name}.zip")
+
+    def finish(self, ctx, build):
+        zipped = self.zip(ctx, build, "{name}", "{name}.zip")
+        return {{"outputs": [str(build.root / "{name}"), str(zipped)], "summary": "{name} built"}}
+'''
+
+MODULE_IMPORT = '''\
+"""{name}: a Porting Toolkit import plugin (API 2).
+
+Keep the class name in sync with plugin.toml `entry`. See docs/plugins.md.
+"""
+
+from ptk_engine.sdk import ImportPlugin
+
+
+class Plugin(ImportPlugin):
+    recipe_name = "{module}"
+
+    def detect(self, ctx):
+        # Read the game (ctx.game); return what the export needs to know.
+        return {{"files": sum(1 for p in ctx.game.rglob("*") if p.is_file())}}
+
+    def report(self, ctx, recipe):
+        return {{"summary": f"{{recipe['files']}} files", "title": None}}
 '''
 
 README = """\
@@ -377,7 +410,7 @@ def new_plugin(path: str, kind: str, plugin_id: str | None = None) -> dict:
     files = {
         PLUGIN_FILE: PLUGIN_TOML.format(**values),
         "pyproject.toml": PYPROJECT.format(**values),
-        f"{module}/__init__.py": MODULE.format(**values),
+        f"{module}/__init__.py": (MODULE_IMPORT if kind == "import" else MODULE_EXPORT).format(**values),
         "README.md": README.format(**values),
     }
     folder.mkdir(parents=True, exist_ok=True)

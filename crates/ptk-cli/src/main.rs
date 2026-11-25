@@ -150,6 +150,9 @@ enum Command {
         /// Advanced options: apply them, only estimate the savings (plan), or ignore them
         #[arg(long, value_name = "MODE", default_value = "apply", value_parser = ["apply", "plan", "off"])]
         assets: String,
+        /// Only say what would stop or limit the export (builds nothing)
+        #[arg(long)]
+        check: bool,
         #[arg(long)]
         json: bool,
     },
@@ -450,12 +453,23 @@ fn run(cli: Cli, style: &Style) -> anyhow::Result<ExitCode> {
         Command::Export {
             project,
             targets,
+            game,
+            plugin,
+            set,
+            check: true,
+            json,
+            ..
+        } => convert::check(style, &project, targets, game, plugin, set, json),
+        Command::Export {
+            project,
+            targets,
             output,
             game,
             plugin,
             set,
             open,
             assets,
+            check: false,
             json,
         } => convert::export(
             style,

@@ -146,6 +146,86 @@ pub struct RunResult {
     /// What the advanced options did to the game's files (exports).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assets: Option<Box<AssetReport>>,
+    /// How much of the output an API 2 exporter had to write.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build: Option<BuildStats>,
+}
+
+/// What an incremental export wrote (`ptk_engine.build`).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BuildStats {
+    #[serde(default)]
+    pub written: u64,
+    #[serde(default)]
+    pub unchanged: u64,
+    #[serde(default)]
+    pub removed: u64,
+    #[serde(default)]
+    pub cloned: u64,
+    #[serde(default)]
+    pub rebuilt: bool,
+}
+
+impl BuildStats {
+    pub fn describe(&self) -> String {
+        if self.rebuilt {
+            format!("{} files written", self.written)
+        } else {
+            format!(
+                "{} files written, {} unchanged, {} removed",
+                self.written, self.unchanged, self.removed
+            )
+        }
+    }
+}
+
+/// Something that stops (`error`) or limits (`warning`) an export, from
+/// the export plugin's `check` step (plugin API 2).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Problem {
+    pub message: String,
+    #[serde(default = "error_severity")]
+    pub severity: String,
+    /// A one-click fix: set `setting` to `value`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<ProblemAction>,
+}
+
+fn error_severity() -> String {
+    "error".into()
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProblemAction {
+    pub setting: String,
+    #[serde(default = "true_value")]
+    pub value: String,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+}
+
+fn true_value() -> String {
+    "true".into()
+}
+
+/// The result of [`check`].
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CheckResult {
+    #[serde(default)]
+    pub plugin_id: String,
+    #[serde(default)]
+    pub problems: Vec<Problem>,
+    /// No errors (warnings may remain).
+    #[serde(default = "yes")]
+    pub ok: bool,
+    /// The plugin uses API 1, which has no check step.
+    #[serde(default)]
+    pub api1: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 /// The asset pipeline's report (`ptk_engine.media`): sizes before and
@@ -435,14 +515,21 @@ fn pick(cands: Vec<Candidate>, wanted: Option<&str>, what: &str) -> Result<Candi
     }
 }
 
-/// Exports a project for one target.
-pub fn export(
+struct ExportSetup {
+    manifest: Manifest,
+    target: Target,
+    plugin: Candidate,
+    folders: Value,
+    settings: BTreeMap<String, String>,
+    plan: bool,
+}
+
+fn setup_export(
     engine: &mut EngineClient,
     project: &Path,
     target_id: &str,
     opts: &ExportOptions,
-    on_event: &mut dyn FnMut(Event),
-) -> Result<RunResult> {
+) -> Result<ExportSetup> {
     let manifest = Manifest::load(project)?;
     let registry = TargetRegistry::load_default().0;
     let target = registry
@@ -475,6 +562,72 @@ pub fn export(
     if opts.assets != AssetsMode::Apply {
         settings.insert("assets".into(), opts.assets.as_str().into());
     }
+    Ok(ExportSetup {
+        manifest,
+        target,
+        plugin,
+        folders,
+        settings,
+        plan,
+    })
+}
+
+/// Runs only the export plugin's `check` step (plugin API 2): what would
+/// stop or limit this export, without building anything.
+pub fn check(
+    engine: &mut EngineClient,
+    project: &Path,
+    target_id: &str,
+    opts: &ExportOptions,
+) -> Result<CheckResult> {
+    let ExportSetup {
+        manifest,
+        target,
+        plugin,
+        folders,
+        settings,
+        ..
+    } = setup_export(engine, project, target_id, opts)?;
+    let registry = TargetRegistry::load_default().0;
+    let raw = engine.call(
+        "plugin.check",
+        json!({
+            "plugin": plugin.validation.path,
+            "kind": "export",
+            "engine": manifest.game.engine,
+            "target": json!({
+                "id": target.id, "name": target.name, "os": target.os, "arch": target.arch, "media": target.media,
+            }),
+            "manifest": serde_json::to_value(&manifest).expect("manifest serializes"),
+            "settings": settings,
+            "folders": folders,
+            "cache_root": paths::data_dir().join("cache"),
+            "known_targets": registry.ids(),
+        }),
+    )?;
+    let mut result: CheckResult = serde_json::from_value(raw["result"].clone())
+        .map_err(|e| Error::Invalid(format!("unexpected check result: {e}")))?;
+    result.api1 = raw["result"]["api"].as_u64() == Some(1);
+    result.plugin_id = plugin.id().to_owned();
+    Ok(result)
+}
+
+/// Exports a project for one target.
+pub fn export(
+    engine: &mut EngineClient,
+    project: &Path,
+    target_id: &str,
+    opts: &ExportOptions,
+    on_event: &mut dyn FnMut(Event),
+) -> Result<RunResult> {
+    let ExportSetup {
+        manifest,
+        target,
+        plugin,
+        folders,
+        settings,
+        plan,
+    } = setup_export(engine, project, target_id, opts)?;
     let result = run(
         engine,
         &plugin,

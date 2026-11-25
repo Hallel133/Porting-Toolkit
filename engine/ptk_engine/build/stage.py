@@ -231,9 +231,9 @@ class Build:
             pass
         return {}  # an older marker: rebuild once
 
-    def _save_state(self, outs: dict[str, list | None], fps: dict[str, list]) -> None:
+    def _save_state(self, outs: dict[str, list | None], fps: dict[str, list], extras: list[str] | None = None) -> None:
         state = {"version": STATE_VERSION, "note": "Made by Porting Toolkit. This folder is updated on each export.",
-                 "variant": self.variant, "artifacts": sorted(self.artifacts),
+                 "variant": self.variant, "artifacts": sorted(self.artifacts), "extras": sorted(extras or []),
                  "entries": {k: {"fp": fps[k], "out": outs.get(k)} for k in sorted(fps)}}
         tmp = self.state_path.with_name(STATE_FILE + ".tmp")
         tmp.write_text(json.dumps(state, indent=0), encoding="utf-8")
@@ -265,6 +265,19 @@ class Build:
             parts = PurePosixPath(a).parts
             for i in range(1, len(parts)):
                 dirs.add("/".join(parts[:i]))
+        # Sidecars of zips and signed apps, and files an exporter made after
+        # the last sync inside declared folders (code signatures): kept while
+        # their folder is still part of the output.
+        keep |= {f"{a}.ptkindex" for a in self.artifacts}
+        keep |= {f"{d}.ptksign" for d in dirs}
+        if state.get("variant") == self.variant:
+            declared_dirs = set(dirs)
+            for x in state.get("extras", []):
+                parts = PurePosixPath(x).parts
+                ancestors = ["/".join(parts[:i]) for i in range(1, len(parts))]
+                if any(a in declared_dirs for a in ancestors):
+                    keep.add(x)
+                    dirs.update(ancestors)
 
         # Remove what is no longer declared (deepest first).
         for dirpath, dirnames, filenames in os.walk(self.root, topdown=False):
@@ -331,9 +344,18 @@ class Build:
 
     def seal(self) -> None:
         """Records the output as it is now, after an exporter changed files
-        in place (re-encoded media, patched files), so the next ``sync`` sees
-        them as up to date. Changes after this are found by their dates."""
+        in place (re-encoded media, patched files, code signatures), so the
+        next ``sync`` sees them as up to date. Files the exporter added
+        inside declared folders are kept as "extras". Changes after this are
+        found by their dates."""
         if self.report is None:
             raise BuildError("seal() before sync()")
         outs = {rel: _out_fp(self.root / rel) for rel in self.entries}
-        self._save_state(outs, self._fps)
+        skip = {STATE_FILE, STATE_FILE + ".tmp"} | self.artifacts | {f"{a}.ptkindex" for a in self.artifacts}
+        extras = []
+        for dirpath, dirnames, filenames in os.walk(self.root):
+            for name in filenames:
+                rel = (Path(dirpath) / name).relative_to(self.root).as_posix()
+                if rel not in self.entries and rel not in skip and not rel.endswith(".ptksign"):
+                    extras.append(rel)
+        self._save_state(outs, self._fps, extras)

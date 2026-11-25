@@ -28,7 +28,7 @@ export PATH="$HOME/.cargo/bin:$PATH"          # cargo is not on the default PATH
 cargo test --workspace                        # 88 Rust tests, starts the real Python engine
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-(cd engine && uv run pytest)                  # 188 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
+(cd engine && uv run pytest)                  # 193 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
 (cd engine && PTK_TOOL_TESTS=1 uv run pytest -k real)       # also runs real FFmpeg encodes
 (cd engine && PTK_GUI_TESTS=1 uv run pytest -k macos_app)   # also opens the wrapper app and checks the page loaded
 cargo run -q -p ptk-cli -- scan fixtures/games/unity-windows
@@ -152,6 +152,11 @@ Owner asked to plan and design new compression algorithms for new platforms and 
 - `engine/ptk_engine/build/`: `Build` (declare output entries, `sync()` writes only new/changed ones via APFS `clonefile` (ctypes; `PTK_NO_CLONE=1` or other volumes fall back to copy2), removes undeclared ones, JSON state in `.ptk-output`, refuses foreign folders, rebuilds folders with the old text marker once; `seal()` after in-place edits; `variant` rewrites all), `zip_dir` (hand-written deterministic zip; reuses unchanged members' raw bytes from the previous zip via `<zip>.ptkindex`, parallel deflate, stores already-compressed types, zip64), `codesign_if_changed` (`.ptksign` stamp).
 - `ctx.zip_dir` now uses it (v1 plugins get incremental zips for free); `ctx.build()` makes a `Build` whose variant covers options/target/settings/plugin version; `ctx.process_assets(root, profile, build=)` encodes from the game's original file (`source_of`), memoizes hashes and probes (`$MEDIA/memo.json`) and leaves unchanged results in place.
 - `tools/bench_export.py`: synthetic 563 MB game, old way 6.4 / 6.1 / 5.9 s vs new 0.53 / 0.31 / 0.26 s (first / unchanged / one file); The Lost City Data (370 MB): 8.7 / 8.3 / 8.4 s vs 2.5 / 0.23 / 0.25 s. Zip64 (>4 GB) is written but untested. Owner's disk has ~6 GB free: clean scratch outputs.
+
+## Done (2026-11-25, plugin API 2, plan phase C)
+- `engine/ptk_engine/sdk.py`: `ExportPlugin` (check → prepare → layout → sync → finish → seal; `media_profile`, `variant`, helpers `media()`/`zip()`, `estimate()` for assets=plan) and `ImportPlugin` (detect → report; recipe saved by the base). `Problem(message, severity, action={setting,value,label,url})`; errors raise `ProblemsError`, which the host sends as `problems` with the error (RPC error data too).
+- `plugins.py`: `PLUGIN_API = 2`, `SUPPORTED_APIS = (1, 2)`, API 1 validates with a deprecation warning; `plugin.new` writes API 2 skeletons. `Build.seal()` keeps files made after sync (code signatures) as "extras", zip `.ptkindex` and app `.ptksign` sidecars survive syncs.
+- RPC `plugin.check` (host `phase = "check"`, no `$OUTPUT`); Rust `convert::check` → `CheckResult{problems, ok, api1}`; `ptk export --check [--json]`; `RunResult.build` (`BuildStats`). GUI Export page runs checks in the background (key: project + targets; cleared after an export or a fix), shows problems under each exporter badge with the fix button (`App::apply_setting`). docs/plugins.md has the API 2 guide.
 
 ## Next task
 0. Owner: ask GitHub Support to lift the flag on the Hallel133 account (it hides both repos from the public and disables Actions). Then publish a first entry with `ptk market submit`.

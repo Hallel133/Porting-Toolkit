@@ -192,17 +192,76 @@ sign them with a Developer ID and notarize them.
 
 ## Writing a plugin
 
-The entry class gets a context and returns a dict:
+Plugins use **API 2** (`api = 2` in `plugin.toml`): subclass a base class from
+`ptk_engine.sdk` and fill in its steps. `ptk plugin new` writes a working
+skeleton.
 
 ```python
-class Plugin:
-    def run(self, ctx):
-        ctx.progress(0.1, "Reading the game")
-        data = (ctx.game / "data.bin").read_bytes()
-        out = ctx.clean_dir(ctx.output)          # only folders ptk made are wiped
-        ctx.write_bytes(out / "game.bin", data)
-        return {"outputs": [str(out)], "summary": "Built it", "notes": ["…"]}
+from ptk_engine.sdk import ExportPlugin, error, warning
+
+
+class Plugin(ExportPlugin):
+    media_profile = "html5"          # rules for the advanced options (or None)
+
+    def check(self, ctx):            # fast, writes nothing
+        if not (ctx.game / "index.html").is_file():
+            return [error("no index.html in the game folder")]
+        if not ctx.setting("templates"):
+            return [error("the export templates are missing",
+                          {"setting": "templates", "value": "/path", "label": "Choose templates"})]
+        return []
+
+    def prepare(self, ctx):          # downloads, tools (may be slow)
+        self.runtime = ctx.download("https://example.org/runtime.zip", sha256="…")
+
+    def layout(self, ctx, build):    # declare the output; nothing is written yet
+        build.add_tree(ctx.game, "Game", skip=lambda p: p.name == ".DS_Store")
+        build.add_file(self.runtime, "Game/runtime.zip")
+        build.add_text("Game/README.txt", "Built with Porting Toolkit\n")
+        build.artifact("Game.zip")    # made in finish(): kept, not checked
+
+    def finish(self, ctx, build):    # after the sync: in-place steps and the result
+        assets = self.media(ctx, build, "Game", self.media_profile)
+        zipped = self.zip(ctx, build, "Game", "Game.zip")
+        return {"outputs": [str(build.root / "Game"), str(zipped)], "summary": "Built it", "assets": assets}
 ```
+
+```
+check ──▶ prepare ──▶ layout ──▶ [sync: write only what changed] ──▶ finish ──▶ [seal]
+  │
+  └── also run alone: `ptk export --check`, and the app's Export page
+```
+
+- **Incremental output.** Between `layout` and `finish` the base class syncs
+  `$OUTPUT` with what you declared (`ptk_engine.build.Build`). Unchanged entries
+  are not written again, new and changed ones are cloned (APFS copy-on-write on
+  macOS, a copy elsewhere), and entries you no longer declare are removed. Files
+  you change in place in `finish` (plists, re-encoded media, code signatures) are
+  recorded afterwards, so the next export leaves them alone too. Changing the
+  project's options, the target, the settings or the plugin's version rewrites
+  everything; `variant(ctx)` adds anything else that should.
+- **`build`:** `add_tree(src, dest, skip=, links=)`, `add_file(src, dest, mode=)`,
+  `add_bytes` / `add_text(dest, …)`, `add_link(dest, target)`, `add_dir`,
+  `executable(dest)`, `remove(prefix)`, `artifact(dest)`, `source_of(rel)`,
+  `path(rel)`.
+- **`check` problems** have a message, a severity (`error` stops the export,
+  `warning` is shown) and an optional one-click fix `{"setting", "value",
+  "label", "url"}`, which the app shows as a button that sets that plugin setting.
+- **Helpers:** `self.media(ctx, build, folder, profile)` applies the advanced
+  options, reading the game's own files, so a re-export re-encodes nothing;
+  `self.zip(ctx, build, folder, name)` makes a zip that reuses the unchanged
+  members of the previous one; `ptk_engine.build.codesign_if_changed(app, ctx.run)`
+  signs a macOS app only when it changed.
+
+An **import** plugin subclasses `ImportPlugin`: `detect(ctx)` returns the
+recipe (saved as `recipes/<recipe_name>.json`) and `report(ctx, recipe)`
+returns `summary`, `title`, `engine_version` and `warnings`.
+
+**API 1** (a class with `run(ctx)` that returns the result dict) still runs.
+Validation warns that it is deprecated, and `ptk export --check` reports no
+problems for it. Moving to API 2 is usually: the checks at the top of `run`
+→ `check`; `clean_dir` + `copy_tree` → `build.add_tree` in `layout`; the rest →
+`finish`.
 
 | `ctx.` | |
 |---|---|
@@ -219,7 +278,8 @@ class Plugin:
 | `process_assets(root, profile)` | Applies the project's advanced options to the files under `root` (your copy in `output`) and returns a report for the result's `assets` key; `profile` is the engine's rules (`html5`, `rpgmaker-mv`, `rpgmaker-mz`, `renpy`, `love`, `rgss`, `godot`) |
 | `assets_mode` | `apply` (default), `plan` (only estimate: build nothing, return the report) or `off` |
 | `tool(id)`, `toolbox` | Path of a compression tool (`ffmpeg`, `cwebp`, `oxipng`, ...): installed first, then a pinned download |
-| `zip_dir(src, dest, executables)` | A reproducible zip (sorted, 0755 for programs) |
+| `zip_dir(src, dest, executables)` | A reproducible zip (sorted, 0755 for programs) that reuses the unchanged members of the previous zip at `dest` |
+| `build(root=None, variant="")` | An incremental output folder (`ptk_engine.build.Build`); API 2 plugins get one from the base class |
 
 Result keys: `outputs` (paths), `summary`, `notes`, `warnings`, `open` (the
 main file, e.g. the `.app`), `serve` (a folder to serve for web builds),
@@ -271,7 +331,7 @@ description = "Recompresses textures to ASTC for Apple GPUs."
 license = "MIT"                   # SPDX id
 authors = ["you"]
 entry = "tex_export:Plugin"       # module:Class
-api = 1                           # plugin API version
+api = 2                           # plugin API version (1 still runs, deprecated)
 
 [formats]
 inputs = []                       # import: engine ids it reads (unity, godot, ...)

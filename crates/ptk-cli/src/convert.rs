@@ -88,6 +88,91 @@ fn print_result(style: &Style, r: &RunResult) {
     if let Some(a) = &r.assets {
         print_assets(style, a);
     }
+    if let Some(b) = &r.build {
+        println!("  {}", style.dim(format!("output: {}", b.describe())));
+    }
+}
+
+/// `ptk export --check`: the plugin's check step for each target.
+pub fn check(
+    style: &Style,
+    project: &Path,
+    targets: Vec<String>,
+    game: Option<PathBuf>,
+    plugin: Option<String>,
+    set: Vec<String>,
+    json: bool,
+) -> anyhow::Result<ExitCode> {
+    let manifest = Manifest::load(project)?;
+    let targets = if targets.is_empty() {
+        manifest.targets.clone()
+    } else {
+        targets
+    };
+    if targets.is_empty() {
+        bail!("no targets: pass --target ID (see `ptk targets`)");
+    }
+    let opts = ExportOptions {
+        game,
+        plugin,
+        settings: convert::parse_settings(&set)?,
+        ..Default::default()
+    };
+    let mut engine = EngineClient::start()?;
+    let mut all = serde_json::Map::new();
+    let mut blocked = false;
+    for t in &targets {
+        match convert::check(&mut engine, project, t, &opts) {
+            Ok(r) => {
+                blocked |= !r.ok;
+                if !json {
+                    let head = if r.ok { style.ok() } else { style.fail() };
+                    let note = if r.api1 {
+                        " (API 1 plugin: no checks)".to_string()
+                    } else if r.problems.is_empty() {
+                        " ready".to_string()
+                    } else {
+                        String::new()
+                    };
+                    println!("{head} {} {}{note}", style.cyan(t), style.dim(&r.plugin_id));
+                    for p in &r.problems {
+                        let mark = if p.severity == "error" {
+                            style.fail()
+                        } else {
+                            style.warn()
+                        };
+                        println!("  {mark} {}", p.message);
+                        if let Some(a) = &p.action {
+                            println!(
+                                "    {}",
+                                style.dim(format!(
+                                    "fix: {} (--set {}={})",
+                                    a.label, a.setting, a.value
+                                ))
+                            );
+                        }
+                    }
+                }
+                all.insert(t.clone(), serde_json::to_value(&r)?);
+            }
+            Err(e) => {
+                blocked = true;
+                if !json {
+                    eprintln!("{} {t}: {e}", style.fail());
+                }
+                all.insert(t.clone(), serde_json::json!({"error": e.to_string()}));
+            }
+        }
+    }
+    engine.shutdown()?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&all)?);
+    }
+    Ok(if blocked {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    })
 }
 
 pub fn print_assets(style: &Style, a: &AssetReport) {

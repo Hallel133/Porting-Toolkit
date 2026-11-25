@@ -33,6 +33,11 @@ def main() -> int:
         module = importlib.import_module(module_name)
         plugin = getattr(module, class_name)()
         ctx = api.Context(request)
+        if request.get("phase") == "check":
+            check = getattr(plugin, "check_result", None)
+            result = check(ctx) if check else {"problems": [], "ok": True, "api": 1}
+            api._emit("result", result=result)
+            return 0
         result = plugin.run(ctx) or {}
         if not isinstance(result, dict):
             raise api.PluginError("the plugin returned something other than a dict")
@@ -41,7 +46,8 @@ def main() -> int:
         api._emit("result", result=result)
         return 0
     except api.PluginError as e:
-        api._emit("error", message=str(e), denied=isinstance(e, api.PermissionDenied))
+        problems = [p.to_dict() for p in getattr(e, "problems", [])]
+        api._emit("error", message=str(e), denied=isinstance(e, api.PermissionDenied), problems=problems)
         return 1
     except Exception as e:  # noqa: BLE001 - report everything to the runtime
         traceback.print_exc(file=sys.stderr)

@@ -1025,6 +1025,11 @@ impl App {
         if self.plugins.is_none() && self.busy.is_none() {
             self.refresh_plugins(ui.ctx());
         }
+        if self.plugins.is_some() {
+            self.refresh_export_checks(ui.ctx());
+        }
+        let checks = self.export_checks.clone();
+        let mut fix: Option<(String, String)> = None;
         // Export plugins that take this engine, newest copy of each id first
         // (an old installed copy never hides a newer built-in one).
         let for_engine: Vec<ptk_core::plugins::ListedPlugin> = match &self.plugins {
@@ -1137,7 +1142,44 @@ impl App {
                                 match plugin {
                                     Some((pname, builtin)) => {
                                         let tag = if *builtin { "built-in" } else { "installed" };
-                                        badge(ui, &format!("{pname} · {tag}"), GREEN);
+                                        let problems = match checks.get(id) {
+                                            Some(Ok(c)) => c.problems.clone(),
+                                            _ => Vec::new(),
+                                        };
+                                        ui.vertical(|ui| {
+                                            let blocked =
+                                                problems.iter().any(|p| p.severity == "error");
+                                            badge(
+                                                ui,
+                                                &format!("{pname} · {tag}"),
+                                                if blocked { WARN } else { GREEN },
+                                            );
+                                            for p in &problems {
+                                                let (mark, color) = if p.severity == "error" {
+                                                    ("✖", ERROR)
+                                                } else {
+                                                    ("▲", WARN)
+                                                };
+                                                ui.label(
+                                                    RichText::new(format!("{mark} {}", p.message))
+                                                        .size(12.0)
+                                                        .color(color),
+                                                );
+                                                if let Some(a) = &p.action {
+                                                    ui.horizontal(|ui| {
+                                                        if ui.small_button(&a.label).clicked() {
+                                                            fix = Some((
+                                                                a.setting.clone(),
+                                                                a.value.clone(),
+                                                            ));
+                                                        }
+                                                        if let Some(url) = &a.url {
+                                                            ui.hyperlink_to("Read first", url);
+                                                        }
+                                                    });
+                                                }
+                                            }
+                                        });
                                     }
                                     None if !possible.is_empty() => {
                                         // The installed exporters cover this engine,
@@ -1295,6 +1337,9 @@ impl App {
                 });
             }
         });
+        if let Some((k, v)) = fix {
+            self.apply_setting(&k, &v);
+        }
         if let Some(p) = &mut self.project {
             if let Some(t) = add {
                 if !p.manifest.targets.contains(&t) {
@@ -1354,9 +1399,17 @@ impl App {
                             badge(ui, target, LIGHT_BLUE);
                         });
                         ui.label(
-                            RichText::new(format!("{} {}", r.plugin_name, r.plugin_version))
-                                .size(12.0)
-                                .color(TEXT_FAINT),
+                            RichText::new(match &r.build {
+                                Some(b) => format!(
+                                    "{} {} · {}",
+                                    r.plugin_name,
+                                    r.plugin_version,
+                                    b.describe()
+                                ),
+                                None => format!("{} {}", r.plugin_name, r.plugin_version),
+                            })
+                            .size(12.0)
+                            .color(TEXT_FAINT),
                         );
                         for w in &r.warnings {
                             ui.label(RichText::new(format!("⚠ {w}")).color(WARN));

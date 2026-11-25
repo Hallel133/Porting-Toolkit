@@ -5,7 +5,7 @@
 //! Long work (engine calls, hashing, packing) runs on a thread and reports
 //! back through a channel; the thread wakes the UI with `request_repaint`.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Duration, Instant};
@@ -261,6 +261,8 @@ pub enum Msg {
     /// Progress of a running plugin: fraction (if known) and a status line.
     PluginProgress(Option<f64>, String),
     Exported(Vec<(String, Result<RunResult, String>)>),
+    /// The export plugins' check step, per target, and what it was run for.
+    Checked(String, Vec<(String, Result<convert::CheckResult, String>)>),
     /// A submission was planned (nothing published yet).
     SubmitPlanned(Result<ptk_core::submit::SubmitPlan, String>),
     /// A submission finished: the pull request's URL.
@@ -335,6 +337,10 @@ pub struct App {
     pub plugin_validation: Option<Result<Validation, String>>,
     /// The plugin folder whose Uninstall was clicked once (a second click removes it).
     pub confirm_remove: Option<String>,
+    /// The export plugins' check step for the open project, per target.
+    pub export_checks: std::collections::BTreeMap<String, Result<convert::CheckResult, String>>,
+    /// What `export_checks` was computed for (project, targets, settings).
+    pub export_checks_for: Option<String>,
     check_plugin_on_start: bool,
     pub pending: Option<PendingInstall>,
 
@@ -456,6 +462,8 @@ impl App {
             plugin_kind_export: false,
             plugin_validation: None,
             confirm_remove: None,
+            export_checks: Default::default(),
+            export_checks_for: None,
             check_plugin_on_start: config.check_plugin.is_some(),
             pending: None,
             settings_tab: SettingsTab::Defaults,
@@ -1050,6 +1058,69 @@ impl App {
     }
 
     /// Exports the open project for `targets`, one after the other.
+    fn export_settings_map(&self) -> Result<BTreeMap<String, String>, String> {
+        let lines: Vec<String> = self
+            .export_settings
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .map(str::to_owned)
+            .collect();
+        convert::parse_settings(&lines).map_err(|e| e.to_string())
+    }
+
+    /// Runs the export plugins' check step in the background when the
+    /// project, its targets or the plugin settings changed.
+    pub fn refresh_export_checks(&mut self, ctx: &egui::Context) {
+        let (Some(p), None) = (&self.project, &self.busy) else {
+            return;
+        };
+        let Ok(settings) = self.export_settings_map() else {
+            return;
+        };
+        let targets = p.saved.targets.clone();
+        // Settings are not part of the key, so typing does not start a check
+        // per letter; a fix button and every export clear the key instead.
+        let key = format!("{}|{:?}", p.dir.display(), targets);
+        if self.export_checks_for.as_deref() == Some(key.as_str()) || targets.is_empty() {
+            return;
+        }
+        self.export_checks_for = Some(key.clone());
+        let dir = p.dir.clone();
+        let opts = convert::ExportOptions {
+            settings,
+            ..Default::default()
+        };
+        self.spawn(ctx, "Checking exports", move |_| {
+            let mut out = Vec::new();
+            match EngineClient::start() {
+                Err(e) => out.extend(targets.into_iter().map(|t| (t, Err(e.to_string())))),
+                Ok(mut engine) => {
+                    for t in targets {
+                        let r =
+                            convert::check(&mut engine, &dir, &t, &opts).map_err(|e| e.to_string());
+                        out.push((t, r));
+                    }
+                    let _ = engine.shutdown();
+                }
+            }
+            Msg::Checked(key, out)
+        });
+    }
+
+    /// A problem's one-click fix: sets `key=value` in the plugin settings.
+    pub fn apply_setting(&mut self, key: &str, value: &str) {
+        let mut lines: Vec<String> = self
+            .export_settings
+            .lines()
+            .filter(|l| l.split_once('=').map(|(k, _)| k.trim()) != Some(key))
+            .map(str::to_owned)
+            .collect();
+        lines.push(format!("{key}={value}"));
+        self.export_settings = lines.join("\n") + "\n";
+        self.export_checks_for = None;
+    }
+
     pub fn export_targets(
         &mut self,
         ctx: &egui::Context,
@@ -1387,8 +1458,14 @@ impl App {
                 Msg::Poster(url, r) => {
                     self.posters.insert(url, r.ok());
                 }
+                Msg::Checked(key, results) => {
+                    if self.export_checks_for.as_deref() == Some(key.as_str()) {
+                        self.export_checks = results.into_iter().collect();
+                    }
+                }
                 Msg::Exported(results) => {
                     self.plugin_progress = None;
+                    self.export_checks_for = None;
                     let ok = results.iter().filter(|(_, r)| r.is_ok()).count();
                     let (text, kind) = if ok == results.len() {
                         (format!("Exported {ok} build(s)"), ToastKind::Ok)

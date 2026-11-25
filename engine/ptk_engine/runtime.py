@@ -136,6 +136,7 @@ def run_plugin(params: dict, notify: Callable[[str, dict], None]) -> dict:
         "target": params.get("target"),
         "manifest": params.get("manifest"),
         "settings": params.get("settings") or {},
+        "phase": params.get("phase") or "run",
         "folders": folders,
         "permissions": {
             "write": perms.get("write", []),
@@ -194,7 +195,9 @@ def run_plugin(params: dict, notify: Callable[[str, dict], None]) -> dict:
         tail = " / ".join(list(stderr_tail)[-3:])
         raise EngineError(f"plugin {info['id']} stopped without a result (exit {proc.returncode}){': ' + tail if tail else ''}")
     if outcome["type"] == "error":
-        raise EngineError(f"{info['name']}: {outcome.get('message')}")
+        err = EngineError(f"{info['name']}: {outcome.get('message')}")
+        err.problems = outcome.get("problems") or []
+        raise err
     return {
         "plugin": {**request["plugin"], "builtin": is_builtin(folder)},
         "result": outcome.get("result") or {},

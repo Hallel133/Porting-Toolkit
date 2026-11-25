@@ -68,6 +68,7 @@ class Server:
             "plugin.new": self.plugin_new,
             "plugin.find": self.plugin_find,
             "plugin.run": self.plugin_run,
+            "plugin.check": self.plugin_check,
             "tools.status": self.tools_status,
             "tools.install": self.tools_install,
             "shutdown": self.shutdown,
@@ -105,7 +106,8 @@ class Server:
         except RpcError as e:
             return self.error(req_id, e.code, e.message, e.data)
         except EngineError as e:
-            return self.error(req_id, ENGINE_ERROR, str(e))
+            problems = getattr(e, "problems", None)
+            return self.error(req_id, ENGINE_ERROR, str(e), {"problems": problems} if problems else None)
         except Exception as e:  # noqa: BLE001 - report, keep serving
             traceback.print_exc(file=sys.stderr)
             return self.error(req_id, INTERNAL_ERROR, f"internal engine error: {e}")
@@ -182,6 +184,15 @@ class Server:
         if not isinstance(params.get("folders"), dict):
             raise RpcError(INVALID_PARAMS, "missing or invalid parameter 'folders'")
         return run_plugin(params, self.notify)
+
+    def plugin_check(self, params: dict) -> dict:
+        """Runs only the plugin's ``check`` step: what would stop or limit
+        this export, without building anything."""
+        _require(params, "plugin")
+        if not isinstance(params.get("folders"), dict):
+            raise RpcError(INVALID_PARAMS, "missing or invalid parameter 'folders'")
+        folders = {k: v for k, v in params["folders"].items() if k != "$OUTPUT"}
+        return run_plugin({**params, "folders": folders, "phase": "check"}, self.notify)
 
     def plugin_new(self, params: dict) -> dict:
         plugin_id = params.get("id")
