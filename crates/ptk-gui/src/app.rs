@@ -290,6 +290,8 @@ pub struct Config {
     pub view: Option<View>,
     /// `--view installed`: the Marketplace's Installed tab.
     pub installed_tab: bool,
+    /// `--plugin PATH`: check this plugin folder once the list is loaded.
+    pub check_plugin: Option<PathBuf>,
     pub project: Option<PathBuf>,
     pub game: Option<PathBuf>,
     /// Start the job of the first view (scan, doctor, plugin list).
@@ -331,6 +333,9 @@ pub struct App {
     pub plugin_new_dir: String,
     pub plugin_kind_export: bool,
     pub plugin_validation: Option<Result<Validation, String>>,
+    /// The plugin folder whose Uninstall was clicked once (a second click removes it).
+    pub confirm_remove: Option<String>,
+    check_plugin_on_start: bool,
     pub pending: Option<PendingInstall>,
 
     pub settings_tab: SettingsTab,
@@ -442,10 +447,16 @@ impl App {
             verify_result: None,
             doctor: None,
             plugins: None,
-            plugin_dir: String::new(),
+            plugin_dir: config
+                .check_plugin
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default(),
             plugin_new_dir: String::new(),
             plugin_kind_export: false,
             plugin_validation: None,
+            confirm_remove: None,
+            check_plugin_on_start: config.check_plugin.is_some(),
             pending: None,
             settings_tab: SettingsTab::Defaults,
             market_tab: if config.installed_tab {
@@ -1425,7 +1436,12 @@ impl App {
                     }
                     Err(e) => self.notify(e, ToastKind::Error),
                 },
-                Msg::Plugins(r) => self.plugins = Some(r),
+                Msg::Plugins(r) => {
+                    self.plugins = Some(r);
+                    if std::mem::take(&mut self.check_plugin_on_start) {
+                        self.validate_plugin(ctx);
+                    }
+                }
                 Msg::Validated(r) => self.plugin_validation = Some(r),
                 Msg::PluginCreated(r) => match r {
                     Ok(c) => {

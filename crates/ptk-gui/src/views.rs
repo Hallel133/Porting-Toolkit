@@ -104,6 +104,62 @@ fn newest_copies(
     out
 }
 
+/// What the Installed tab may do with one copy of a plugin.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum PluginState {
+    /// Ships with Porting Toolkit: nothing to install or delete.
+    BuiltIn,
+    /// In the installed-plugins folder: it can be uninstalled.
+    Installed,
+    /// A folder elsewhere whose id is already here: installing it replaces
+    /// (or adds a version next to) the copy that runs now.
+    Replaces { running: String, newer: bool },
+    /// Not here yet.
+    New,
+}
+
+pub(crate) fn plugin_state(
+    path: &str,
+    id: Option<&str>,
+    version: &str,
+    list: &[ptk_core::plugins::ListedPlugin],
+    pins: &std::collections::BTreeMap<String, PathBuf>,
+    plugins_dir: &Path,
+) -> PluginState {
+    let p = Path::new(path);
+    if list
+        .iter()
+        .any(|q| q.builtin && same_dir(Path::new(&q.path), p))
+    {
+        return PluginState::BuiltIn;
+    }
+    if p.parent().is_some_and(|d| same_dir(d, plugins_dir)) {
+        return PluginState::Installed;
+    }
+    match id.and_then(|id| newest_copies(list, pins).into_iter().find(|q| q.id == id)) {
+        Some(q) => PluginState::Replaces {
+            newer: ptk_core::market::version_newer(version, &q.version),
+            running: q.version,
+        },
+        None => PluginState::New,
+    }
+}
+
+/// The marketplace entry that updates a plugin, when the index has a newer version.
+fn update_for(
+    market: &Option<Result<ptk_core::market::MarketIndex, String>>,
+    id: &str,
+    version: &str,
+) -> Option<ptk_core::market::MarketEntry> {
+    let Some(Ok(index)) = market else { return None };
+    index
+        .entries
+        .iter()
+        .filter(|e| e.kind == EntryKind::Plugin && e.id == id)
+        .find(|e| ptk_core::market::version_newer(&e.version, version))
+        .cloned()
+}
+
 fn same_dir(a: &Path, b: &Path) -> bool {
     a == b
         || a.canonicalize()
@@ -2348,6 +2404,9 @@ impl App {
         let mut refresh = false;
         let mut use_copy: Option<(String, Option<PathBuf>)> = None;
         let mut remove: Option<String> = None;
+        let mut arm: Option<String> = None;
+        let mut update: Option<ptk_core::market::MarketEntry> = None;
+        let idle = self.busy.is_none();
         let pins = self.app_settings.plugin_versions.clone();
         card(ui, |ui| {
             ui.horizontal(|ui| {
@@ -2394,6 +2453,54 @@ impl App {
                                         );
                                     }
                                 });
+                                let row_update = update_for(&self.market, &p.id, &p.version);
+                                if row_update.is_some() || !p.builtin {
+                                    ui.horizontal(|ui| {
+                                        if let Some(e) = row_update {
+                                            if ui
+                                                .add_enabled(
+                                                    idle,
+                                                    egui::Button::new(format!(
+                                                        "⬆ Update to {}",
+                                                        e.version
+                                                    )),
+                                                )
+                                                .clicked()
+                                            {
+                                                update = Some(e);
+                                            }
+                                        }
+                                        if !p.builtin {
+                                            let armed = self.confirm_remove.as_deref()
+                                                == Some(p.path.as_str());
+                                            let label = if armed {
+                                                "Click again to uninstall"
+                                            } else {
+                                                "Uninstall"
+                                            };
+                                            if ui
+                                                .add_enabled(
+                                                    idle,
+                                                    egui::Button::new(
+                                                        RichText::new(label).color(if armed {
+                                                            ERROR
+                                                        } else {
+                                                            TEXT
+                                                        }),
+                                                    ),
+                                                )
+                                                .on_hover_text("Moves this plugin to the Trash")
+                                                .clicked()
+                                            {
+                                                if armed {
+                                                    remove = Some(p.path.clone());
+                                                } else {
+                                                    arm = Some(p.path.clone());
+                                                }
+                                            }
+                                        }
+                                    });
+                                }
                                 if copies.len() > 1 {
                                     egui::CollapsingHeader::new(
                                         RichText::new(format!("{} versions", copies.len()))
@@ -2468,6 +2575,12 @@ impl App {
                         ui,
                         "To add another version of a plugin, install it from the Marketplace or from a folder (Check a plugin).",
                     );
+                    if matches!(self.market, Some(Err(_))) {
+                        hint(
+                            ui,
+                            "Couldn't check for updates: the marketplace did not load.",
+                        );
+                    }
                 }
             }
         });
@@ -2481,7 +2594,21 @@ impl App {
                 }
             }
         }
+        if arm.is_some() {
+            self.confirm_remove = arm;
+        }
+        if let Some(e) = update {
+            self.market_install(ui.ctx(), e);
+        }
         if let Some(path) = remove {
+            self.confirm_remove = None;
+            if self
+                .plugin_validation
+                .as_ref()
+                .is_some_and(|v| v.as_ref().is_ok_and(|v| v.path == path))
+            {
+                self.plugin_validation = None;
+            }
             match ptk_core::plugins::uninstall(Path::new(&path)) {
                 Ok(()) => {
                     self.notify(format!("Moved {path} to the Trash"), ToastKind::Ok);
@@ -2500,6 +2627,12 @@ impl App {
     }
 
     fn plugin_tools(&mut self, ui: &mut Ui) {
+        enum CheckAction {
+            Install,
+            Update(Box<ptk_core::market::MarketEntry>),
+            Arm,
+            Uninstall,
+        }
         let busy = self.busy.is_some();
         let mut validate = false;
         card(ui, |ui| {
@@ -2519,7 +2652,31 @@ impl App {
             match result {
                 Err(e) => widgets::message(ui, ERROR, &e),
                 Ok(v) => {
-                    let mut install = false;
+                    let mut action: Option<CheckAction> = None;
+                    let version = v
+                        .plugin
+                        .as_ref()
+                        .and_then(|p| p.version.clone())
+                        .unwrap_or_default();
+                    let pid = v.plugin.as_ref().and_then(|p| p.id.clone());
+                    let list = match &self.plugins {
+                        Some(Ok(l)) => l.clone(),
+                        _ => Vec::new(),
+                    };
+                    let state = plugin_state(
+                        &v.path,
+                        pid.as_deref(),
+                        &version,
+                        &list,
+                        &self.app_settings.plugin_versions,
+                        &ptk_core::paths::plugins_dir(),
+                    );
+                    let update = match (&state, pid.as_deref()) {
+                        (PluginState::BuiltIn | PluginState::Installed, Some(id)) => {
+                            update_for(&self.market, id, &version)
+                        }
+                        _ => None,
+                    };
                     card(ui, |ui| {
                         let info = v.plugin.clone();
                         let id = info
@@ -2553,7 +2710,13 @@ impl App {
                                 if v.valid { GREEN } else { ERROR },
                             );
                             badge(ui, &format!("{} risk", v.risk), risk_color(&v.risk));
-                            badge(ui, "not reviewed", TEXT_FAINT);
+                            match &state {
+                                PluginState::BuiltIn => badge(ui, "built-in · reviewed", TEAL),
+                                PluginState::Installed => {
+                                    badge(ui, "installed · not reviewed", TEXT_FAINT)
+                                }
+                                _ => badge(ui, "not reviewed", TEXT_FAINT),
+                            };
                         });
                         if !v.permissions.is_empty() {
                             ui.add_space(6.0);
@@ -2569,10 +2732,98 @@ impl App {
                             ui.label(RichText::new(format!("▲ {w}")).color(WARN));
                         }
                         ui.add_space(6.0);
-                        install = primary(ui, v.valid && !busy, "Install…").clicked();
+                        ui.horizontal_wrapped(|ui| {
+                            if let Some(e) = &update {
+                                if primary(ui, !busy, &format!("⬆ Update to {}", e.version))
+                                    .clicked()
+                                {
+                                    action = Some(CheckAction::Update(Box::new(e.clone())));
+                                }
+                            }
+                            match &state {
+                                PluginState::BuiltIn => {
+                                    hint(ui, "Ships with Porting Toolkit; it is always installed.");
+                                }
+                                PluginState::Installed => {
+                                    let armed =
+                                        self.confirm_remove.as_deref() == Some(v.path.as_str());
+                                    let label = if armed {
+                                        "Click again to uninstall"
+                                    } else {
+                                        "Uninstall"
+                                    };
+                                    if ui
+                                        .add_enabled(
+                                            !busy,
+                                            egui::Button::new(
+                                                RichText::new(label).color(if armed {
+                                                    ERROR
+                                                } else {
+                                                    TEXT
+                                                }),
+                                            ),
+                                        )
+                                        .on_hover_text("Moves this plugin to the Trash")
+                                        .clicked()
+                                    {
+                                        action = Some(if armed {
+                                            CheckAction::Uninstall
+                                        } else {
+                                            CheckAction::Arm
+                                        });
+                                    }
+                                }
+                                PluginState::Replaces { running, newer } => {
+                                    let older = !*newer && *running != version;
+                                    let armed =
+                                        self.confirm_remove.as_deref() == Some(v.path.as_str());
+                                    let label = if *newer {
+                                        format!("Update {running} → {version}")
+                                    } else if *running == version {
+                                        format!("Reinstall {version}")
+                                    } else if armed {
+                                        format!("Click again to install the older {version}")
+                                    } else {
+                                        format!("Install older {version} (now {running})")
+                                    };
+                                    if primary(ui, v.valid && !busy, &label).clicked() {
+                                        action = Some(if older && !armed {
+                                            CheckAction::Arm
+                                        } else {
+                                            CheckAction::Install
+                                        });
+                                    }
+                                }
+                                PluginState::New => {
+                                    if primary(ui, v.valid && !busy, "Install…").clicked() {
+                                        action = Some(CheckAction::Install);
+                                    }
+                                }
+                            }
+                        });
                     });
-                    if install {
-                        self.install_plugin();
+                    match action {
+                        Some(CheckAction::Install) => {
+                            self.confirm_remove = None;
+                            self.install_plugin();
+                        }
+                        Some(CheckAction::Update(e)) => self.market_install(ui.ctx(), *e),
+                        Some(CheckAction::Arm) => self.confirm_remove = Some(v.path.clone()),
+                        Some(CheckAction::Uninstall) => {
+                            self.confirm_remove = None;
+                            match ptk_core::plugins::uninstall(Path::new(&v.path)) {
+                                Ok(()) => {
+                                    self.notify(
+                                        format!("Moved {} to the Trash", v.path),
+                                        ToastKind::Ok,
+                                    );
+                                    self.plugin_validation = None;
+                                    self.refresh_plugins(ui.ctx());
+                                }
+                                Err(e) => self.notify(e.to_string(), ToastKind::Error),
+                            }
+                        }
+                        None => {}
                     }
                     ui.add_space(14.0);
                 }
@@ -3176,5 +3427,93 @@ pub fn options_editor(
         for l in auto_lines {
             ui.label(RichText::new(l).size(12.0).color(TEXT_FAINT));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ptk_core::plugins::ListedPlugin;
+
+    fn listed(id: &str, version: &str, path: &str, builtin: bool) -> ListedPlugin {
+        ListedPlugin {
+            id: id.into(),
+            name: id.into(),
+            version: version.into(),
+            kind: "export".into(),
+            path: path.into(),
+            valid: true,
+            risk: "high".into(),
+            permissions: vec![],
+            reviewed: builtin,
+            builtin,
+            inputs: vec![],
+            targets: vec![],
+            description: String::new(),
+        }
+    }
+
+    #[test]
+    fn plugin_states() {
+        let tmp = tempfile::tempdir().unwrap();
+        let installed = tmp.path().join("plugins");
+        let builtin = tmp.path().join("engine/plugins");
+        for d in [installed.join("html5-export"), builtin.join("html5-export")] {
+            std::fs::create_dir_all(&d).unwrap();
+        }
+        let b = builtin.join("html5-export").display().to_string();
+        let i = installed.join("html5-export").display().to_string();
+        let list = vec![
+            listed("html5-export", "1.2.0", &b, true),
+            listed("html5-export", "1.0.0", &i, false),
+        ];
+        let pins = Default::default();
+        let state = |path: &str, id: &str, v: &str| {
+            plugin_state(path, Some(id), v, &list, &pins, &installed)
+        };
+        assert_eq!(state(&b, "html5-export", "1.2.0"), PluginState::BuiltIn);
+        assert_eq!(state(&i, "html5-export", "1.0.0"), PluginState::Installed);
+        assert_eq!(
+            state("/elsewhere/html5-export", "html5-export", "1.3.0"),
+            PluginState::Replaces {
+                running: "1.2.0".into(),
+                newer: true
+            }
+        );
+        assert_eq!(
+            state("/elsewhere/html5-export", "html5-export", "0.9.0"),
+            PluginState::Replaces {
+                running: "1.2.0".into(),
+                newer: false
+            }
+        );
+        assert_eq!(
+            state("/elsewhere/other", "other", "1.0.0"),
+            PluginState::New
+        );
+    }
+
+    #[test]
+    fn updates_come_from_the_index() {
+        let entry = |v: &str| {
+            serde_json::from_value::<ptk_core::market::MarketEntry>(serde_json::json!({
+                "id": "html5-export", "name": "HTML5", "kind": "plugin", "version": v,
+                "description": "", "author": "a", "license": "MIT",
+                "download": "https://example.org/x.zip", "sha256": "0".repeat(64)
+            }))
+            .unwrap()
+        };
+        let market = Some(Ok(ptk_core::market::MarketIndex {
+            schema_version: 1,
+            entries: vec![entry("1.3.0")],
+        }));
+        assert_eq!(
+            update_for(&market, "html5-export", "1.2.0")
+                .unwrap()
+                .version,
+            "1.3.0"
+        );
+        assert!(update_for(&market, "html5-export", "1.3.0").is_none());
+        assert!(update_for(&Some(Err("404".into())), "html5-export", "1.0.0").is_none());
     }
 }

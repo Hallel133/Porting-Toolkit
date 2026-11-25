@@ -21,7 +21,7 @@ use eframe::egui;
 
 use app::{App, Config, View};
 
-const USAGE: &str = "usage: ptk-gui [--view home|project|scan|options|share|plugins|targets|doctor|about] [--project DIR] [--game DIR] [--run] [--screenshot FILE.png] [--scroll-bottom] [--smoke] [--size WxH]";
+const USAGE: &str = "usage: ptk-gui [--view home|project|scan|options|share|plugins|installed|targets|doctor|about] [--project DIR] [--game DIR] [--plugin DIR] [--run] [--screenshot FILE.png] [--scroll-bottom] [--smoke] [--size WxH]";
 
 fn parse_args(args: impl Iterator<Item = String>) -> Result<(Config, [f32; 2]), String> {
     let mut config = Config::default();
@@ -37,6 +37,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<(Config, [f32; 2]), 
             }
             "--project" => config.project = Some(PathBuf::from(value("--project")?)),
             "--game" => config.game = Some(PathBuf::from(value("--game")?)),
+            "--plugin" => config.check_plugin = Some(PathBuf::from(value("--plugin")?)),
             "--screenshot" => config.screenshot = Some(PathBuf::from(value("--screenshot")?)),
             "--size" => {
                 let v = value("--size")?;

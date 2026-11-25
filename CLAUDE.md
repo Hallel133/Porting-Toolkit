@@ -25,7 +25,7 @@ A community tool to manage, convert, export and import game projects between pla
 ## Commands
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"          # cargo is not on the default PATH on the owner's Mac
-cargo test --workspace                        # 86 Rust tests, starts the real Python engine
+cargo test --workspace                        # 88 Rust tests, starts the real Python engine
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 (cd engine && uv run pytest)                  # 179 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
@@ -144,6 +144,9 @@ Owner asked to plan and design new compression algorithms for new platforms and 
 ## Done (2026-11-25, Unity shader check)
 - `formats/unity.py` reads the object table of the Data folder's serialized files (format 9..22, no type trees needed) and, for each Shader (class 48), matches the object's tail (`platforms`, three offset/length lists, LZ4 blob that must fit) to get its ShaderCompilerPlatform values (Metal=14, D3D11=4, Vulkan=18, GLCore=15...). `detect` stores `shaders` and a note; unity-import's summary says which platforms can draw it; unity-export warns definitely when the target cannot (recipes without `shaders` are re-detected).
 - Real games: The Lost City 158 shaders and Sasquatch 272, all parsed, both Metal only. Multi-API builds are covered by synthetic tests only (no such real game on this Mac).
+
+## Done (2026-11-25, Installed tab state, plan phase A)
+- `views.rs` `PluginState` (BuiltIn / Installed / Replaces{running, newer} / New) decides the Check card's action instead of always "Install…": built-in → "Ships with Porting Toolkit" (badge "built-in · reviewed"); installed → Uninstall (two clicks, `plugins::uninstall`, Trash); another folder with the same id → "Update A → B", "Reinstall" or "Install older" (two clicks); else Install…. `update_for` finds a newer index entry (built-ins too) and shows "⬆ Update to X" (uses `App::market_install`); a hint says when the index could not load. Installed rows get Uninstall and Update. `ptk-gui --plugin DIR` validates a folder at start (screenshots).
 
 ## Next task
 0. Owner: ask GitHub Support to lift the flag on the Hallel133 account (it hides both repos from the public and disables Actions). Then publish a first entry with `ptk market submit`.
