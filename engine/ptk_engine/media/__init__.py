@@ -55,6 +55,13 @@ class Job:
     quality: int | None
     params: dict = field(default_factory=dict)
     source: object = None  # ImageInfo or MediaInfo
+    #: The game's own file when ``path`` is a copy in an output that may
+    #: already hold an earlier result (incremental builds).
+    origin: Path | None = None
+
+    @property
+    def input(self) -> Path:
+        return self.origin or self.path
 
 
 @dataclass
@@ -95,6 +102,80 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+class _Memo:
+    """Hashes and probe results by (path, size, date), so an export that
+    sees the same files again reads none of them."""
+
+    def __init__(self, cache_dir: Path | None):
+        self.file = cache_dir / "memo.json" if cache_dir else None
+        self.data: dict = {}
+        self.dirty = False
+        if self.file and self.file.is_file():
+            try:
+                self.data = json.loads(self.file.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                self.data = {}
+        self.lock = threading.Lock()
+
+    @staticmethod
+    def key(path: Path) -> str:
+        st = path.stat()
+        return f"{path}|{st.st_size}|{st.st_mtime_ns}"
+
+    def get(self, path: Path, what: str, compute: Callable[[], object]):
+        k = self.key(path)
+        with self.lock:
+            hit = self.data.get(k, {})
+            if what in hit:
+                return hit[what]
+        value = compute()
+        with self.lock:
+            self.data.setdefault(k, {})[what] = value
+            self.dirty = True
+        return value
+
+    def save(self) -> None:
+        if not (self.file and self.dirty):
+            return
+        if len(self.data) > 50000:  # forget the oldest half
+            self.data = dict(list(self.data.items())[len(self.data) // 2:])
+        self.file.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.file.with_name("memo.json.tmp")
+        tmp.write_text(json.dumps(self.data), encoding="utf-8")
+        os.replace(tmp, self.file)
+
+
+def _image(memo: _Memo, path: Path):
+    from .probe import ImageInfo
+    d = memo.get(path, "image", lambda: (lambda i: i and i.__dict__)(image_info(path)))
+    return ImageInfo(**d) if d else None
+
+
+def _media(memo: _Memo, path: Path, ffprobe: str):
+    from .probe import MediaInfo
+    d = memo.get(path, "media", lambda: (lambda i: i and dict(i.__dict__))(media_info(path, ffprobe)))
+    return MediaInfo(**d) if d else None
+
+
+def _same(a: Path, b: Path) -> bool:
+    try:
+        sa, sb = a.stat(), b.stat()
+    except FileNotFoundError:
+        return False
+    return sa.st_size == sb.st_size and sa.st_mtime_ns == sb.st_mtime_ns
+
+
+def _install(src: Path, dst: Path) -> None:
+    """Puts ``src`` at ``dst`` unless it is already there (a clone keeps
+    the date, so an unchanged result is not written again)."""
+    if _same(src, dst):
+        return
+    from ..build.clone import copy_file
+    part = dst.with_name(dst.name + ".ptk-part")
+    copy_file(src, part)
+    os.replace(part, dst)
+
+
 def _files(root: Path):
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
@@ -118,6 +199,8 @@ class Pipeline:
         self.warn = warn or (lambda m: None)
         self.workers = workers or max(1, min(8, os.cpu_count() or 2))
         self.cache_hits = 0
+        self.memo = _Memo(self.cache_dir)
+        self.source_of: Callable[[str], Path | None] | None = None
 
     # -- planning ---------------------------------------------------------------
 
@@ -131,7 +214,9 @@ class Pipeline:
             rep = reports.get(cat)
             if rep is None:
                 continue
-            size = path.stat().st_size
+            origin = self.source_of(rel) if self.source_of else None
+            src = origin or path
+            size = src.stat().st_size
             rep.files += 1
             rep.before += size
             rep.after += size
@@ -152,7 +237,7 @@ class Pipeline:
             source = None
             source_codec = None
             if cat == "textures":
-                source = image_info(path)
+                source = _image(self.memo, src)
                 if source is None:
                     rep.kept += 1
                     continue
@@ -161,7 +246,7 @@ class Pipeline:
                     rep.kept += 1
                     rep.note("Sound and video need FFmpeg (brew install ffmpeg); kept as is.")
                     continue
-                source = media_info(path, ffprobe)
+                source = _media(self.memo, src, ffprobe)
                 stream = (source.audio if cat == "audio" else source.video) if source else None
                 if not source or not stream:
                     rep.kept += 1
@@ -198,7 +283,7 @@ class Pipeline:
                 params["tags"] = {k: v for k, v in getattr(source, "tags", {}).items()}
             if cat == "textures" and opts.get("max_resolution"):
                 rep.note(f"Images keep their size: {profile.name} games rely on exact pixel sizes.")
-            jobs.append(Job(path, rel, cat, decision.codec, size, q, params, source))
+            jobs.append(Job(path, rel, cat, decision.codec, size, q, params, source, origin))
         return jobs
 
     # -- one file -------------------------------------------------------------
@@ -252,7 +337,7 @@ class Pipeline:
 
     def encode(self, job: Job) -> tuple[Outcome, Path | None]:
         """Encodes one file into the cache (or finds it there)."""
-        digest = _sha256(job.path)
+        digest = self.memo.get(job.input, "sha256", lambda: _sha256(job.input))
         key = self._key(job, digest)
         ext = job.path.suffix.lower()
         cached = skip = None
@@ -271,7 +356,7 @@ class Pipeline:
         try:
             out = tmp / f"out{ext}"
             try:
-                ENCODERS[job.codec].run(job.path, out, job.quality, job.params, self.tb)
+                ENCODERS[job.codec].run(job.input, out, job.quality, job.params, self.tb)
             except Unavailable as e:
                 return Outcome("kept", job.size, reason=f"missing {e}"), None
             except EncodeError as e:
@@ -305,11 +390,16 @@ class Pipeline:
 
     # -- the whole folder -------------------------------------------------------
 
-    def run(self, root: Path, profile_id: str, options: dict, target: dict, mode: str = "apply") -> dict | None:
+    def run(self, root: Path, profile_id: str, options: dict, target: dict, mode: str = "apply",
+            source_of: Callable[[str], Path | None] | None = None) -> dict | None:
         """Processes ``root`` in place (``apply``) or estimates (``plan``).
 
-        Returns None when every media option is "keep".
+        ``source_of(rel)`` gives the game's own file for an output file
+        (incremental builds): it is read instead of the output copy, which
+        may hold the result of an earlier export. Returns None when every
+        media option is "keep".
         """
+        self.source_of = source_of
         active = {c: o for c, o in (options or {}).items()
                   if isinstance(o, dict) and o.get("action", "keep") != "keep"}
         if not active or mode == "off":
@@ -337,6 +427,7 @@ class Pipeline:
         else:
             todo = jobs
         results = self._execute(todo, mode)
+        self.memo.save()
         if mode == "plan":
             self._estimate(jobs, todo, results, reports)
         else:
@@ -374,11 +465,11 @@ class Pipeline:
             except OSError as e:
                 outcome, path = Outcome("failed", job.size, reason=str(e)), None
             if mode == "apply" and outcome.status == "converted" and path is not None:
-                part = job.path.with_name(job.path.name + ".ptk-part")
-                shutil.copyfile(path, part)
-                os.replace(part, job.path)
+                _install(path, job.path)
                 if self.cache_dir is None:
                     shutil.rmtree(path.parent, ignore_errors=True)
+            elif mode == "apply" and job.origin is not None:
+                _install(job.origin, job.path)  # an earlier result is there: back to the original
             elif path is not None and self.cache_dir is None:
                 shutil.rmtree(path.parent, ignore_errors=True)
             results[i] = (outcome, path)

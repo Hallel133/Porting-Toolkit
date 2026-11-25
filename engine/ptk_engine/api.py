@@ -249,7 +249,7 @@ class Context:
         mode = (self.setting("assets") or "apply").strip().lower()
         return mode if mode in ("apply", "plan", "off") else "apply"
 
-    def process_assets(self, root: Path, profile: str) -> dict | None:
+    def process_assets(self, root: Path, profile: str, build=None) -> dict | None:
         """Applies the project's advanced options to the files under ``root``.
 
         ``root`` must be the plugin's own copy in ``$OUTPUT`` (it is changed
@@ -264,7 +264,13 @@ class Context:
             self.check_write(root)
         pipeline = Pipeline(self.toolbox, self.media_cache,
                             progress=lambda f, m: self.progress(f, m), warn=self.warn)
-        report = pipeline.run(Path(root), profile, self.manifest.get("options") or {}, self.target, mode)
+        source_of = None
+        if build is not None:
+            prefix = Path(root).resolve().relative_to(Path(build.root).resolve()).as_posix()
+            prefix = "" if prefix == "." else prefix + "/"
+            source_of = lambda rel: build.source_of(prefix + rel)  # noqa: E731
+        report = pipeline.run(Path(root), profile, self.manifest.get("options") or {}, self.target, mode,
+                              source_of=source_of)
         if report:
             self.log("Assets: " + describe(report))
             for cat, r in report["categories"].items():
@@ -274,24 +280,29 @@ class Context:
 
     def zip_dir(self, src: Path, dest: Path, executables: set[str] | None = None) -> Path:
         """Zips a folder (sorted, links skipped); ``executables`` (paths
-        relative to ``src``) get mode 0755, everything else 0644."""
+        relative to ``src``) get mode 0755, everything else 0644. Members
+        that did not change since the last zip at ``dest`` are reused
+        (``ptk_engine.build.package``)."""
+        from .build import zip_dir
         self.check_write(dest)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        executables = executables or set()
-        base = Path(src)
-        with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
-            for p in sorted(base.rglob("*")):
-                if p.is_symlink() or not p.is_file() or p.name == self.MARKER:
-                    continue
-                rel = p.relative_to(base.parent).as_posix()
-                info = zipfile.ZipInfo(rel, date_time=(2020, 1, 1, 0, 0, 0))
-                mode = 0o755 if p.relative_to(base).as_posix() in executables or os.access(p, os.X_OK) else 0o644
-                info.external_attr = (0o100000 | mode) << 16
-                info.compress_type = zipfile.ZIP_DEFLATED
-                info.file_size = p.stat().st_size
-                with open(p, "rb") as f, zf.open(info, "w", force_zip64=info.file_size > 0x7FFF0000) as out:
-                    shutil.copyfileobj(f, out, 1 << 20)
-        return dest
+        r = zip_dir(Path(src), Path(dest), executables or set(), skip_names={self.MARKER},
+                    progress=lambda n, total: self.progress(None, f"Zipping {n}/{total}"))
+        self.log(f"Zipped {r['members']} files ({r['reused']} reused, {r['compressed']} compressed).")
+        return Path(dest)
+
+    def build(self, root: Path | None = None, variant: str = ""):
+        """An incremental output folder (``ptk_engine.build.Build``) at
+        ``root`` (default ``$OUTPUT``). Everything that changes the output
+        besides its entries (the project's options, the target, the
+        settings, this plugin's version, ``variant``) is part of its
+        fingerprint, so changing any of it rewrites the folder."""
+        from .build import Build
+        root = Path(root or self.output)
+        self.check_write(root)
+        key = json.dumps({"options": self.manifest.get("options"), "target": self.target,
+                          "settings": self.settings, "plugin": self.plugin.get("version"),
+                          "assets": self.assets_mode, "extra": variant}, sort_keys=True, default=str)
+        return Build(root, variant=hashlib.sha256(key.encode()).hexdigest()[:16], log=self.log)
 
     MARKER = ".ptk-output"
 
