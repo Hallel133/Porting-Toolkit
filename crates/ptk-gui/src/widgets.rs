@@ -215,12 +215,12 @@ pub fn hint(ui: &mut Ui, text: &str) {
 }
 
 /// A rounded badge such as `active` or `high`.
-pub fn badge(ui: &mut Ui, text: &str, color: Color32) {
+pub fn badge(ui: &mut Ui, text: &str, color: Color32) -> egui::Response {
     let galley = ui
         .painter()
         .layout_no_wrap(text.to_owned(), FontId::proportional(11.0), color);
     let size = galley.size() + vec2(12.0, 4.0);
-    let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+    let (rect, resp) = ui.allocate_exact_size(size, Sense::hover());
     ui.painter()
         .rect_filled(rect, CornerRadius::same(8), color.gamma_multiply(0.18));
     ui.painter().rect_stroke(
@@ -231,6 +231,7 @@ pub fn badge(ui: &mut Ui, text: &str, color: Color32) {
     );
     ui.painter()
         .galley(rect.center() - galley.size() / 2.0, galley, color);
+    resp
 }
 
 /// A primary (filled blue) button.

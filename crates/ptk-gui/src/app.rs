@@ -179,6 +179,8 @@ pub struct GuiState {
 }
 
 const MAX_RECENT: usize = 24;
+/// How long after the last edit ptk.json and the defaults are saved.
+pub const AUTOSAVE_DELAY: Duration = Duration::from_millis(700);
 
 impl GuiState {
     pub fn load(path: &Path) -> Self {
@@ -374,6 +376,11 @@ pub struct App {
     /// Decoded icons and posters, by file.
     pub images: std::collections::HashMap<PathBuf, Option<egui::TextureHandle>>,
     pub toast: Option<(String, ToastKind, Instant)>,
+    /// The last project edit seen and when: it is saved after [`AUTOSAVE_DELAY`].
+    project_edit: Option<(Manifest, Instant)>,
+    /// Why the last automatic save of ptk.json failed (it waits for the next edit).
+    pub save_error: Option<String>,
+    settings_edit: Option<(ptk_core::settings::AppSettings, Instant)>,
     tx: Sender<Msg>,
     rx: Receiver<Msg>,
     menu_rx: Receiver<Command>,
@@ -470,6 +477,9 @@ impl App {
             images: Default::default(),
             posters: Default::default(),
             toast: None,
+            project_edit: None,
+            save_error: None,
+            settings_edit: None,
             tx,
             rx,
             menu_rx,
@@ -566,6 +576,9 @@ impl App {
     // ---------------------------------------------------------------- project
 
     pub fn open_project(&mut self, dir: &Path) {
+        if self.project.as_ref().is_some_and(|p| p.dir != dir) {
+            self.flush_project();
+        }
         match Manifest::load(dir) {
             Ok(m) => {
                 let same = self.project.as_ref().is_some_and(|p| p.dir == dir);
@@ -624,20 +637,103 @@ impl App {
         }
     }
 
-    pub fn save_project(&mut self) {
-        let Some(p) = &mut self.project else { return };
+    /// Writes ptk.json when it has edits; checked first, so invalid values
+    /// are never written.
+    fn write_project(&mut self) -> Result<Option<PathBuf>, String> {
+        let Some(p) = &mut self.project else {
+            return Ok(None);
+        };
+        if !p.dirty() {
+            return Ok(None);
+        }
         let path = p.dir.join(MANIFEST_FILE);
-        let result = p
-            .manifest
+        p.manifest
             .check(&path, &self.registry)
             .map_err(|e| e.to_string())
-            .and_then(|_| p.manifest.save(&p.dir).map_err(|e| e.to_string()));
-        match result {
-            Ok(_) => {
-                p.saved = p.manifest.clone();
-                self.notify(format!("Saved {}", path.display()), ToastKind::Ok);
+            .and_then(|_| p.manifest.save(&p.dir).map_err(|e| e.to_string()))?;
+        p.saved = p.manifest.clone();
+        self.project_edit = None;
+        self.save_error = None;
+        Ok(Some(path))
+    }
+
+    /// ⌘S: saves now and says so.
+    pub fn save_project(&mut self) {
+        match self.write_project() {
+            Ok(Some(path)) => self.notify(format!("Saved {}", path.display()), ToastKind::Ok),
+            Ok(None) => {}
+            Err(e) => {
+                self.save_error = Some(e.clone());
+                self.notify(e, ToastKind::Error)
             }
-            Err(e) => self.notify(e, ToastKind::Error),
+        }
+    }
+
+    /// Saves pending edits before something reads ptk.json from disk.
+    pub fn flush_project(&mut self) -> bool {
+        match self.write_project() {
+            Ok(_) => true,
+            Err(e) => {
+                self.save_error = Some(e.clone());
+                self.notify(format!("ptk.json was not saved: {e}"), ToastKind::Error);
+                false
+            }
+        }
+    }
+
+    /// Saves the project and the app defaults on their own, a moment after
+    /// the last edit (so typing a title is one save, not one per letter).
+    pub fn autosave(&mut self, ctx: &egui::Context) {
+        let now = Instant::now();
+        let mut wait: Option<Duration> = None;
+        match &self.project {
+            Some(p) if p.dirty() => {
+                if !matches!(&self.project_edit, Some((m, _)) if *m == p.manifest) {
+                    self.project_edit = Some((p.manifest.clone(), now));
+                    self.save_error = None;
+                }
+            }
+            _ => self.project_edit = None,
+        }
+        if let Some((_, at)) = &self.project_edit {
+            if self.save_error.is_none() {
+                let elapsed = now.duration_since(*at);
+                if elapsed >= AUTOSAVE_DELAY {
+                    if let Err(e) = self.write_project() {
+                        self.save_error = Some(e);
+                    }
+                } else {
+                    wait = Some(AUTOSAVE_DELAY - elapsed);
+                }
+            }
+        }
+        if self.app_settings != self.app_settings_saved {
+            if !matches!(&self.settings_edit, Some((s, _)) if *s == self.app_settings) {
+                self.settings_edit = Some((self.app_settings.clone(), now));
+            }
+            if let Some((_, at)) = &self.settings_edit {
+                let elapsed = now.duration_since(*at);
+                if elapsed >= AUTOSAVE_DELAY {
+                    self.settings_edit = None;
+                    match self.app_settings.save() {
+                        Ok(()) => self.app_settings_saved = self.app_settings.clone(),
+                        Err(e) => {
+                            // Do not retry every frame: wait for the next edit.
+                            self.app_settings_saved = self.app_settings.clone();
+                            self.notify(format!("Defaults were not saved: {e}"), ToastKind::Error);
+                        }
+                    }
+                } else {
+                    wait = Some(wait.map_or(AUTOSAVE_DELAY - elapsed, |w| {
+                        w.min(AUTOSAVE_DELAY - elapsed)
+                    }));
+                }
+            }
+        } else {
+            self.settings_edit = None;
+        }
+        if let Some(w) = wait {
+            ctx.request_repaint_after(w);
         }
     }
 
@@ -707,12 +803,12 @@ impl App {
     }
 
     pub fn start_record(&mut self, ctx: &egui::Context) {
+        if self.project.is_none() || self.scan.is_none() || !self.flush_project() {
+            return;
+        }
         let (Some(p), Some(scan)) = (&self.project, &self.scan) else {
             return;
         };
-        if p.dirty() {
-            return self.notify("Save the project first".into(), ToastKind::Error);
-        }
         let dir = p.dir.clone();
         let game = PathBuf::from(&scan.path);
         let scan = scan.clone();
@@ -726,10 +822,10 @@ impl App {
     }
 
     pub fn start_pack(&mut self, ctx: &egui::Context) {
-        let Some(p) = &self.project else { return };
-        if p.dirty() {
-            return self.notify("Save the project first".into(), ToastKind::Error);
+        if !self.flush_project() {
+            return;
         }
+        let Some(p) = &self.project else { return };
         let dir = p.dir.clone();
         let output = PathBuf::from(self.pack_output.trim());
         let overwrite = self.pack_overwrite;
@@ -1071,16 +1167,6 @@ impl App {
                     p.saved.game.poster = m.game.poster;
                 }
                 self.refresh_rows();
-            }
-            Err(e) => self.notify(e.to_string(), ToastKind::Error),
-        }
-    }
-
-    pub fn save_app_settings(&mut self) {
-        match self.app_settings.save() {
-            Ok(()) => {
-                self.app_settings_saved = self.app_settings.clone();
-                self.notify("Defaults saved".into(), ToastKind::Ok);
             }
             Err(e) => self.notify(e.to_string(), ToastKind::Error),
         }
@@ -2227,6 +2313,10 @@ fn clipboard_text() -> Option<String> {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.layout(ctx);
+        self.autosave(ctx);
+        if ctx.input(|i| i.viewport().close_requested()) {
+            self.flush_project();
+        }
         if self.busy.is_some() {
             ctx.request_repaint_after(Duration::from_millis(150));
         }
@@ -2292,6 +2382,39 @@ mod tests {
         }
         // Rendering the options view must not count as an edit.
         assert!(!app.project.as_ref().unwrap().dirty());
+    }
+
+    #[test]
+    fn edits_save_on_their_own() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = new_project(tmp.path());
+        let mut app = app(tmp.path());
+        let ctx = egui::Context::default();
+        app.open_project(&project);
+        app.project.as_mut().unwrap().manifest.game.title = Some("Auto".into());
+        app.autosave(&ctx);
+        // Not yet: it waits for a pause in the edits.
+        assert!(app.project.as_ref().unwrap().dirty());
+        let past = Instant::now() - AUTOSAVE_DELAY;
+        app.project_edit.as_mut().unwrap().1 = past;
+        app.autosave(&ctx);
+        assert!(!app.project.as_ref().unwrap().dirty());
+        assert_eq!(
+            Manifest::load(&project).unwrap().game.title.as_deref(),
+            Some("Auto")
+        );
+
+        // An invalid value is not written, and the error is kept for the bar.
+        let p = app.project.as_mut().unwrap();
+        p.manifest.options.get_mut("audio").unwrap().quality = Some(0);
+        app.autosave(&ctx);
+        app.project_edit.as_mut().unwrap().1 = past;
+        app.autosave(&ctx);
+        assert!(app.save_error.is_some());
+        assert_eq!(
+            Manifest::load(&project).unwrap().options["audio"].quality,
+            None
+        );
     }
 
     #[test]

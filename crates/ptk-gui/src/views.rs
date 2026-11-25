@@ -73,6 +73,36 @@ fn split(ui: &mut Ui, ratio: f32, min_total: f32, mut f: impl FnMut(&mut Ui, usi
     });
 }
 
+/// One entry per plugin id: the newest version, and on a tie the installed
+/// copy (what the engine runs; see `runtime.find_plugins`).
+fn newest_copies(list: &[ptk_core::plugins::ListedPlugin]) -> Vec<ptk_core::plugins::ListedPlugin> {
+    let mut out: Vec<ptk_core::plugins::ListedPlugin> = Vec::new();
+    for p in list {
+        match out.iter_mut().find(|q| q.id == p.id) {
+            Some(q) => {
+                if ptk_core::market::version_newer(&p.version, &q.version)
+                    || (p.version == q.version && q.builtin && !p.builtin)
+                {
+                    *q = p.clone();
+                }
+            }
+            None => out.push(p.clone()),
+        }
+    }
+    out
+}
+
+/// The version that runs instead of `p`, when another copy of it wins.
+fn shadowed_by(
+    list: &[ptk_core::plugins::ListedPlugin],
+    p: &ptk_core::plugins::ListedPlugin,
+) -> Option<String> {
+    newest_copies(list)
+        .into_iter()
+        .find(|q| q.id == p.id && q.path != p.path)
+        .map(|q| q.version)
+}
+
 /// `count` cards in rows of `cols`.
 fn card_grid(ui: &mut Ui, count: usize, cols: usize, mut f: impl FnMut(&mut Ui, usize)) {
     for row in (0..count).step_by(cols) {
@@ -125,23 +155,26 @@ impl App {
         }
     }
 
-    /// "Unsaved changes" bar with Revert and Save.
+    /// Edits save on their own; this bar shows only when ptk.json could not
+    /// be saved (an invalid value), with Revert to go back to the file.
     fn unsaved_bar(&mut self, ui: &mut Ui) {
+        let Some(err) = self.save_error.clone() else {
+            return;
+        };
         if !self.project.as_ref().is_some_and(|p| p.dirty()) {
             return;
         }
         egui::Frame::new()
-            .fill(WARN.gamma_multiply(0.12))
-            .stroke(egui::Stroke::new(1.0_f32, WARN.gamma_multiply(0.5)))
+            .fill(ERROR.gamma_multiply(0.12))
+            .stroke(egui::Stroke::new(1.0_f32, ERROR.gamma_multiply(0.5)))
             .corner_radius(egui::CornerRadius::same(10))
             .inner_margin(egui::Margin::symmetric(14, 8))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("●").color(WARN));
-                    ui.label("Unsaved changes in ptk.json");
+                    ui.label(RichText::new("●").color(ERROR));
+                    ui.label(format!("Not saved: {err}"));
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        self.command_button(ui, Command::Save, "Save  ⌘S", true);
                         self.command_button(ui, Command::Revert, "Revert", false);
                     });
                 });
@@ -928,21 +961,34 @@ impl App {
         if self.plugins.is_none() && self.busy.is_none() {
             self.refresh_plugins(ui.ctx());
         }
-        let exporter_for = |t: &str| -> Option<(String, bool)> {
-            let Some(Ok(list)) = &self.plugins else {
-                return None;
-            };
-            list.iter()
-                .filter(|p| p.kind == "export" && p.valid && p.targets.iter().any(|x| x == t))
+        // Export plugins that take this engine, newest copy of each id first
+        // (an old installed copy never hides a newer built-in one).
+        let for_engine: Vec<ptk_core::plugins::ListedPlugin> = match &self.plugins {
+            Some(Ok(list)) => newest_copies(list)
+                .into_iter()
+                .filter(|p| p.kind == "export" && p.valid)
                 .filter(|p| {
                     p.inputs.is_empty()
                         || engine
                             .as_deref()
                             .is_some_and(|e| p.inputs.iter().any(|i| i == e))
                 })
-                .min_by_key(|p| p.builtin)
+                .collect(),
+            _ => Vec::new(),
+        };
+        let exporter_for = |t: &str| -> Option<(String, bool)> {
+            for_engine
+                .iter()
+                .find(|p| p.targets.iter().any(|x| x == t))
                 .map(|p| (p.name.clone(), p.builtin))
         };
+        // Targets the installed exporters can build this game for.
+        let possible: Vec<String> = self
+            .registry
+            .ids()
+            .into_iter()
+            .filter(|t| for_engine.iter().any(|p| p.targets.iter().any(|x| x == t)))
+            .collect();
         type Row = (String, String, Option<(String, bool)>);
         let rows: Vec<Row> = targets
             .iter()
@@ -955,8 +1001,22 @@ impl App {
                 (t.clone(), name, exporter_for(t))
             })
             .collect();
+        let engine_name = ptk_core::routes::route_for(engine.as_deref())
+            .map(|r| r.name.to_string())
+            .unwrap_or_else(|| "This game".into());
+        let possible_names: Vec<String> = possible
+            .iter()
+            .map(|t| {
+                self.registry
+                    .get(t)
+                    .map(|x| x.name.clone())
+                    .unwrap_or_else(|| t.clone())
+            })
+            .collect();
         let idle = self.busy.is_none();
         let mut find = None;
+        let mut add: Option<String> = None;
+        let mut remove: Option<String> = None;
         let mut export: Option<Vec<String>> = None;
         let mut estimate: Option<Vec<String>> = None;
         split(ui, 0.55, 900.0, |ui, col| {
@@ -1015,10 +1075,37 @@ impl App {
                                         let tag = if *builtin { "built-in" } else { "installed" };
                                         badge(ui, &format!("{pname} · {tag}"), GREEN);
                                     }
+                                    None if !possible.is_empty() => {
+                                        // The installed exporters cover this engine,
+                                        // just not this platform.
+                                        ui.horizontal(|ui| {
+                                            badge(ui, "not possible for this engine", TEXT_FAINT)
+                                                .on_hover_text(format!(
+                                                    "{} can be exported to: {}",
+                                                    engine_name,
+                                                    possible_names.join(", ")
+                                                ));
+                                            if ui
+                                                .small_button("Remove")
+                                                .on_hover_text(
+                                                    "Remove this target from the project",
+                                                )
+                                                .clicked()
+                                            {
+                                                remove = Some(id.clone());
+                                            }
+                                        });
+                                    }
                                     None => {
                                         ui.horizontal(|ui| {
                                             badge(ui, "no exporter", TEXT_FAINT);
-                                            if ui.small_button("Find one").clicked() {
+                                            if ui
+                                                .small_button("Find one")
+                                                .on_hover_text(
+                                                    "Look for an export plugin in the Marketplace",
+                                                )
+                                                .clicked()
+                                            {
                                                 find = Some(id.clone());
                                             }
                                         });
@@ -1036,6 +1123,28 @@ impl App {
                                 ui.end_row();
                             }
                         });
+                    let missing: Vec<&String> =
+                        possible.iter().filter(|t| !targets.contains(t)).collect();
+                    if !missing.is_empty() {
+                        ui.add_space(6.0);
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(RichText::new("Also possible:").color(TEXT_WEAK));
+                            for t in missing {
+                                let name = self
+                                    .registry
+                                    .get(t)
+                                    .map(|x| x.name.clone())
+                                    .unwrap_or_else(|| t.clone());
+                                if ui
+                                    .small_button(format!("+ {name}"))
+                                    .on_hover_text("Add this target to the project")
+                                    .clicked()
+                                {
+                                    add = Some(t.clone());
+                                }
+                            }
+                        });
+                    }
                     ui.add_space(10.0);
                     ui.label(RichText::new("Output folder").color(TEXT_WEAK));
                     widgets::path_field(
@@ -1122,6 +1231,16 @@ impl App {
                 });
             }
         });
+        if let Some(p) = &mut self.project {
+            if let Some(t) = add {
+                if !p.manifest.targets.contains(&t) {
+                    p.manifest.targets.push(t);
+                }
+            }
+            if let Some(t) = remove {
+                p.manifest.targets.retain(|x| *x != t);
+            }
+        }
         if let Some(t) = find {
             self.market_search = t;
             self.market_tab = MarketTab::Browse;
@@ -1257,21 +1376,10 @@ impl App {
                 s.default_options.entry(c.id.to_owned()).or_default();
             }
         }
-        let dirty = self.app_settings != self.app_settings_saved;
-        ui.horizontal(|ui| {
-            hint(
-                ui,
-                "New projects start with these. Each project keeps its own copy, so changing them never changes existing projects.",
-            );
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if primary(ui, dirty, "Save defaults").clicked() {
-                    self.save_app_settings();
-                }
-                if dirty && ui.button("Revert").clicked() {
-                    self.app_settings = self.app_settings_saved.clone();
-                }
-            });
-        });
+        hint(
+            ui,
+            "New projects start with these. Each project keeps its own copy, so changing them never changes existing projects. Changes are saved automatically.",
+        );
         ui.add_space(10.0);
         let registry = self.registry.clone();
         let s = &mut self.app_settings;
@@ -1376,8 +1484,6 @@ impl App {
             if col == 0 {
                 self.project_forms(ui);
                 ui.add_space(14.0);
-                self.options_section(ui);
-                ui.add_space(14.0);
                 self.project_details(ui);
             } else {
                 self.art_card(ui);
@@ -1385,6 +1491,8 @@ impl App {
                 self.project_side(ui, &issues);
             }
         });
+        ui.add_space(14.0);
+        self.options_section(ui);
     }
 
     /// The port's icon and poster: your own images, shared in the .ptk.
@@ -2230,8 +2338,17 @@ impl App {
                                             .color(TEXT_WEAK),
                                     );
                                     badge(ui, &format!("{} risk", p.risk), risk_color(&p.risk));
-                                    if !p.reviewed {
+                                    if p.builtin {
+                                        badge(ui, "built-in", TEAL);
+                                    } else if !p.reviewed {
                                         badge(ui, "not reviewed", TEXT_FAINT);
+                                    }
+                                    if let Some(newer) = shadowed_by(list, p) {
+                                        badge(ui, "not used", WARN).on_hover_text(format!(
+                                            "Version {newer} of {} is also here and is the one that runs. \
+                                             You can delete this older copy:\n{}",
+                                            p.id, p.path
+                                        ));
                                     }
                                 });
                             });
@@ -2819,18 +2936,21 @@ pub fn options_editor(
         }
     });
     ui.add_space(8.0);
-    egui::Grid::new(("options", salt))
-        .num_columns(3)
-        .spacing([16.0, 10.0])
-        .min_col_width(150.0)
-        .show(ui, |ui| {
-            for c in CATEGORIES {
-                let o = options.entry(c.id.to_owned()).or_default();
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("■").color(category_color(c.id)));
-                    ui.label(RichText::new(c.name).color(Color32::WHITE))
-                        .on_hover_text(c.description);
-                });
+    // One row per category: name, Keep/Drop/Recompress, then the settings,
+    // which wrap inside the row's width instead of pushing the page wider.
+    for c in CATEGORIES {
+        let o = options.entry(c.id.to_owned()).or_default();
+        ui.horizontal_top(|ui| {
+                ui.allocate_ui_with_layout(
+                    vec2(130.0, 26.0),
+                    Layout::left_to_right(Align::Center),
+                    |ui| {
+                        ui.set_min_width(130.0);
+                        ui.label(RichText::new("■").color(category_color(c.id)));
+                        ui.label(RichText::new(c.name).color(Color32::WHITE))
+                            .on_hover_text(c.description);
+                    },
+                );
                 widgets::segmented(
                     ui,
                     &mut o.action,
@@ -2844,6 +2964,7 @@ pub fn options_editor(
                     if o.action != AssetAction::Recompress {
                         return;
                     }
+                    ui.spacing_mut().slider_width = 110.0;
                     let formats = ptk_core::category::formats(c.id);
                     if !formats.is_empty() {
                         let shown = o
@@ -2854,7 +2975,7 @@ pub fn options_editor(
                             .or_else(|| o.format.clone())
                             .unwrap_or_else(|| "Automatic".into());
                         egui::ComboBox::from_id_salt(("fmt", salt, c.id))
-                            .width(170.0)
+                            .width(150.0)
                             .selected_text(shown)
                             .show_ui(ui, |ui| {
                                 ui.selectable_value(&mut o.format, None, "Automatic");
@@ -2896,7 +3017,7 @@ pub fn options_editor(
                                 .unwrap_or_else(|| "original size".into())
                         };
                         egui::ComboBox::from_id_salt(("res", salt, c.id))
-                            .width(120.0)
+                            .width(110.0)
                             .selected_text(label(o.max_resolution))
                             .show_ui(ui, |ui| {
                                 for r in RESOLUTIONS {
@@ -2905,9 +3026,9 @@ pub fn options_editor(
                             });
                     }
                 });
-                ui.end_row();
-            }
         });
+        ui.add_space(8.0);
+    }
     let auto_lines: Vec<String> = CATEGORIES
         .iter()
         .filter(|c| {

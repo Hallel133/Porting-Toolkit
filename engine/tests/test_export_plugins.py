@@ -719,3 +719,20 @@ def test_twine_story_without_index_html(tmp_path):
     assert out["result"]["title"] == "Moon & Back" and out["result"]["summary"].startswith("Twine game")
     out, _ = run(tmp_path, "html5-export", game, project, "export", WEB, output=tmp_path / "web")
     assert "My Story.html" in (tmp_path / "web" / "index.html").read_text()
+
+
+def test_an_old_installed_copy_does_not_hide_a_newer_builtin(tmp_path):
+    def install(version: str) -> None:
+        dst = tmp_path / version / "html5-export"
+        shutil.copytree(BUILTIN_DIR / "html5-export", dst)
+        toml = dst / "plugin.toml"
+        toml.write_text(re.sub(r'(?m)^version = ".*"$', f'version = "{version}"', toml.read_text(), count=1))
+
+    install("0.9.0")
+    found = find_plugins("export", "html5", "web", [str(tmp_path / "0.9.0")])
+    html5 = next(r for r in found if r["plugin"]["id"] == "html5-export")
+    assert html5["builtin"]
+    install("99.0.0")
+    found = find_plugins("export", "html5", "web", [str(tmp_path / "99.0.0")])
+    html5 = next(r for r in found if r["plugin"]["id"] == "html5-export")
+    assert not html5["builtin"] and html5["plugin"]["version"] == "99.0.0"

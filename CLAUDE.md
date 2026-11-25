@@ -25,10 +25,10 @@ A community tool to manage, convert, export and import game projects between pla
 ## Commands
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"          # cargo is not on the default PATH on the owner's Mac
-cargo test --workspace                        # 85 Rust tests, starts the real Python engine
+cargo test --workspace                        # 86 Rust tests, starts the real Python engine
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-(cd engine && uv run pytest)                  # 172 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
+(cd engine && uv run pytest)                  # 173 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
 (cd engine && PTK_TOOL_TESTS=1 uv run pytest -k real)       # also runs real FFmpeg encodes
 (cd engine && PTK_GUI_TESTS=1 uv run pytest -k macos_app)   # also opens the wrapper app and checks the page loaded
 cargo run -q -p ptk-cli -- scan fixtures/games/unity-windows
@@ -130,6 +130,12 @@ Owner asked to plan and design new compression algorithms for new platforms and 
 - Player layouts were read from Unity 2022.3.62f2's own installer Boms (HTTP ranges of the .pkg xar TOC + `lsbom`): Windows `Variations/win64_player_nondevelopment_mono/{WindowsPlayer.exe, UnityPlayer.dll, UnityCrashHandler64.exe, MonoBleedingEdge/, Data/Managed, Data/Resources}`; Linux `linux64_..._mono/{LinuxPlayer, UnityPlayer.so, Data/{Managed,MonoBleedingEdge,Resources}}`; Mac `Unity.app/Contents/PlaybackEngines/MacStandaloneSupport/{Variations/macos_x64arm64_player_nondevelopment_mono/UnityPlayer.app, Variations/mono/Managed, MonoBleedingEdge}`. Module destinations from `services.api.unity.com` (`{UNITY_PATH}/PlaybackEngines/...`).
 - `formats/unity.py` (detect, version from globalgamemanagers, app.info, Mono/IL2CPP incl. GameAssembly.dylib/.so, plugins, Apple services, App Store/Arcade, Burst note; Hub install lookup and variation choice), unity-import (report), unity-export (Mono only; BYO Unity install; unityhub:// link). Route text updated.
 - Tested with synthetic builds and a fake Hub tree; real import of The Lost City; the export without Unity gives the exact Hub link. **No real Unity player was run or even present.**
+
+## Done (2026-11-25, owner feedback: exporters, auto-save, layout)
+- Plugins with the same id: the newest version runs; on a tie the installed copy (`runtime.find_plugins`, GUI `newest_copies`). The owner's data folder had old html5-export/unity-export 1.0.0 copies that hid the built-in 1.2.0; Installed now marks them "not used" (hover shows the path).
+- Export page: a target the installed exporters cannot build for this engine shows "not possible for this engine" + Remove (no Marketplace link); "Also possible: + target" adds the targets they can build. "Find one" stays only when no exporter takes the engine at all.
+- ptk.json and the Settings defaults save on their own 0.7 s after the last edit (`App::autosave`, `AUTOSAVE_DELAY`); the bar shows only when a save fails (invalid value), with Revert. ⌘S still saves at once; pack/record/switching project/closing flush first.
+- Game page: Advanced options moved under the two columns at full width, and the options editor wraps per row instead of a Grid, so it no longer pushes the right column off screen.
 
 ## Next task
 0. Owner: ask GitHub Support to lift the flag on the Hallel133 account (it hides both repos from the public and disables Actions). Then publish a first entry with `ptk market submit`.

@@ -35,6 +35,14 @@ def is_builtin(path: str | Path) -> bool:
     return b is not None and Path(path).resolve().parent == b.resolve()
 
 
+def version_key(v: str | None) -> tuple[int, ...]:
+    """``"1.10.0"`` -> ``(1, 10, 0)``; anything else sorts first."""
+    try:
+        return tuple(int(x) for x in str(v).split("-")[0].split("."))
+    except ValueError:
+        return ()
+
+
 def _formats(path: Path) -> dict:
     try:
         data = tomllib.loads((path / PLUGIN_FILE).read_text(encoding="utf-8"))
@@ -47,15 +55,16 @@ def find_plugins(kind: str, engine: str | None, target: str | None, dirs: list[s
                  known_targets: list[str] | None = None, prefer: str | None = None) -> list[dict]:
     """Valid plugins of ``kind`` for an engine (and, for export, a target).
 
-    User folders come first, so an installed plugin with the same id
-    replaces a built-in one. ``prefer`` (a target's ``export_backend``)
-    moves that plugin to the front.
+    When several folders hold the same id, the newest version wins; on a
+    tie user folders come first, so an installed copy replaces the
+    built-in one, but an old installed copy never hides a newer built-in.
+    ``prefer`` (a target's ``export_backend``) moves that plugin to the front.
     """
     search = [Path(d).expanduser() for d in dirs]
     if (b := builtin_dir()) is not None:
         search.append(b)
-    seen: set[str] = set()
-    found: list[dict] = []
+    best: dict[str, dict] = {}
+    order: list[str] = []
     for base in search:
         if not base.is_dir():
             continue
@@ -65,7 +74,7 @@ def find_plugins(kind: str, engine: str | None, target: str | None, dirs: list[s
             report = validate_plugin(str(child), known_targets)
             info = report.get("plugin") or {}
             pid = info.get("id")
-            if not report["valid"] or info.get("kind") != kind or pid in seen:
+            if not report["valid"] or info.get("kind") != kind:
                 continue
             inputs = info.get("inputs") or []
             if engine and inputs and engine not in inputs:
@@ -74,9 +83,13 @@ def find_plugins(kind: str, engine: str | None, target: str | None, dirs: list[s
                 continue
             if kind == "export" and target and target not in (info.get("targets") or []):
                 continue
-            seen.add(pid)
             report["builtin"] = is_builtin(child)
-            found.append(report)
+            if pid not in best:
+                order.append(pid)
+                best[pid] = report
+            elif version_key(info.get("version")) > version_key(best[pid]["plugin"].get("version")):
+                best[pid] = report
+    found = [best[pid] for pid in order]
     if prefer:
         found.sort(key=lambda r: (r["plugin"]["id"] != prefer))
     return found
