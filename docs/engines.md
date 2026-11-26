@@ -2,7 +2,7 @@
 
 Generated from `engine/ptk_engine/data/engines.json` by `tools/gen_engines_doc.py`; do not edit by hand.
 
-Porting Toolkit recognises 184 engines from their files' names and first bytes (nothing is decoded). `ptk engines` lists them; `ptk scan` says which one a game uses.
+Porting Toolkit recognises 186 engines from their files' names and first bytes (nothing is decoded). `ptk engines` lists them; `ptk scan` says which one a game uses.
 
 ## Exported by built-in plugins (6)
 
@@ -32,12 +32,14 @@ Porting Toolkit recognises 184 engines from their files' names and first bytes (
 | Turbulenz | as `html5` | Web games: the HTML5 plugins export them (browser, WebKit app on macOS, NW.js on Windows and Linux). |
 | GameSalad | as `html5` | GameSalad's HTML5 export (js/gse/gse-export.js) is a web game: the HTML5 plugins export it. Its native builds have no documented layout. |
 
-## Depends on the build (17)
+## Depends on the build (19)
 
 | Engine | Detected | How |
 |---|---|---|
 | Unity | yes | Mono builds keep the game's code in Data/Managed/*.dll, which runs with the Unity player of the same version for another platform (found in a Unity install, or downloaded once from Unity: only the player, no Unity install needed). The build's shaders must cover the target's graphics API, and native plugins need their own builds. IL2CPP builds are native code and need the source. |
 | GameMaker | yes | data.win holds the game; it needs a GameMaker runner for the target. Compatibility varies by version. |
+| MonoGame | yes | MonoGame games are .NET. DesktopGL builds run on macOS and Linux with the same .NET (or Mono) runtime and the target's native libraries (SDL2, OpenAL); WindowsDX builds use DirectX and need the source. |
+| FNA | yes | The game already uses FNA, which runs on macOS and Linux. Such games usually ship .bin.osx / .bin.x86_64 launchers (MonoKickstart) and fnalibs: the developer's own Mac and Linux builds are the way to go. |
 | Ardor3D | yes | Java: the game's .jar files run on any platform with a Java runtime, as long as the build ships the native libraries (LWJGL, JOGL...) for the target. |
 | Java 3D | yes | Java: the game's .jar files run on any platform with a Java runtime, as long as the build ships the native libraries (LWJGL, JOGL...) for the target. |
 | jMonkeyEngine | yes | Java: the game's .jar files run on any platform with a Java runtime, as long as the build ships the native libraries (LWJGL, JOGL...) for the target. |
@@ -85,7 +87,7 @@ Porting Toolkit recognises 184 engines from their files' names and first bytes (
 | Aleph One (Marathon) | [Aleph One](https://alephone.lhowon.org) | `alephone-export` | Marathon's Shapes, Sounds and Map files run on Aleph One. |
 | FreeSpace 2 (Source Code Project) | [FreeSpace Open](https://github.com/scp-fs2open/fs2open.github.com) | `fs2-export` | FreeSpace 2's .vp archives run on FreeSpace Open. |
 | RPG Maker 2000/2003 | [EasyRPG Player](https://easyrpg.org) | `rpgmaker2k-export` | RPG_RT games run on EasyRPG Player. |
-| MonoGame / XNA | [FNA](https://fna-xna.github.io) | none yet | XNA games run on macOS and Linux with FNA (an open reimplementation of XNA); MonoGame DesktopGL builds are already cross-platform .NET. No Porting Toolkit plugin for it yet. |
+| XNA (Microsoft XNA Framework 4) | [FNA](https://fna-xna.github.io) | none yet | XNA games are .NET with XNA's content (.xnb). FNA reimplements XNA for macOS and Linux, but FNA, its native libraries (fnalibs) and a Mono runtime have no prebuilt official releases to download: they are built from source, so there is no Porting Toolkit plugin yet. |
 | Blender Game Engine | [UPBGE](https://upbge.org) | none yet | UPBGE, the community continuation of the Blender Game Engine, can run many .blend games; older files may need changes. No Porting Toolkit plugin for it yet. UPBGE publishes only weekly builds, which cannot be pinned, so there is no plugin yet. |
 | Adobe Flash (SWF) | [Ruffle](https://ruffle.rs) | `flash-export` | Flash games run in Ruffle (web or desktop). Games built on Stage3D (Starling, Flare3D, Away3D) are not supported by Ruffle yet. |
 | Flixel | [Ruffle](https://ruffle.rs) | none yet | Flixel games are Flash (.swf): the flash-export plugin runs them with Ruffle. HaxeFlixel builds are native or HTML5. |

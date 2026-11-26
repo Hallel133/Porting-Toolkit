@@ -1970,12 +1970,11 @@
   },
   {
    "id": "xna",
-   "name": "MonoGame / XNA",
+   "name": "XNA (Microsoft XNA Framework 4)",
    "kind": "engine",
    "status": "runtime",
-   "how": "XNA games run on macOS and Linux with FNA (an open reimplementation of XNA); MonoGame DesktopGL builds are already cross-platform .NET. No Porting Toolkit plugin for it yet.",
+   "how": "XNA games are .NET with XNA's content (.xnb). FNA reimplements XNA for macOS and Linux, but FNA, its native libraries (fnalibs) and a Mono runtime have no prebuilt official releases to download: they are built from source, so there is no Porting Toolkit plugin yet.",
    "aliases": [
-    "MonoGame",
     "XNA"
    ],
    "family": "",
@@ -1988,29 +1987,109 @@
    "via": null,
    "rules": [
     [
-     0.4,
+     0.45,
      "name",
      "*.xnb"
     ],
     [
-     0.5,
+     0.1,
+     "dir",
+     "content"
+    ],
+    [
+     0.6,
      "name",
      "microsoft.xna.framework*.dll"
     ],
     [
-     0.6,
+     -0.6,
+     "name",
+     "fna.dll"
+    ],
+    [
+     -0.6,
+     "name",
+     "monogame.framework.dll"
+    ]
+   ],
+   "samples": [
+    "Game.exe",
+    "Content/title.xnb"
+   ]
+  },
+  {
+   "id": "monogame",
+   "name": "MonoGame",
+   "kind": "engine",
+   "status": "partial",
+   "how": "MonoGame games are .NET. DesktopGL builds run on macOS and Linux with the same .NET (or Mono) runtime and the target's native libraries (SDL2, OpenAL); WindowsDX builds use DirectX and need the source.",
+   "aliases": [
+    "MonoGame"
+   ],
+   "family": "XNA",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
      "name",
      "monogame.framework.dll"
     ],
     [
-     0.6,
+     0.2,
      "name",
-     "fna.dll"
+     "*.xnb"
     ]
    ],
    "samples": [
-    "Content/a.xnb",
-    "MonoGame.Framework.dll"
+    "MonoGame.Framework.dll",
+    "Content/title.xnb"
+   ]
+  },
+  {
+   "id": "fna",
+   "name": "FNA",
+   "kind": "engine",
+   "status": "partial",
+   "how": "The game already uses FNA, which runs on macOS and Linux. Such games usually ship .bin.osx / .bin.x86_64 launchers (MonoKickstart) and fnalibs: the developer's own Mac and Linux builds are the way to go.",
+   "aliases": [
+    "FNA"
+   ],
+   "family": "XNA",
+   "runtime": {
+    "name": "FNA",
+    "url": "https://fna-xna.github.io",
+    "license": "MS-PL"
+   },
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "fna.dll"
+    ],
+    [
+     0.3,
+     "name",
+     "*.bin.osx"
+    ],
+    [
+     0.3,
+     "name",
+     "*.bin.x86_64"
+    ],
+    [
+     0.1,
+     "name",
+     "*.xnb"
+    ]
+   ],
+   "samples": [
+    "FNA.dll",
+    "Game.bin.osx",
+    "Content/title.xnb"
    ]
   },
   {

@@ -7,8 +7,8 @@ A community tool to manage, convert, export and import game projects between pla
 
 - Rust workspace: `crates/ptk-core` (manifest, targets, `.ptk` pack/unpack, verify, hashing, engine RPC client, plus shared operations `scan`/`project`/`doctor`/`plugins`/`banner`), `crates/ptk-cli` (binary `ptk`, clap), `crates/ptk-gui` (binary `ptk-gui`, egui 0.33 desktop app).
 - Python engine: `engine/ptk_engine` (uv + pytest, standard library only, Python 3.11+). Detection, plugin validation and the plugin runtime (`runtime.py` → `host.py`, API in `api.py`, format readers in `formats/`); Rust runs it as a subprocess over JSON-RPC on stdin/stdout.
-- Built-in plugins: `engine/plugins/*` (12, API 2). Marketplace (installable, **not built in, not shipped**) runtime plugins: `marketplace/plugins/*` (26).
-- Engine catalog: `engine/ptk_engine/data/engines.json` (184 entries: status, runtime, plugin, detection rules, samples), read by `signatures.py` and by Rust `routes.rs` (`include_str!`). Edit the JSON, then `python3 tools/gen_engines_doc.py` (a test checks `docs/engines.md` is current).
+- Built-in plugins: `engine/plugins/*` (12, API 2). Marketplace (installable, **not built in, not shipped**) runtime plugins: `marketplace/plugins/*` (27).
+- Engine catalog: `engine/ptk_engine/data/engines.json` (186 entries: status, runtime, plugin, detection rules, samples), read by `signatures.py` and by Rust `routes.rs` (`include_str!`). Edit the JSON, then `python3 tools/gen_engines_doc.py` (a test checks `docs/engines.md` is current).
 - Docs: `README.md`, `ARCHITECTURE.md` (protocol, layout), `docs/project-format.md`, `docs/plugins.md`, `docs/legal.md`.
 - Fixtures: `fixtures/games/*` are fake game folders of **empty files** with the right names.
 
@@ -21,7 +21,7 @@ A community tool to manage, convert, export and import game projects between pla
 ## Git / release state (2026-11-26)
 - Remote `origin` = https://github.com/Hallel133/Porting-Toolkit (public; the owner created it with a one-line README). Work on `main`.
 - Phase 1 (commit 4c21302) was pushed to `origin/main` on 2026-11-09; pushing works despite the account flag.
-- **2026-11-26: the owner fixed the GitHub account.** github.com/Hallel133 and both repos are public again, raw.githubusercontent.com serves files, and GitHub Actions runs. CI (`ci.yml`, macos-15 + ubuntu-latest) passed for the first time on 757f885 after two fixes: macOS-only menu code was dead code for clippy on Linux (0e17933), and the retired macos-14 runner became macos-15. The marketplace repo `Hallel133/ptk-marketplace` now lists the 26 runtime plugins (`plugins/*.zip`, built by `tools/build_marketplace.py https://raw.githubusercontent.com/Hallel133/ptk-marketplace/main/plugins <clone>/plugins`, then move `index.json` to the repo root); `ptk market install doom-export` from the live index works. raw.githubusercontent.com caches for about 5 minutes after a push.
+- **2026-11-26: the owner fixed the GitHub account.** github.com/Hallel133 and both repos are public again, raw.githubusercontent.com serves files, and GitHub Actions runs. CI (`ci.yml`, macos-15 + ubuntu-latest) passed for the first time on 757f885 after two fixes: macOS-only menu code was dead code for clippy on Linux (0e17933), and the retired macos-14 runner became macos-15. The marketplace repo `Hallel133/ptk-marketplace` now lists the 27 runtime plugins (`plugins/*.zip`, built by `tools/build_marketplace.py https://raw.githubusercontent.com/Hallel133/ptk-marketplace/main/plugins <clone>/plugins`, then move `index.json` to the repo root); `ptk market install doom-export` from the live index works. raw.githubusercontent.com caches for about 5 minutes after a push.
 - Earlier: the owner said their GitHub account was "flagged" (Grand-V notes: GitHub Actions is disabled for the Hallel133 account, `HTTP 422`). So `.github/workflows/ci.yml` (macos-14 + ubuntu: fmt, clippy -D warnings, cargo test, uv run pytest) has probably never run. Run the same commands locally.
 
 ## Commands
@@ -30,7 +30,7 @@ export PATH="$HOME/.cargo/bin:$PATH"          # cargo is not on the default PATH
 cargo test --workspace                        # 92 Rust tests, starts the real Python engine
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-(cd engine && uv run pytest)                  # 510 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
+(cd engine && uv run pytest)                  # 518 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
 (cd engine && PTK_TOOL_TESTS=1 uv run pytest -k real)       # also runs real FFmpeg encodes
 (cd engine && PTK_GUI_TESTS=1 uv run pytest -k macos_app)   # also opens the wrapper app and checks the page loaded
 cargo run -q -p ptk-cli -- scan fixtures/games/unity-windows
@@ -184,6 +184,10 @@ The owner pasted a v1.0 prompt (v2 pipeline detect/stage/convert/package, APFS c
 ## Done (2026-11-26, research on the unresolved engines)
 - Resolved with public sources: **id Tech 6** (base/gameresources.index + .resources, from DOOMExtract/modding docs; closed), **GameSalad** (HTML5 export js/gse/gse-export.js; web variant of html5), **Pixel Game Maker MV** (Resources/data/project.json + info.json, read from the open-source MIT player github.com/GGGweb-adm/PGMMV, Cocos2d-x 3.17.1; partial: the player is Windows-only), **LyN** (Ubisoft BigFile .bf = Jade's format; closed, detected as Jade).
 - Still unresolved (20), each with its reason in the catalog: Buildbox, C4, CraftStudio (only Project.dat of the editor is documented), Coretech, Dim3, Enigma (native executables only), id Tech 8, Iron Engine, Leadwerks (encrypted data.zip is too common a name), Messiah, Moai, Monkey X, Panta Rhei (never shipped), Pie in the Sky, Q, Shark 3D, Silent Storm, Treyarch NGL, V-Play/Felgo (plain Qt apps), Visual3D. Real game folders from the owner would be the way to add them.
+
+## Done (2026-11-26, Defold and FNA)
+- **defold-export (89d822f):** reads the engine version + sha1 that every Defold engine embeds side by side from the game's own engine (bytes only), downloads `d.defold.com/archive/stable/<sha1>/engine/<platform>/dmengine` (no published SHA-256; notes record it), passes game.projectc. `--set defold_sha1=` / `runtime=`. Checked once by hand with the real 1.14.1 arm64 engine (downloaded, not run): signed app, `codesign --verify` OK. Native extensions built into the game's engine are lost.
+- **FNA:** no plugin. FNA releases are source (they include `abi/Microsoft.Xna.Framework.*` shims, so XNA games could run without relinking), fnalibs are only expiring GitHub Actions artifacts of FNA-XNA/fnalibs-dailies, MonoKickstart has no releases, XnaToFna's last release is 2018. Detection split instead: `xna` (runtime, no plugin), `monogame` (partial), `fna` (partial: the game already uses FNA). A plugin would need a user-built "FNA kit" (FNA + ABI dlls, fnalibs, MonoKickstart); the owner was asked.
 
 ## Next task
 0. Owner: try one runtime plugin from the Marketplace with a game they own (ScummVM with Beneath a Steel Sky, which is freeware, is the easiest). A second host (Codeberg, docs/marketplace-hosting.md) is only needed if GitHub breaks again. When a plugin changes, bump its version, rebuild the marketplace files and push them to ptk-marketplace.
