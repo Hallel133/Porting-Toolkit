@@ -11,14 +11,15 @@ from ptk_engine.plugins import new_plugin, validate_plugin
 from ptk_engine.runtime import run_plugin
 
 
-def run(plugin: Path, game: Path, out: Path | None, tmp: Path, phase: str = "run", settings=None) -> dict:
+def run(plugin: Path, game: Path, out: Path | None, tmp: Path, phase: str = "run", settings=None,
+        options=None) -> dict:
     (tmp / "project").mkdir(exist_ok=True)
     folders = {"$GAME": str(game), "$PROJECT": str(tmp / "project")}
     if out:
         folders["$OUTPUT"] = str(out)
     return run_plugin({"plugin": str(plugin), "kind": None, "engine": "html5",
                        "target": {"id": "macos-arm64", "os": "macos"}, "phase": phase,
-                       "manifest": {"name": "p", "version": "1.0.0", "game": {}},
+                       "manifest": {"name": "p", "version": "1.0.0", "game": {}, "options": options or {}},
                        "settings": settings or {}, "folders": folders, "cache_root": str(tmp / "cache")},
                       lambda m, p: None)["result"]
 
@@ -59,6 +60,24 @@ def test_check_phase_reports_problems_without_building(tmp_path):
         run(plugin, game, tmp_path / "out", tmp_path)
     assert e.value.problems[0]["message"] == "templates are missing"
     assert not (tmp_path / "out" / "Picky").exists()
+
+
+def test_exporters_that_ignore_the_advanced_options_say_so(tmp_path):
+    plugin = tmp_path / "keeper"
+    new_plugin(str(plugin), "export")
+    mod = plugin / "keeper" / "__init__.py"
+    mod.write_text(mod.read_text().replace("(ExportPlugin):\n", "(ExportPlugin):\n    applies_options = False\n", 1))
+    game = tmp_path / "game"
+    game.mkdir()
+    (game / "index.html").write_text("hi")
+    keep = {"audio": {"action": "keep"}}
+    assert run(plugin, game, None, tmp_path, phase="check", options=keep)["problems"] == []
+    squeeze = {"textures": {"action": "keep"}, "audio": {"action": "recompress", "quality": 60}}
+    r = run(plugin, game, None, tmp_path, phase="check", options=squeeze)
+    assert r["ok"] and [p["severity"] for p in r["problems"]] == ["warning"]
+    assert "advanced options" in r["problems"][0]["message"]
+    r = run(plugin, game, tmp_path / "out", tmp_path, options=squeeze)
+    assert any("advanced options" in w for w in r["warnings"])
 
 
 def test_template_import_plugin(tmp_path):

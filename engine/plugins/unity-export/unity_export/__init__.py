@@ -63,6 +63,10 @@ def slug(title: str) -> str:
 
 
 class Plugin(ExportPlugin):
+    applies_options = False
+    options_ignored_reason = ("a Unity build keeps its images and sound inside its own data files "
+                              "(.assets, .resS, bundles), which Porting Toolkit cannot re-encode yet")
+
     # -- check: everything that would stop or limit the export ---------------------------
 
     def check(self, ctx):

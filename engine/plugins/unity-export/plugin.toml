@@ -3,7 +3,7 @@ schema_version = 1
 [plugin]
 id = "unity-export"
 name = "Unity export (Mono, experimental)"
-version = "2.0.0"
+version = "2.0.1"
 kind = "export"
 description = "Moves a Unity Mono game to another platform with the Unity player of the same version: from a Unity installation, or downloaded once from Unity (only the player, no Unity install needed). Experimental: the build's shaders may not cover the target's graphics API."
 license = "MIT"

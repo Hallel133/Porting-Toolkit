@@ -56,10 +56,21 @@ def warning(message: str, action: dict | None = None) -> Problem:
     return Problem(message, "warning", action)
 
 
+def options_set(ctx: Context) -> bool:
+    """Whether the project asks to drop or recompress any asset category."""
+    options = (getattr(ctx, "manifest", None) or {}).get("options") or {}
+    return any(isinstance(o, dict) and (o.get("action") or "keep") != "keep" for o in options.values())
+
+
 class ExportPlugin:
     #: Media profile for ``ctx.process_assets`` (None: this plugin never
     #: re-encodes assets). See ``ptk_engine.media.profiles``.
     media_profile: str | None = None
+    #: False when this exporter never applies the advanced options (drop or
+    #: recompress assets); a warning then says they are ignored.
+    applies_options: bool = True
+    #: Why the advanced options are ignored, shown in that warning.
+    options_ignored_reason: str = "this exporter keeps the game's files as they are"
 
     # -- steps a plugin fills in -------------------------------------------------------------
 
@@ -81,13 +92,22 @@ class ExportPlugin:
 
     # -- the lifecycle -----------------------------------------------------------------------
 
+    def problems(self, ctx: Context) -> list[Problem]:
+        """``check(ctx)`` plus the base class's own notes."""
+        problems = list(self.check(ctx) or [])
+        if not self.applies_options and options_set(ctx):
+            problems.append(warning(
+                f"The advanced options (drop or recompress) are ignored: {self.options_ignored_reason}. "
+                "The export is the same as with every option on Keep."))
+        return problems
+
     def check_result(self, ctx: Context) -> dict:
-        problems = self.check(ctx)
+        problems = self.problems(ctx)
         return {"problems": [p.to_dict() for p in problems],
                 "ok": not any(p.severity == "error" for p in problems)}
 
     def run(self, ctx: Context) -> dict:
-        problems = self.check(ctx)
+        problems = self.problems(ctx)
         errors = [p for p in problems if p.severity == "error"]
         if errors:
             raise ProblemsError(errors)
@@ -153,7 +173,7 @@ class StagedExportPlugin(ExportPlugin):
 
         from .build import codesign_if_changed
 
-        problems = self.check(ctx)
+        problems = self.problems(ctx)
         errors = [p for p in problems if p.severity == "error"]
         if errors:
             raise ProblemsError(errors)
@@ -242,4 +262,4 @@ class ImportPlugin:
         return {"problems": [], "ok": True}
 
 
-__all__ = ["ExportPlugin", "ImportPlugin", "StagedExportPlugin", "Problem", "ProblemsError", "error", "warning"]
+__all__ = ["ExportPlugin", "ImportPlugin", "StagedExportPlugin", "Problem", "ProblemsError", "error", "warning", "options_set"]

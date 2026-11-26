@@ -247,6 +247,9 @@ check ──▶ prepare ──▶ layout ──▶ [sync: write only what change
 - **`check` problems** have a message, a severity (`error` stops the export,
   `warning` is shown) and an optional one-click fix `{"setting", "value",
   "label", "url"}`, which the app shows as a button that sets that plugin setting.
+- **`applies_options = False`** (with `options_ignored_reason`) marks an exporter that never drops or
+  recompresses assets (the Unity exporter): when the project sets any advanced option, `check` adds a
+  warning that they are ignored, and the app greys them out for that engine.
 - **Helpers:** `self.media(ctx, build, folder, profile)` applies the advanced
   options, reading the game's own files, so a re-export re-encodes nothing;
   `self.zip(ctx, build, folder, name)` makes a zip that reuses the unchanged

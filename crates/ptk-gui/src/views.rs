@@ -1310,12 +1310,18 @@ impl App {
                     } else {
                         "Export".to_owned()
                     };
-                    let options_set = self.project.as_ref().is_some_and(|p| {
-                        p.saved
-                            .options
-                            .values()
-                            .any(|o| o.action != ptk_core::manifest::AssetAction::Keep)
+                    let options_ignored = self.project.as_ref().and_then(|p| {
+                        ptk_core::category::options_ignored(
+                            p.manifest.game.engine.as_deref().unwrap_or(""),
+                        )
                     });
+                    let options_set = options_ignored.is_none()
+                        && self.project.as_ref().is_some_and(|p| {
+                            p.saved
+                                .options
+                                .values()
+                                .any(|o| o.action != ptk_core::manifest::AssetAction::Keep)
+                        });
                     ui.horizontal(|ui| {
                         if primary(ui, idle && !ready.is_empty(), &label).clicked() {
                             export = Some(ready.clone());
@@ -1328,7 +1334,9 @@ impl App {
                             .on_hover_text(
                                 "Re-encodes the largest files of each kind to estimate what the advanced options save. Builds nothing.",
                             )
-                            .on_disabled_hover_text("Set some advanced options to Recompress first (Game page).")
+                            .on_disabled_hover_text(options_ignored.unwrap_or(
+                                "Set some advanced options to Recompress first (Game page).",
+                            ))
                             .clicked()
                         {
                             estimate = Some(ready.clone());
@@ -1906,6 +1914,9 @@ impl App {
             .filter(|c| p.saved.options_for(c.id) != CategoryOptions::default())
             .count();
         let packed = matches!(self.pack_result, Some(Ok(_)));
+        let ignored =
+            ptk_core::category::options_ignored(p.manifest.game.engine.as_deref().unwrap_or(""))
+                .is_some();
         let dir = p.dir.clone();
         let contents = p.contents;
         let mut go = None;
@@ -1923,9 +1934,11 @@ impl App {
                     View::Scan,
                 ),
                 (
-                    changed > 0,
+                    changed > 0 && !ignored,
                     "Choose what is lost",
-                    if changed > 0 {
+                    if ignored {
+                        "Not available for Unity games: everything is kept".into()
+                    } else if changed > 0 {
                         format!("{changed} categories changed")
                     } else {
                         "Everything is kept for now".into()
@@ -2287,6 +2300,23 @@ impl App {
                 "Before porting, decide per asset category what is kept, dropped or recompressed, so you control what is lost.",
             );
             ui.add_space(6.0);
+            let ignored = ptk_core::category::options_ignored(
+                p.manifest.game.engine.as_deref().unwrap_or(""),
+            );
+            if let Some(why) = ignored {
+                ui.label(RichText::new(format!("⚠ {why}")).color(WARN));
+                let set = p
+                    .manifest
+                    .options
+                    .values()
+                    .any(|o| o.action != AssetAction::Keep);
+                if set && ui.button("Set every category to Keep").clicked() {
+                    for o in p.manifest.options.values_mut() {
+                        *o = CategoryOptions::default();
+                    }
+                }
+                ui.add_space(6.0);
+            }
             let auto = AutoInfo {
                 engine: p.manifest.game.engine.clone(),
                 targets: p
@@ -2296,7 +2326,9 @@ impl App {
                     .filter_map(|t| self.registry.get(t).cloned())
                     .collect(),
             };
-            options_editor(ui, &mut p.manifest.options, "project", &auto);
+            ui.add_enabled_ui(ignored.is_none(), |ui| {
+                options_editor(ui, &mut p.manifest.options, "project", &auto);
+            });
         });
     }
 

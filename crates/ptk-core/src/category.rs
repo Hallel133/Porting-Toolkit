@@ -112,6 +112,19 @@ pub fn default_quality(category: &str) -> u8 {
     }
 }
 
+/// Why the advanced options do nothing for games of `engine`, when its
+/// export plugin never drops or re-encodes assets. The Unity exporter says
+/// the same in its check (`applies_options = False` in the engine).
+pub fn options_ignored(engine: &str) -> Option<&'static str> {
+    match engine {
+        "unity" => Some(
+            "Unity games keep their images and sound inside Unity's own data files (.assets, .resS, bundles), \
+             which Porting Toolkit cannot re-encode yet. These options are ignored: the export is the same as with Keep.",
+        ),
+        _ => None,
+    }
+}
+
 /// True when `format` is one of [`formats`] for the category.
 pub fn is_format(category: &str, format: &str) -> bool {
     formats(category).iter().any(|(id, _)| *id == format)
@@ -150,5 +163,14 @@ pub fn formats(id: &str) -> &'static [(&'static str, &'static str)] {
         "models" => &[("meshopt", "meshoptimizer"), ("draco", "Draco")],
         "fonts" => &[("woff2", "WOFF2")],
         _ => &[],
+    }
+}
+
+#[cfg(test)]
+mod options_tests {
+    #[test]
+    fn unity_ignores_options() {
+        assert!(super::options_ignored("unity").is_some());
+        assert!(super::options_ignored("renpy").is_none());
     }
 }
