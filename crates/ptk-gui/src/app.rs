@@ -362,6 +362,9 @@ pub struct App {
     /// "Check my copy" results, by port id.
     pub copy_checks: HashMap<String, Result<ptk_core::market::CopyCheck, String>>,
     pub market_search: String,
+    /// Browse shows only export plugins for this (engine, target): set by
+    /// "Find one" on the Export page.
+    pub market_for: Option<(String, String)>,
     /// The URL typed in Settings → Marketplace.
     pub market_source_input: String,
     pub market_kind: Option<EntryKind>,
@@ -495,6 +498,7 @@ impl App {
             submit_result: None,
             copy_checks: HashMap::new(),
             market_search: String::new(),
+            market_for: None,
             market_source_input: String::new(),
             market_kind: None,
             publish_path: String::new(),

@@ -32,7 +32,7 @@ Porting Toolkit recognises 186 engines from their files' names and first bytes (
 | Turbulenz | as `html5` | Web games: the HTML5 plugins export them (browser, WebKit app on macOS, NW.js on Windows and Linux). |
 | GameSalad | as `html5` | GameSalad's HTML5 export (js/gse/gse-export.js) is a web game: the HTML5 plugins export it. Its native builds have no documented layout. |
 
-## Depends on the build (19)
+## Depends on the build (18)
 
 | Engine | Detected | How |
 |---|---|---|
@@ -52,7 +52,6 @@ Porting Toolkit recognises 186 engines from their files' names and first bytes (
 | Solar2D (Corona) | yes | Solar2D compiles Lua into resource.car; the open source Solar2D can build the project again for another platform from the source project. |
 | AppGameKit | yes | Tier 1 games are bytecode (media/bytecode.byc) for AppGameKit's player, which comes with an AppGameKit licence. |
 | Game Editor | yes | Game Editor is open source; a project (.ged) can be exported again for another platform with Game Editor itself. |
-| Cocos2d-x (C++) | yes | Cocos2d-x games written in C++ are native code and need the source. Lua and JavaScript games are detected separately; HTML5 builds (Cocos2d-html5, Cocos Creator web) are exported by the HTML5 plugins. |
 | Cocos Creator | yes | Web builds are exported by the HTML5 plugins. Native builds embed a customised engine and usually encrypted scripts (.jsc): a port needs the Cocos Creator project. |
 | Pixel Game Maker MV | yes | Games are data (Resources/data/project.json) for the Pixel Game Maker MV player, which runs on Windows only. The player is open source (MIT, built on Cocos2d-x 3.17.1: github.com/GGGweb-adm/PGMMV) but has no macOS or Linux build yet. |
 
@@ -107,7 +106,7 @@ Porting Toolkit recognises 186 engines from their files' names and first bytes (
 | Cocos2d-x (Lua) | [Cocos2d-x simulator (same version as the game)](https://github.com/cocos2d/cocos2d-x) | `cocos2dx-export` | The game's Lua scripts (src/) and resources (res/) run with the Cocos2d-x simulator of the same version, built once from Cocos2d-x's source. Encrypted scripts (XXTEA) and games with their own C++ code run only in the game's own executable. |
 | Cocos2d-x (JavaScript) | [Cocos2d-x simulator (same version as the game)](https://github.com/cocos2d/cocos2d-x) | `cocos2dx-export` | The game's JavaScript (main.js, src/) and resources run with the Cocos2d-x simulator of the same version. Compiled .jsc scripts are encrypted and run only in the game's own executable. |
 
-## Needs the source code (77)
+## Needs the source code (78)
 
 | Engine | Detected | How |
 |---|---|---|
@@ -116,6 +115,7 @@ Porting Toolkit recognises 186 engines from their files' names and first bytes (
 | Source | yes | Native engine code. Without source, only a compatibility layer can run it elsewhere. |
 | Starling Framework | as `flash` | Starling draws with Flash's Stage3D, which Ruffle does not support yet, so there is no open runtime for it today. |
 | Flare3D | as `flash` | Flare3D draws with Flash's Stage3D, which Ruffle does not support yet, so there is no open runtime for it today. |
+| Cocos2d-x (C++) | yes | Cocos2d-x games written in C++ are native code and need the source. Lua and JavaScript games are detected separately; HTML5 builds (Cocos2d-html5, Cocos Creator web) are exported by the HTML5 plugins. |
 | 4A Engine | yes | Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere. |
 | Amazon Lumberyard | yes | Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere. |
 | Anvil (Scimitar, AnvilNext) | yes | Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere. |

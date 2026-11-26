@@ -2948,7 +2948,7 @@
    "id": "cocos2d",
    "name": "Cocos2d-x (C++)",
    "kind": "engine",
-   "status": "partial",
+   "status": "closed",
    "how": "Cocos2d-x games written in C++ are native code and need the source. Lua and JavaScript games are detected separately; HTML5 builds (Cocos2d-html5, Cocos Creator web) are exported by the HTML5 plugins.",
    "aliases": [
     "Cocos2d",

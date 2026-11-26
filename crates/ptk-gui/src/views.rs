@@ -630,8 +630,47 @@ impl App {
                     .iter()
                     .filter(|e| e.matches(&self.market_search))
                     .filter(|e| self.market_kind.is_none_or(|k| e.kind == k))
+                    .filter(|e| {
+                        self.market_for.as_ref().is_none_or(|(engine, target)| {
+                            e.kind == EntryKind::Plugin
+                                && e.engines.iter().any(|x| x == engine)
+                                && (e.targets.is_empty() || e.targets.iter().any(|x| x == target))
+                        })
+                    })
                     .cloned()
                     .collect();
+                if let Some((engine, target)) = self.market_for.clone() {
+                    let route = ptk_core::routes::route_for(Some(&engine));
+                    let name = route
+                        .map(|r| r.name.to_string())
+                        .unwrap_or_else(|| engine.clone());
+                    let mut clear = false;
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            RichText::new(format!(
+                                "Export plugins for {name} that build for {target}"
+                            ))
+                            .color(TEAL),
+                        );
+                        if ui.small_button("Show everything").clicked() {
+                            clear = true;
+                        }
+                    });
+                    if entries.is_empty() {
+                        let how = route.map(|r| r.how).unwrap_or("");
+                        widgets::message(
+                            ui,
+                            WARN,
+                            &format!(
+                                "No plugin in the Marketplace exports {name} to {target}. {how}"
+                            ),
+                        );
+                    }
+                    if clear {
+                        self.market_for = None;
+                    }
+                    ui.add_space(8.0);
+                }
                 // Game ports first.
                 entries.sort_by_key(|e| e.kind != EntryKind::Project);
                 let ctx = ui.ctx().clone();
@@ -657,6 +696,17 @@ impl App {
                     );
                     ui.add_space(10.0);
                 }
+                let installed: std::collections::HashMap<String, (String, bool)> = self
+                    .plugins
+                    .as_ref()
+                    .and_then(|r| r.as_ref().ok())
+                    .map(|v| {
+                        v.iter()
+                            .map(|p| (p.id.clone(), (p.version.clone(), p.builtin)))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let mut manage = false;
                 let updates = self.market_updates.clone();
                 let update_of = |e: &ptk_core::market::MarketEntry| {
                     updates
@@ -744,19 +794,42 @@ impl App {
                                 }
                             });
                             ui.add_space(4.0);
-                            let label = match (&update, e.kind) {
-                                (Some(_), _) => "Update…",
-                                (None, EntryKind::Project) => "Download",
-                                (None, _) => "Install…",
-                            };
-                            if primary(ui, idle, label).clicked() {
-                                install = Some(e.clone());
+                            let have = (e.kind == EntryKind::Plugin)
+                                .then(|| installed.get(&e.id))
+                                .flatten();
+                            match (&update, have) {
+                                (None, Some((version, builtin))) => {
+                                    ui.horizontal_wrapped(|ui| {
+                                        let text = if *builtin {
+                                            format!("✔ Built in (v{version})")
+                                        } else {
+                                            format!("✔ Installed (v{version})")
+                                        };
+                                        ui.label(RichText::new(text).color(GREEN));
+                                        if ui.small_button("Manage").clicked() {
+                                            manage = true;
+                                        }
+                                    });
+                                }
+                                _ => {
+                                    let label = match (&update, e.kind) {
+                                        (Some(_), _) => "Update…",
+                                        (None, EntryKind::Project) => "Download",
+                                        (None, _) => "Install…",
+                                    };
+                                    if primary(ui, idle, label).clicked() {
+                                        install = Some(e.clone());
+                                    }
+                                }
                             }
                         });
                     });
                 }
                 if let Some(e) = check {
                     self.check_copy(ui.ctx(), e);
+                }
+                if manage {
+                    self.market_tab = MarketTab::Installed;
                 }
             }
         }
@@ -1084,6 +1157,7 @@ impl App {
             .collect();
         let idle = self.busy.is_none();
         let mut find = None;
+        let mut find_plugin: Option<String> = None;
         let mut add: Option<String> = None;
         let mut remove: Option<String> = None;
         let mut export: Option<Vec<String>> = None;
@@ -1110,14 +1184,18 @@ impl App {
                                     &self.installed_plugin_ids(),
                                     plugin,
                                 );
-                                if !installed
-                                    && ui
-                                        .button(format!(
-                                            "Get the {plugin} plugin in the Marketplace"
+                                if installed {
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "✔ The {plugin} plugin is installed"
                                         ))
-                                        .clicked()
+                                        .color(GREEN),
+                                    );
+                                } else if ui
+                                    .button(format!("Get the {plugin} plugin in the Marketplace"))
+                                    .clicked()
                                 {
-                                    find = Some(plugin.to_owned());
+                                    find_plugin = Some(plugin.to_owned());
                                 }
                             }
                         }
@@ -1244,13 +1322,30 @@ impl App {
                                         });
                                     }
                                     None => {
+                                        let route =
+                                            ptk_core::routes::route_for(engine.as_deref());
+                                        let portable = route.is_none_or(|r| {
+                                            matches!(
+                                                r.kind,
+                                                ptk_core::routes::RouteKind::Retarget
+                                                    | ptk_core::routes::RouteKind::Partial
+                                                    | ptk_core::routes::RouteKind::Runtime
+                                            )
+                                        });
                                         ui.horizontal(|ui| {
+                                            if let (false, Some(r)) = (portable, route) {
+                                                // No plugin can help: say why instead of
+                                                // sending the user shopping.
+                                                badge(ui, r.kind.label(), ERROR)
+                                                    .on_hover_text(r.how);
+                                                return;
+                                            }
                                             badge(ui, "no exporter", TEXT_FAINT);
                                             if ui
                                                 .small_button("Find one")
-                                                .on_hover_text(
-                                                    "Look for an export plugin in the Marketplace",
-                                                )
+                                                .on_hover_text(format!(
+                                                    "Export plugins for {engine_name} in the Marketplace"
+                                                ))
                                                 .clicked()
                                             {
                                                 find = Some(id.clone());
@@ -1448,8 +1543,20 @@ impl App {
                 p.manifest.targets.retain(|x| *x != t);
             }
         }
+        if let Some(p) = find_plugin {
+            self.market_for = None;
+            self.market_search = p;
+            self.market_tab = MarketTab::Browse;
+            self.go(View::Marketplace, ui.ctx());
+        }
         if let Some(t) = find {
-            self.market_search = t;
+            if let Some(e) = engine.clone() {
+                // A target id: plugins that export this engine to it.
+                self.market_for = Some((e, t));
+                self.market_search.clear();
+            } else {
+                self.market_search = t;
+            }
             self.market_tab = MarketTab::Browse;
             self.go(View::Marketplace, ui.ctx());
         }
