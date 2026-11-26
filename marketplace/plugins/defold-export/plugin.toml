@@ -1,0 +1,24 @@
+schema_version = 1
+
+[plugin]
+id = "defold-export"
+name = "Defold export"
+version = "1.0.0"
+kind = "export"
+description = "Runs Defold games (game.projectc, game.arcd) on macOS, Windows and Linux with the Defold engine of the exact version the game was built with, downloaded from Defold."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "defold_export:Plugin"
+api = 2
+homepage = "https://defold.com"
+
+[formats]
+inputs = ["defold"]
+outputs = ["app", "folder", "zip"]
+targets = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"]
+
+[permissions]
+read = ["$GAME", "$PROJECT"]
+write = ["$OUTPUT"]
+network = ["d.defold.com"]
+subprocess = true   # codesign for the macOS app

@@ -225,3 +225,27 @@ def test_dosbox_starts_the_gold_box_game(tmp_path):
 def test_a_portable_exe_runtime_is_copied_alone(tmp_path):
     out = build_with_fake(tmp_path, "scratch-export", "scratch", "windows-x64", {"project.sb3": b"PK"})
     assert [p.name for p in (out / "runtime").iterdir()] == ["TurboWarpFake.exe"]
+
+
+def test_defold_reads_the_engine_version_from_the_game(tmp_path):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("defold_export", ROOT / "defold-export" / "defold_export" / "__init__.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    sha1 = "ee283d4dad9fa451dd6399d83602e1dc25133681"
+    game = tmp_path / "game"
+    game.mkdir()
+    (game / "Quest.exe").write_bytes(b"MZ" + b"\0" * 100 + b"1.14.1\0\0\0" + sha1.encode() + b"\0" + b"\0" * 50)
+    (game / "game.projectc").write_text("[project]\n")
+    (game / "game.arcd").write_bytes(b"x")
+    assert mod.read_engine_version(mod.engine_candidates(game, ["Quest.exe", "game.projectc"])) == ("1.14.1", sha1)
+    (tmp_path / "project").mkdir()
+    req = {"plugin": str(ROOT / "defold-export"), "kind": "export", "engine": "defold", "phase": "check",
+           "target": TARGETS["macos-arm64"], "manifest": {"name": "p", "version": "1", "game": {}}, "settings": {},
+           "folders": {"$GAME": str(game), "$PROJECT": str(tmp_path / "project")}, "cache_root": str(tmp_path / "cache")}
+    assert run_plugin(req, lambda m, p: None)["result"]["ok"]
+    (game / "Quest.exe").write_bytes(b"MZ no version here")
+    r = run_plugin(req, lambda m, p: None)["result"]
+    assert not r["ok"] and "defold_sha1" in r["problems"][0]["message"]
+    r = run_plugin({**req, "settings": {"defold_sha1": sha1}}, lambda m, p: None)["result"]
+    assert r["ok"]

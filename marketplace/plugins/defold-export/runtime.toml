@@ -1,0 +1,24 @@
+# Defold: https://github.com/defold/defold (Defold License, based on Apache-2.0).
+# The engine must be the exact version the game was built with. Defold publishes
+# every version at d.defold.com/archive/stable/<sha1>/engine/<platform>/dmengine;
+# the plugin reads <sha1> from the game's own engine (its bytes, never run).
+[runtime]
+id = "defold"
+name = "Defold engine"
+version = "same as the game"
+source = "https://github.com/defold/defold"
+license = "Defold License (Apache-2.0 based)"
+
+[runtime.executable]
+macos = "dmengine"
+windows = "dmengine.exe"
+linux = "dmengine"
+
+[launch]
+args = ["{main}"]
+
+[game]
+required = ["game.projectc"]
+main = ["game.projectc"]
+# The game's own engine is replaced by the target's.
+exclude = ["*.exe", "*.x86_64", "*.app/contents/macos/*"]

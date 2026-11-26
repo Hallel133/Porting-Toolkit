@@ -2517,7 +2517,7 @@
    "name": "Defold",
    "kind": "engine",
    "status": "runtime",
-   "how": "Defold's game archive (game.arcd, game.projectc) is platform independent; the open Defold engine of the same version runs it. No Porting Toolkit plugin for it yet.",
+   "how": "Defold's game archive (game.arcd, game.projectc) runs with the Defold engine of the exact same version, which Defold publishes for every platform; the plugin reads the version from the game's own engine.",
    "aliases": [],
    "family": "",
    "runtime": {
@@ -2525,7 +2525,7 @@
     "url": "https://github.com/defold/defold",
     "license": "Defold License"
    },
-   "plugin": null,
+   "plugin": "defold-export",
    "via": null,
    "rules": [
     [
