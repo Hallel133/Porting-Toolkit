@@ -80,25 +80,25 @@ Porting Toolkit recognises 184 engines from their files' names and first bytes (
 | NScripter | [ONScripter](https://onscripter.osdn.jp) | `nscripter-export` | NScripter novels (nscript.dat, .nsa archives) run on ONScripter. |
 | OHRRPGCE | [OHRRPGCE](https://rpg.hamsterrepublic.com/ohrrpgce/) | `ohrrpgce-export` | The game's .rpg file runs on the OHRRPGCE player (open source) for every platform. |
 | M.U.G.E.N | [Ikemen GO](https://github.com/ikemen-engine/Ikemen-GO) | `mugen-export` | M.U.G.E.N content (chars/, stages/, data/mugen.cfg) runs on Ikemen GO. |
-| Aleph One (Marathon) | [Aleph One](https://alephone.lhowon.org) | none yet | Marathon's Shapes, Sounds and Map files run on Aleph One. No Porting Toolkit plugin for it yet. |
-| FreeSpace 2 (Source Code Project) | [FreeSpace Open](https://github.com/scp-fs2open/fs2open.github.com) | none yet | FreeSpace 2's .vp archives run on FreeSpace Open. No Porting Toolkit plugin for it yet. |
-| RPG Maker 2000/2003 | [EasyRPG Player](https://easyrpg.org) | none yet | RPG_RT games run on EasyRPG Player. No Porting Toolkit plugin for it yet. |
+| Aleph One (Marathon) | [Aleph One](https://alephone.lhowon.org) | `alephone-export` | Marathon's Shapes, Sounds and Map files run on Aleph One. |
+| FreeSpace 2 (Source Code Project) | [FreeSpace Open](https://github.com/scp-fs2open/fs2open.github.com) | `fs2-export` | FreeSpace 2's .vp archives run on FreeSpace Open. |
+| RPG Maker 2000/2003 | [EasyRPG Player](https://easyrpg.org) | `rpgmaker2k-export` | RPG_RT games run on EasyRPG Player. |
 | MonoGame / XNA | [FNA](https://fna-xna.github.io) | none yet | XNA games run on macOS and Linux with FNA (an open reimplementation of XNA); MonoGame DesktopGL builds are already cross-platform .NET. No Porting Toolkit plugin for it yet. |
-| Blender Game Engine | [UPBGE](https://upbge.org) | none yet | UPBGE, the community continuation of the Blender Game Engine, can run many .blend games; older files may need changes. No Porting Toolkit plugin for it yet. |
-| Adobe Flash (SWF) | [Ruffle](https://ruffle.rs) | none yet | Flash games run in Ruffle (web or desktop). Games built on Stage3D (Starling, Flare3D, Away3D) are not supported by Ruffle yet. No Porting Toolkit plugin for it yet. |
-| Flixel | [Ruffle](https://ruffle.rs) | none yet | Flixel games are Flash (.swf): see Adobe Flash. HaxeFlixel builds are native or HTML5. |
-| Scratch | [TurboWarp Packager](https://packager.turbowarp.org) | none yet | Scratch projects (.sb3) become web or desktop apps with the TurboWarp Packager. No Porting Toolkit plugin for it yet. |
-| TIC-80 | [TIC-80](https://github.com/nesbox/TIC-80) | none yet | TIC-80 carts (.tic) run on the open source TIC-80 for every platform. |
+| Blender Game Engine | [UPBGE](https://upbge.org) | none yet | UPBGE, the community continuation of the Blender Game Engine, can run many .blend games; older files may need changes. No Porting Toolkit plugin for it yet. UPBGE publishes only weekly builds, which cannot be pinned, so there is no plugin yet. |
+| Adobe Flash (SWF) | [Ruffle](https://ruffle.rs) | `flash-export` | Flash games run in Ruffle (web or desktop). Games built on Stage3D (Starling, Flare3D, Away3D) are not supported by Ruffle yet. |
+| Flixel | [Ruffle](https://ruffle.rs) | none yet | Flixel games are Flash (.swf): the flash-export plugin runs them with Ruffle. HaxeFlixel builds are native or HTML5. |
+| Scratch | [TurboWarp Packager](https://packager.turbowarp.org) | `scratch-export` | Scratch projects (.sb3) become web or desktop apps with the TurboWarp Packager. |
+| TIC-80 | [TIC-80](https://github.com/nesbox/TIC-80) | `tic80-export` | TIC-80 carts (.tic) run on the open source TIC-80 for every platform. |
 | Pyrogenesis (0 A.D.) | [0 A.D. / Pyrogenesis](https://play0ad.com) | none yet | 0 A.D. is open source and released for every platform; mods are data for it. |
 | OpenClonk | [OpenClonk](https://www.openclonk.org) | none yet | OpenClonk is open source for every platform; scenarios are data for it. |
 | Qfusion (Warsow) | [Qfusion / Warsow](https://github.com/Qfusion/qfusion) | none yet | Qfusion and Warsow are open source; the basewsw/ data runs on them. |
 | Cube Engine | [Cube](http://cubeengine.com) | none yet | Cube is open source; the packages/ folder runs with Cube built for the target. |
 | Cube 2 Engine (Sauerbraten) | [Cube 2: Sauerbraten](http://sauerbraten.org) | none yet | Cube 2: Sauerbraten is open source and released for every platform; the packages/ folder is data for it. |
-| StepMania | [ITGmania / StepMania](https://github.com/itgmania/itgmania) | none yet | Songs (.sm, .ssc) play in ITGmania or StepMania on every platform. |
-| Visual Pinball | [Visual Pinball X](https://github.com/vpinball/vpinball) | none yet | Visual Pinball X is open source, with standalone builds for macOS and Linux; tables (.vpx) are data for it. |
-| Serious Engine | [Serious Sam Classic (Serious Engine 1)](https://github.com/tx00100xt/SeriousSamClassic) | none yet | Serious Engine 1 (The First and Second Encounter) is open source; its .gro data runs on SeriousSamClassic. Later Serious Engine versions need the source. |
+| StepMania | [ITGmania / StepMania](https://github.com/itgmania/itgmania) | none yet | Songs (.sm, .ssc) play in ITGmania or StepMania on every platform. No plugin yet: ITGmania for Windows is an installer only. |
+| Visual Pinball | [Visual Pinball X](https://github.com/vpinball/vpinball) | none yet | Visual Pinball X is open source, with standalone builds for macOS and Linux; tables (.vpx) are data for it. No plugin yet: tables usually also need VPinMAME ROMs and backglass files. |
+| Serious Engine | [Serious Sam Classic (Serious Engine 1)](https://github.com/tx00100xt/SeriousSamClassic) | none yet | Serious Engine 1 (The First and Second Encounter) is open source; its .gro data runs on SeriousSamClassic. Later Serious Engine versions need the source. No plugin yet: its Windows builds are 7z archives without checksums. |
 | HPL Engine (Frictional Games) | [HPL engines (GPL source releases)](https://github.com/FrictionalGames) | none yet | Penumbra and Amnesia already ship for macOS and Linux, and their HPL engines are open source (GPL). No Porting Toolkit plugin for it yet. |
-| Gold Box (SSI) | [DOSBox Staging](https://www.dosbox-staging.org) | none yet | Gold Box games are DOS programs (.DAX data): they run in DOSBox. No Porting Toolkit plugin for it yet. |
+| Gold Box (SSI) | [DOSBox Staging](https://www.dosbox-staging.org) | `dos-export` | Gold Box games are DOS programs (.DAX data): they run in DOSBox. |
 | Defold | [Defold engine](https://github.com/defold/defold) | none yet | Defold's game archive (game.arcd, game.projectc) is platform independent; the open Defold engine of the same version runs it. No Porting Toolkit plugin for it yet. |
 | Cocos2d-x (Lua) | [Cocos2d-x simulator (same version as the game)](https://github.com/cocos2d/cocos2d-x) | `cocos2dx-export` | The game's Lua scripts (src/) and resources (res/) run with the Cocos2d-x simulator of the same version, built once from Cocos2d-x's source. Encrypted scripts (XXTEA) and games with their own C++ code run only in the game's own executable. |
 | Cocos2d-x (JavaScript) | [Cocos2d-x simulator (same version as the game)](https://github.com/cocos2d/cocos2d-x) | `cocos2dx-export` | The game's JavaScript (main.js, src/) and resources run with the Cocos2d-x simulator of the same version. Compiled .jsc scripts are encrypted and run only in the game's own executable. |

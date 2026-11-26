@@ -1,0 +1,24 @@
+schema_version = 1
+
+[plugin]
+id = "rpgmaker2k-export"
+name = "RPG Maker 2000/2003 export (EasyRPG Player)"
+version = "1.0.0"
+kind = "export"
+description = "Runs RPG Maker 2000 and 2003 games (RPG_RT.ldb, RPG_RT.lmt) on macOS, Windows and Linux with EasyRPG Player."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "rpgmaker2k_export:Plugin"
+api = 2
+homepage = "https://github.com/EasyRPG/Player"
+
+[formats]
+inputs = ["rpgmaker2k"]
+outputs = ["app", "folder", "zip"]
+targets = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"]
+
+[permissions]
+read = ["$GAME", "$PROJECT"]
+write = ["$OUTPUT"]
+network = ["easyrpg.org"]
+subprocess = true   # codesign for the macOS app, hdiutil to open disk images

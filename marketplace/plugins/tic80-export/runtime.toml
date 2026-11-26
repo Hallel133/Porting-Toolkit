@@ -1,0 +1,39 @@
+# TIC-80: https://github.com/nesbox/TIC-80 (MIT).
+# The cart starts directly (--skip leaves out TIC-80's intro).
+[runtime]
+id = "tic80"
+name = "TIC-80"
+version = "1.4.1"
+source = "https://github.com/nesbox/TIC-80"
+license = "MIT"
+
+[runtime.executable]
+macos = "*.app"
+windows = "tic80.exe"
+linux = "tic80"
+
+[runtime.installed]
+macos = ["/Applications/TIC-80.app", "~/Applications/TIC-80.app"]
+
+[download.macos-arm64]
+url = "https://github.com/nesbox/TIC-80/releases/download/v1.4.1/tic80-v1.4-mac-arm64.app.zip"
+sha256 = "3146a5531f52b947b621e645fd8967e800a9717b91d15d7c18a67c651d968275"
+
+[download.macos-x64]
+url = "https://github.com/nesbox/TIC-80/releases/download/v1.4.1/tic80-v1.4-mac.app.zip"
+sha256 = "6454cfe6536492e1e82ae95cb615f8a8635e051fa0f2e6ca8fdeb0e515f9c03b"
+
+[download.windows-x64]
+url = "https://github.com/nesbox/TIC-80/releases/download/v1.4.1/tic80-v1.4-win.zip"
+sha256 = "7324229f8f3526f95ca00dd18452b5e3242c68472e507ce6ab182c185f13ac13"
+
+[download.linux-x64]
+url = "https://github.com/nesbox/TIC-80/releases/download/v1.4.1/tic80-v1.4-linux.zip"
+sha256 = "c46ea4fee2ca2dd1848fb7584f86717b22c448746b744ab19558ae78483c29bb"
+
+[launch]
+args = ["--skip", "{main}"]
+
+[game]
+required = ["*.tic"]
+main = ["*.tic"]

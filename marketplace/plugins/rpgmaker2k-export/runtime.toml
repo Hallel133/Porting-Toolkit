@@ -1,0 +1,34 @@
+# EasyRPG Player: https://github.com/EasyRPG/Player (GPL-3.0-or-later).
+# Games that use the RPG Maker 2000/2003 RTP need it installed where EasyRPG looks for it (see easyrpg.org). The pins were hashed by Porting Toolkit (easyrpg.org publishes no checksums).
+[runtime]
+id = "easyrpg"
+name = "EasyRPG Player"
+version = "0.8.1.1"
+source = "https://github.com/EasyRPG/Player"
+license = "GPL-3.0-or-later"
+
+[runtime.executable]
+macos = "*.app"
+windows = "Player.exe"
+linux = "easyrpg-player"
+
+[runtime.installed]
+macos = ["/Applications/EasyRPG Player.app", "~/Applications/EasyRPG Player.app"]
+
+[download.macos]
+url = "https://easyrpg.org/downloads/player/0.8.1.1/easyrpg-player-0.8.1.1-macos.app.zip"
+sha256 = "3e0fdcc388797fd9117aa6b1fc3b1d93dbb457b7102abfe8227d6822543aba93"
+
+[download.windows-x64]
+url = "https://easyrpg.org/downloads/player/0.8.1.1/easyrpg-player-0.8.1.1-windows.zip"
+sha256 = "ce38bacb365a576b6109da922c3e4754abcb72d397a765304d28f24edb0959ec"
+
+[download.linux-x64]
+url = "https://easyrpg.org/downloads/player/0.8.1.1/easyrpg-player-0.8.1.1-linux.tar.gz"
+sha256 = "f6dcd61b83c18b8836daac11e68b3c4b0e02d7d7b7e16d276037a93b913f4881"
+
+[launch]
+args = ["--project-path", "{game}"]
+
+[game]
+required = ["rpg_rt.ldb"]

@@ -1,0 +1,36 @@
+# TurboWarp Desktop: https://github.com/TurboWarp/desktop (GPL-3.0-only).
+# TurboWarp opens the project in its editor window; press the green flag to play. For a stand-alone web or app build of a project, the TurboWarp Packager (packager.turbowarp.org) is the better tool.
+[runtime]
+id = "turbowarp"
+name = "TurboWarp Desktop"
+version = "1.17.1"
+source = "https://github.com/TurboWarp/desktop"
+license = "GPL-3.0-only"
+single_file = true
+
+[runtime.executable]
+macos = "*.app"
+windows = "TurboWarp*.exe"
+linux = "TurboWarp*.AppImage"
+
+[runtime.installed]
+macos = ["/Applications/TurboWarp.app", "~/Applications/TurboWarp.app"]
+
+[download.macos]
+url = "https://github.com/TurboWarp/desktop/releases/download/v1.17.1/TurboWarp-Setup-1.17.1.dmg"
+sha256 = "2c6f80e178a2dce44272c4aaf57375885533a0f9799a7ebb39bbf93733f7e34d"
+
+[download.windows-x64]
+url = "https://github.com/TurboWarp/desktop/releases/download/v1.17.1/TurboWarp.Portable.1.17.1.x64.exe"
+sha256 = "c1f8125fb64d58db487679a2d14915140e7c74d5af4df00fb675ca60d1ef51c3"
+
+[download.linux-x64]
+url = "https://github.com/TurboWarp/desktop/releases/download/v1.17.1/TurboWarp-linux-x86_64-1.17.1.AppImage"
+sha256 = "a721ce5c5cf504837c2ffd27518da30c69583eeecb61a224c576517105ca1724"
+
+[launch]
+args = ["{main}"]
+
+[game]
+required = ["*.sb3", "*.sb2"]
+main = ["*.sb3", "*.sb2"]

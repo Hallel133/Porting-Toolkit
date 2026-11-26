@@ -214,3 +214,14 @@ def test_cocos2dx_js_game_in_a_mac_app(tmp_path):
                            "Game.app/Contents/Resources/script/jsb.js": b"x"})
     sh = (out / "Test.sh").read_text()
     assert '"-workdir" "${GAME}/Game.app/Contents/Resources" "-entry" "main.js"' in sh
+
+
+def test_dosbox_starts_the_gold_box_game(tmp_path):
+    out = build_with_fake(tmp_path, "dos-export", "goldbox", "linux-x64",
+                          {"START.EXE": b"MZ", "GEO1.DAX": b"x", "ECL1.DAX": b"x"})
+    assert 'exec "${RUNTIME}/dosbox" "${GAME}/START.EXE" "$@"' in (out / "Test.sh").read_text()
+
+
+def test_a_portable_exe_runtime_is_copied_alone(tmp_path):
+    out = build_with_fake(tmp_path, "scratch-export", "scratch", "windows-x64", {"project.sb3": b"PK"})
+    assert [p.name for p in (out / "runtime").iterdir()] == ["TurboWarpFake.exe"]

@@ -1,0 +1,24 @@
+schema_version = 1
+
+[plugin]
+id = "flash-export"
+name = "Flash export (Ruffle)"
+version = "1.0.0"
+kind = "export"
+description = "Runs Flash games (.swf), including Flixel games, on macOS, Windows and Linux with the Ruffle desktop player."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "flash_export:Plugin"
+api = 2
+homepage = "https://github.com/ruffle-rs/ruffle"
+
+[formats]
+inputs = ["flash"]
+outputs = ["app", "folder", "zip"]
+targets = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"]
+
+[permissions]
+read = ["$GAME", "$PROJECT"]
+write = ["$OUTPUT"]
+network = ["github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"]
+subprocess = true   # codesign for the macOS app, hdiutil to open disk images

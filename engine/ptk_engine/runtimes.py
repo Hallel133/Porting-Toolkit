@@ -76,7 +76,7 @@ from pathlib import Path, PurePosixPath
 from .api import Context, PluginError
 
 HOMEBREW_PREFIXES = ("/opt/homebrew/", "/usr/local/Cellar/", "/usr/local/opt/", "/home/linuxbrew/")
-ARCHIVES = (".zip", ".tar.gz", ".tgz", ".tar.xz", ".txz", ".tar.bz2", ".dmg", ".appimage")
+ARCHIVES = (".zip", ".tar.gz", ".tgz", ".tar.xz", ".txz", ".tar.bz2", ".dmg", ".appimage", ".exe")
 
 
 class RuntimeError_(PluginError):
@@ -102,6 +102,8 @@ class RuntimeSpec:
     #: The whole folder around the program is the runtime (its data folders
     #: sit next to it), also on macOS where the program is an app.
     whole_folder: bool = False
+    #: The program is one file (a portable .exe): copy only it, not its folder.
+    single_file: bool = False
 
     @classmethod
     def load(cls, path: Path) -> RuntimeSpec:
@@ -121,6 +123,7 @@ class RuntimeSpec:
             required=list(game.get("required") or []), exclude=list(game.get("exclude") or []),
             main=list(game.get("main") or []), game_dir=game.get("dir", "game"),
             whole_folder=bool(rt.get("whole_folder", False)),
+            single_file=bool(rt.get("single_file", False)),
         )
 
     def download_for(self, target: dict) -> dict | None:
@@ -232,8 +235,12 @@ def _glob_executable(root: Path, pattern: str) -> Path | None:
         return None
     levels = [root] + sorted(p for p in root.iterdir() if p.is_dir() and p.suffix != ".app")
     for folder in levels:
-        for p in sorted(folder.iterdir()):
-            if not p.is_symlink() and fnmatch.fnmatchcase(p.name.lower(), low) and (found := resolve(p)):
+        # The shortest match first: "fs2_open_x64.exe" before "fs2_open_x64-FASTDBG.exe".
+        matches = sorted((p for p in folder.iterdir()
+                          if not p.is_symlink() and fnmatch.fnmatchcase(p.name.lower(), low)),
+                         key=lambda p: (len(p.name), p.name))
+        for p in matches:
+            if found := resolve(p):
                 return found
     return None
 
@@ -250,12 +257,13 @@ def _app_binary(app: Path) -> Path | None:
     return binary if name and binary.is_file() else None
 
 
-def runtime_root(executable: Path, os_: str, whole_folder: bool = False) -> Path:
+def runtime_root(executable: Path, os_: str, whole_folder: bool = False, single_file: bool = False) -> Path:
     """What goes into the build: the app (macOS), the program's folder, or the
-    single file (an AppImage). ``whole_folder``: the folder around the app."""
+    single file (an AppImage, or any program with ``single_file``).
+    ``whole_folder``: the folder around the app."""
     if os_ == "macos" and len(executable.parents) > 2 and executable.parents[2].suffix == ".app":
         return executable.parents[3] if whole_folder else executable.parents[2]  # X.app/Contents/MacOS/x
-    if os_ == "linux" and executable.suffix.lower() == ".appimage":
+    if (os_ == "linux" and executable.suffix.lower() == ".appimage") or single_file:
         return executable
     return executable.parent
 
@@ -297,7 +305,7 @@ def locate(ctx: Context, spec: RuntimeSpec, target: dict, download: bool) -> Fou
             continue
         if download:
             ctx.write_text(_remembered(ctx, target), str(p) + "\n")
-        return Found(runtime_root(found.executable, os_, spec.whole_folder), found.executable, "setting")
+        return Found(runtime_root(found.executable, os_, spec.whole_folder, spec.single_file), found.executable, "setting")
     found = _locate_other(ctx, spec, target, download)
     if found is None and missed and spec.download_for(target) is None:
         raise RuntimeError_(missed + f" Use {key}=PATH to give one per target.")
@@ -311,13 +319,13 @@ def _locate_other(ctx: Context, spec: RuntimeSpec, target: dict, download: bool)
         p = Path(rem.read_text(encoding="utf-8").strip())
         found = _from_path(ctx, p, spec, os_, unpack=download) if p.exists() else None
         if found:
-            return Found(runtime_root(found.executable, os_, spec.whole_folder), found.executable, "remembered")
+            return Found(runtime_root(found.executable, os_, spec.whole_folder, spec.single_file), found.executable, "remembered")
     for guess in spec.installed.get(os_, []):
         p = Path(guess).expanduser()
         if p.exists() and not (os_ == "macos" and is_homebrew(p)):
             exe = executable_in(p, spec, os_)
             if exe:
-                return Found(runtime_root(exe, os_, spec.whole_folder), exe, "installed")
+                return Found(runtime_root(exe, os_, spec.whole_folder, spec.single_file), exe, "installed")
     pin = spec.download_for(target)
     if pin is None:
         return None
@@ -325,7 +333,7 @@ def _locate_other(ctx: Context, spec: RuntimeSpec, target: dict, download: bool)
     if (cached / ".complete").is_file():
         exe = executable_in(cached / "runtime", spec, os_)
         if exe:
-            return Found(runtime_root(exe, os_, spec.whole_folder), exe, "cached")
+            return Found(runtime_root(exe, os_, spec.whole_folder, spec.single_file), exe, "cached")
     if not download:
         return None
     return _download(ctx, spec, target, pin)
@@ -343,7 +351,7 @@ def _from_path(ctx: Context, p: Path, spec: RuntimeSpec, os_: str, unpack: bool)
     if not p.exists():
         return None
     lower = p.name.lower()
-    if p.is_file() and lower.endswith(ARCHIVES) and not lower.endswith(".appimage"):
+    if p.is_file() and lower.endswith(ARCHIVES) and not lower.endswith((".appimage", ".exe")):
         if not unpack:
             return Found(p, p, "setting")  # checked when unpacked
         st = p.stat()
@@ -373,7 +381,7 @@ def _download(ctx: Context, spec: RuntimeSpec, target: dict, pin: dict) -> Found
     if exe is None:
         raise RuntimeError_(f"{archive.name} has no {spec.executable.get(os_)}")
     (dest / ".complete").write_text(archive.name + "\n")
-    return Found(runtime_root(exe, os_, spec.whole_folder), exe, "download")
+    return Found(runtime_root(exe, os_, spec.whole_folder, spec.single_file), exe, "download")
 
 
 # -- unpacking --------------------------------------------------------------------------------------------------
@@ -397,7 +405,7 @@ def unpack_archive(ctx: Context, archive: Path, dest: Path) -> None:
     elif name.endswith((".tar.gz", ".tgz", ".tar.xz", ".txz", ".tar.bz2")):
         with tarfile.open(archive) as t:
             t.extractall(dest, filter="data")
-    elif name.endswith(".appimage"):
+    elif name.endswith((".appimage", ".exe")):  # a single-file program (portable .exe)
         out = dest / archive.name
         shutil.copyfile(archive, out)
         out.chmod(0o755)

@@ -1859,7 +1859,7 @@
    "name": "Aleph One (Marathon)",
    "kind": "engine",
    "status": "runtime",
-   "how": "Marathon's Shapes, Sounds and Map files run on Aleph One. No Porting Toolkit plugin for it yet.",
+   "how": "Marathon's Shapes, Sounds and Map files run on Aleph One.",
    "aliases": [],
    "family": "",
    "runtime": {
@@ -1867,7 +1867,7 @@
     "url": "https://alephone.lhowon.org",
     "license": "GPL-3.0-or-later"
    },
-   "plugin": null,
+   "plugin": "alephone-export",
    "via": null,
    "rules": [
     [
@@ -1902,7 +1902,7 @@
    "name": "FreeSpace 2 (Source Code Project)",
    "kind": "engine",
    "status": "runtime",
-   "how": "FreeSpace 2's .vp archives run on FreeSpace Open. No Porting Toolkit plugin for it yet.",
+   "how": "FreeSpace 2's .vp archives run on FreeSpace Open.",
    "aliases": [
     "FreeSpace 2 Source Code Project"
    ],
@@ -1912,7 +1912,7 @@
     "url": "https://github.com/scp-fs2open/fs2open.github.com",
     "license": "Volition source licence"
    },
-   "plugin": null,
+   "plugin": "fs2-export",
    "via": null,
    "rules": [
     [
@@ -1931,7 +1931,7 @@
    "name": "RPG Maker 2000/2003",
    "kind": "engine",
    "status": "runtime",
-   "how": "RPG_RT games run on EasyRPG Player. No Porting Toolkit plugin for it yet.",
+   "how": "RPG_RT games run on EasyRPG Player.",
    "aliases": [],
    "family": "RPG Maker",
    "runtime": {
@@ -1939,7 +1939,7 @@
     "url": "https://easyrpg.org",
     "license": "GPL-3.0-or-later"
    },
-   "plugin": null,
+   "plugin": "rpgmaker2k-export",
    "via": null,
    "rules": [
     [
@@ -2013,7 +2013,7 @@
    "name": "Blender Game Engine",
    "kind": "engine",
    "status": "runtime",
-   "how": "UPBGE, the community continuation of the Blender Game Engine, can run many .blend games; older files may need changes. No Porting Toolkit plugin for it yet.",
+   "how": "UPBGE, the community continuation of the Blender Game Engine, can run many .blend games; older files may need changes. No Porting Toolkit plugin for it yet. UPBGE publishes only weekly builds, which cannot be pinned, so there is no plugin yet.",
    "aliases": [],
    "family": "",
    "runtime": {
@@ -2045,7 +2045,7 @@
    "name": "Adobe Flash (SWF)",
    "kind": "engine",
    "status": "runtime",
-   "how": "Flash games run in Ruffle (web or desktop). Games built on Stage3D (Starling, Flare3D, Away3D) are not supported by Ruffle yet. No Porting Toolkit plugin for it yet.",
+   "how": "Flash games run in Ruffle (web or desktop). Games built on Stage3D (Starling, Flare3D, Away3D) are not supported by Ruffle yet.",
    "aliases": [],
    "family": "Flash",
    "runtime": {
@@ -2053,7 +2053,7 @@
     "url": "https://ruffle.rs",
     "license": "MIT OR Apache-2.0"
    },
-   "plugin": null,
+   "plugin": "flash-export",
    "via": null,
    "rules": [
     [
@@ -2071,7 +2071,7 @@
    "name": "Flixel",
    "kind": "engine",
    "status": "runtime",
-   "how": "Flixel games are Flash (.swf): see Adobe Flash. HaxeFlixel builds are native or HTML5.",
+   "how": "Flixel games are Flash (.swf): the flash-export plugin runs them with Ruffle. HaxeFlixel builds are native or HTML5.",
    "aliases": [],
    "family": "Flash",
    "runtime": {
@@ -2117,7 +2117,7 @@
    "name": "Scratch",
    "kind": "engine",
    "status": "runtime",
-   "how": "Scratch projects (.sb3) become web or desktop apps with the TurboWarp Packager. No Porting Toolkit plugin for it yet.",
+   "how": "Scratch projects (.sb3) become web or desktop apps with the TurboWarp Packager.",
    "aliases": [],
    "family": "",
    "runtime": {
@@ -2125,7 +2125,7 @@
     "url": "https://packager.turbowarp.org",
     "license": "MPL-2.0"
    },
-   "plugin": null,
+   "plugin": "scratch-export",
    "via": null,
    "rules": [
     [
@@ -2156,7 +2156,7 @@
     "url": "https://github.com/nesbox/TIC-80",
     "license": "MIT"
    },
-   "plugin": null,
+   "plugin": "tic80-export",
    "via": null,
    "rules": [
     [
@@ -2348,7 +2348,7 @@
    "name": "StepMania",
    "kind": "engine",
    "status": "runtime",
-   "how": "Songs (.sm, .ssc) play in ITGmania or StepMania on every platform.",
+   "how": "Songs (.sm, .ssc) play in ITGmania or StepMania on every platform. No plugin yet: ITGmania for Windows is an installer only.",
    "aliases": [],
    "family": "",
    "runtime": {
@@ -2390,7 +2390,7 @@
    "name": "Visual Pinball",
    "kind": "engine",
    "status": "runtime",
-   "how": "Visual Pinball X is open source, with standalone builds for macOS and Linux; tables (.vpx) are data for it.",
+   "how": "Visual Pinball X is open source, with standalone builds for macOS and Linux; tables (.vpx) are data for it. No plugin yet: tables usually also need VPinMAME ROMs and backglass files.",
    "aliases": [],
    "family": "",
    "runtime": {
@@ -2421,7 +2421,7 @@
    "name": "Serious Engine",
    "kind": "engine",
    "status": "runtime",
-   "how": "Serious Engine 1 (The First and Second Encounter) is open source; its .gro data runs on SeriousSamClassic. Later Serious Engine versions need the source.",
+   "how": "Serious Engine 1 (The First and Second Encounter) is open source; its .gro data runs on SeriousSamClassic. Later Serious Engine versions need the source. No plugin yet: its Windows builds are 7z archives without checksums.",
    "aliases": [],
    "family": "",
    "runtime": {
@@ -2485,7 +2485,7 @@
    "name": "Gold Box (SSI)",
    "kind": "engine",
    "status": "runtime",
-   "how": "Gold Box games are DOS programs (.DAX data): they run in DOSBox. No Porting Toolkit plugin for it yet.",
+   "how": "Gold Box games are DOS programs (.DAX data): they run in DOSBox.",
    "aliases": [],
    "family": "",
    "runtime": {
@@ -2493,7 +2493,7 @@
     "url": "https://www.dosbox-staging.org",
     "license": "GPL-2.0-or-later"
    },
-   "plugin": null,
+   "plugin": "dos-export",
    "via": null,
    "rules": [
     [

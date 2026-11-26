@@ -1,0 +1,33 @@
+# Ruffle: https://github.com/ruffle-rs/ruffle (MIT OR Apache-2.0).
+# Ruffle publishes only nightly builds; this one is pinned. Games drawn with Stage3D (Starling, Flare3D, Away3D) do not work in Ruffle yet. If a game has several .swf files, the first one found is started.
+[runtime]
+id = "ruffle"
+name = "Ruffle"
+version = "nightly-2026-11-26"
+source = "https://github.com/ruffle-rs/ruffle"
+license = "MIT OR Apache-2.0"
+
+[runtime.executable]
+macos = "*.app"
+windows = "ruffle.exe"
+linux = "ruffle"
+
+[download.macos]
+url = "https://github.com/ruffle-rs/ruffle/releases/download/nightly-2026-11-26/ruffle-nightly-2026_11_26-macos-universal.tar.gz"
+sha256 = "5f93c2309ca8a36edee53790f025aea004b626f8d73dc4d168405628b92da3e4"
+
+[download.windows-x64]
+url = "https://github.com/ruffle-rs/ruffle/releases/download/nightly-2026-11-26/ruffle-nightly-2026_11_26-windows-x86_64.zip"
+sha256 = "f25986fd3d7472daec69c3bea5f9d4cc40bb59bd7f0ed600f6125e6425af9f5e"
+
+[download.linux-x64]
+url = "https://github.com/ruffle-rs/ruffle/releases/download/nightly-2026-11-26/ruffle-nightly-2026_11_26-linux-x86_64.tar.gz"
+sha256 = "f2b27c105b26047e3f385593293633b2a462113401aeafcc7aafcf307f3736e0"
+
+[launch]
+args = ["{main}"]
+
+[game]
+required = ["*.swf"]
+main = ["*.swf"]
+exclude = ["*.exe", "*.dll"]

@@ -1,0 +1,30 @@
+# Aleph One: https://github.com/Aleph-One-Marathon/alephone (GPL-3.0-or-later).
+# Aleph One is given the scenario folder. Linux has no official build (Flatpak only): --set runtime=PATH.
+[runtime]
+id = "alephone"
+name = "Aleph One"
+version = "20260930"
+source = "https://github.com/Aleph-One-Marathon/alephone"
+license = "GPL-3.0-or-later"
+
+[runtime.executable]
+macos = "*.app"
+windows = "Aleph One.exe"
+linux = "alephone"
+
+[runtime.installed]
+macos = ["/Applications/Aleph One.app", "~/Applications/Aleph One.app"]
+
+[download.macos]
+url = "https://github.com/Aleph-One-Marathon/alephone/releases/download/release-20260930/AlephOne-20260930-Mac.dmg"
+sha256 = "5029dd771344a76a9897b17e4726c071292c8168d655c6a7fda10076b618f464"
+
+[download.windows-x64]
+url = "https://github.com/Aleph-One-Marathon/alephone/releases/download/release-20260930/AlephOne-20260930-Win.zip"
+sha256 = "42ff30b229a34188a73010685ad81ddbf5dc15b9f855a3920ab993f33db4fb25"
+
+[launch]
+args = ["{game}"]
+
+[game]
+required = ["*.shpa", "*.scea", "shapes.shps"]

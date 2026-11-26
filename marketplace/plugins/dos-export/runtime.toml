@@ -1,0 +1,34 @@
+# DOSBox Staging: https://github.com/dosbox-staging/dosbox-staging (GPL-2.0-or-later).
+# DOSBox Staging starts START.EXE or GAME.EXE when the game has one; otherwise it opens a DOS prompt in the game folder.
+[runtime]
+id = "dosbox-staging"
+name = "DOSBox Staging"
+version = "0.83.1"
+source = "https://github.com/dosbox-staging/dosbox-staging"
+license = "GPL-2.0-or-later"
+
+[runtime.executable]
+macos = "*.app"
+windows = "dosbox.exe"
+linux = "dosbox"
+
+[runtime.installed]
+macos = ["/Applications/DOSBox Staging.app", "~/Applications/DOSBox Staging.app"]
+
+[download.macos]
+url = "https://github.com/dosbox-staging/dosbox-staging/releases/download/v0.83.1/dosbox-staging-macOS-v0.83.1.dmg"
+sha256 = "a016f04c25b0c27cc3dfa4165cd7242feb36d647fc9b3e4990ca83257d1012ad"
+
+[download.windows-x64]
+url = "https://github.com/dosbox-staging/dosbox-staging/releases/download/v0.83.1/dosbox-staging-windows-x64-v0.83.1.zip"
+sha256 = "22026101687c74f6d7b5443a114a3236f419d3651b20d09aec973031e8a1aec0"
+
+[download.linux-x64]
+url = "https://github.com/dosbox-staging/dosbox-staging/releases/download/v0.83.1/dosbox-staging-linux-x86_64-v0.83.1.tar.xz"
+sha256 = "3c7c925e28a5c88ae9f9f1a315ad07d91176b135fbe5f6f240eeee148ed176b0"
+
+[launch]
+args = []
+
+[game]
+required = ["*.dax"]

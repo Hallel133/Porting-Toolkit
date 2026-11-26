@@ -1,0 +1,24 @@
+schema_version = 1
+
+[plugin]
+id = "scratch-export"
+name = "Scratch export (TurboWarp)"
+version = "1.0.0"
+kind = "export"
+description = "Runs Scratch projects (.sb3, .sb2) on macOS, Windows and Linux with TurboWarp Desktop."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "scratch_export:Plugin"
+api = 2
+homepage = "https://github.com/TurboWarp/desktop"
+
+[formats]
+inputs = ["scratch"]
+outputs = ["app", "folder", "zip"]
+targets = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"]
+
+[permissions]
+read = ["$GAME", "$PROJECT"]
+write = ["$OUTPUT"]
+network = ["github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"]
+subprocess = true   # codesign for the macOS app, hdiutil to open disk images
