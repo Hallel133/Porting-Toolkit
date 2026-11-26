@@ -2,7 +2,7 @@
 
 Generated from `engine/ptk_engine/data/engines.json` by `tools/gen_engines_doc.py`; do not edit by hand.
 
-Porting Toolkit recognises 181 engines from their files' names and first bytes (nothing is decoded). `ptk engines` lists them; `ptk scan` says which one a game uses.
+Porting Toolkit recognises 184 engines from their files' names and first bytes (nothing is decoded). `ptk engines` lists them; `ptk scan` says which one a game uses.
 
 ## Exported by built-in plugins (6)
 
@@ -31,7 +31,7 @@ Porting Toolkit recognises 181 engines from their files' names and first bytes (
 | Blend4Web | as `html5` | Web games: the HTML5 plugins export them (browser, WebKit app on macOS, NW.js on Windows and Linux). |
 | Turbulenz | as `html5` | Web games: the HTML5 plugins export them (browser, WebKit app on macOS, NW.js on Windows and Linux). |
 
-## Depends on the build (15)
+## Depends on the build (16)
 
 | Engine | Detected | How |
 |---|---|---|
@@ -49,9 +49,10 @@ Porting Toolkit recognises 181 engines from their files' names and first bytes (
 | Solar2D (Corona) | yes | Solar2D compiles Lua into resource.car; the open source Solar2D can build the project again for another platform from the source project. |
 | AppGameKit | yes | Tier 1 games are bytecode (media/bytecode.byc) for AppGameKit's player, which comes with an AppGameKit licence. |
 | Game Editor | yes | Game Editor is open source; a project (.ged) can be exported again for another platform with Game Editor itself. |
-| Cocos2d / Cocos2d-x / Cocos2d-html5 | yes | HTML5 builds are handled by the HTML5 plugins. Native builds are C++ (or C++ with Lua/JS) and need the source. |
+| Cocos2d-x (C++) | yes | Cocos2d-x games written in C++ are native code and need the source. Lua and JavaScript games are detected separately; HTML5 builds (Cocos2d-html5, Cocos Creator web) are exported by the HTML5 plugins. |
+| Cocos Creator | yes | Web builds are exported by the HTML5 plugins. Native builds embed a customised engine and usually encrypted scripts (.jsc): a port needs the Cocos Creator project. |
 
-## Open-source runtimes (44)
+## Open-source runtimes (46)
 
 | Engine | Runtime | Plugin | How |
 |---|---|---|---|
@@ -99,6 +100,8 @@ Porting Toolkit recognises 181 engines from their files' names and first bytes (
 | HPL Engine (Frictional Games) | [HPL engines (GPL source releases)](https://github.com/FrictionalGames) | none yet | Penumbra and Amnesia already ship for macOS and Linux, and their HPL engines are open source (GPL). No Porting Toolkit plugin for it yet. |
 | Gold Box (SSI) | [DOSBox Staging](https://www.dosbox-staging.org) | none yet | Gold Box games are DOS programs (.DAX data): they run in DOSBox. No Porting Toolkit plugin for it yet. |
 | Defold | [Defold engine](https://github.com/defold/defold) | none yet | Defold's game archive (game.arcd, game.projectc) is platform independent; the open Defold engine of the same version runs it. No Porting Toolkit plugin for it yet. |
+| Cocos2d-x (Lua) | [Cocos2d-x simulator (same version as the game)](https://github.com/cocos2d/cocos2d-x) | `cocos2dx-export` | The game's Lua scripts (src/) and resources (res/) run with the Cocos2d-x simulator of the same version, built once from Cocos2d-x's source. Encrypted scripts (XXTEA) and games with their own C++ code run only in the game's own executable. |
+| Cocos2d-x (JavaScript) | [Cocos2d-x simulator (same version as the game)](https://github.com/cocos2d/cocos2d-x) | `cocos2dx-export` | The game's JavaScript (main.js, src/) and resources run with the Cocos2d-x simulator of the same version. Compiled .jsc scripts are encrypted and run only in the game's own executable. |
 
 ## Needs the source code (75)
 

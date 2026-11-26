@@ -1,0 +1,22 @@
+# Cocos2d-x: https://github.com/cocos2d/cocos2d-x (MIT). Cocos2d-x publishes no
+# prebuilt simulator: build it once for the game's version (`cocos gen-simulator`
+# in a Cocos2d-x checkout, for example 3.17.2) and pass --set runtime=PATH.
+# The simulator reads -workdir (the folder with src/ and res/) and -entry.
+[runtime]
+id = "cocos2dx-simulator"
+name = "Cocos2d-x simulator"
+version = "same as the game"
+source = "https://github.com/cocos2d/cocos2d-x"
+license = "MIT"
+
+[runtime.executable]
+macos = "*imulator*.app"
+windows = "*imulator*.exe"
+linux = "*imulator*"
+
+[launch]
+args = ["-workdir", "{game}"]
+
+[game]
+required = ["src/main.lua", "src/main.luac", "main.js", "main.jsc"]
+exclude = ["*.exe", "*.dll", "*.so", "*.dylib"]

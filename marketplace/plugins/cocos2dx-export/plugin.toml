@@ -1,0 +1,24 @@
+schema_version = 1
+
+[plugin]
+id = "cocos2dx-export"
+name = "Cocos2d-x export (Lua and JavaScript games)"
+version = "1.0.0"
+kind = "export"
+description = "Runs Cocos2d-x games written in Lua or JavaScript (src/, res/) on macOS, Windows and Linux with the Cocos2d-x simulator of the same version, which you build once from Cocos2d-x's source."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "cocos2dx_export:Plugin"
+api = 2
+homepage = "https://github.com/cocos2d/cocos2d-x"
+
+[formats]
+inputs = ["cocos2dx-js", "cocos2dx-lua"]
+outputs = ["app", "folder", "zip"]
+targets = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"]
+
+[permissions]
+read = ["$GAME", "$PROJECT"]
+write = ["$OUTPUT"]
+network = false
+subprocess = true   # codesign for the macOS app

@@ -183,3 +183,34 @@ def test_marketplace_builder_writes_a_valid_reproducible_index(tmp_path):
         assert f"{e['id']}/plugin.toml" in names and not any("__pycache__" in n for n in names)
     again = mod.build(base, tmp_path / "b")
     assert [e["sha256"] for e in again["entries"]] == [e["sha256"] for e in index["entries"]]
+
+
+def test_cocos2dx_runs_the_lua_folder_and_refuses_encrypted_scripts(tmp_path):
+    out = build_with_fake(tmp_path / "a", "cocos2dx-export", "cocos2dx-lua", "windows-x64",
+                          {"Game.exe": b"MZ", "src/main.luac": b"\x1bLJ\x02", "src/cocos/init.luac": b"\x1bLJ\x02",
+                           "res/a.png": b"png"})
+    cmd = (out / "Test.cmd").read_bytes().decode()
+    assert '-workdir "%~dp0game" %*' in cmd and "-entry" not in cmd and not (out / "game" / "Game.exe").exists()
+    plugin = ROOT / "cocos2dx-export"
+    spec = RuntimeSpec.load(plugin / "runtime.toml")
+    for files, why in (({"src/main.luac": b"XXTEA\x00\x01"}, "encrypted"), ({"main.jsc": b"\x00", "main.js": b"x"}, ".jsc")):
+        tmp = tmp_path / why.strip(".")
+        game = tmp / "game"
+        for rel, data in files.items():
+            (game / rel).parent.mkdir(parents=True, exist_ok=True)
+            (game / rel).write_bytes(data)
+        (tmp / "project").mkdir()
+        r = run_plugin({"plugin": str(plugin), "kind": "export", "engine": "cocos2dx-lua", "phase": "check",
+                        "target": TARGETS["windows-x64"], "manifest": {"name": "p", "version": "1", "game": {}},
+                        "settings": {"runtime": str(fake_runtime(tmp, spec, "windows"))},
+                        "folders": {"$GAME": str(game), "$PROJECT": str(tmp / "project")},
+                        "cache_root": str(tmp / "cache")}, lambda m, p: None)["result"]
+        assert not r["ok"] and why in r["problems"][0]["message"]
+
+
+def test_cocos2dx_js_game_in_a_mac_app(tmp_path):
+    out = build_with_fake(tmp_path, "cocos2dx-export", "cocos2dx-js", "linux-x64",
+                          {"Game.app/Contents/Resources/main.js": b"x", "Game.app/Contents/Resources/project.json": b"{}",
+                           "Game.app/Contents/Resources/script/jsb.js": b"x"})
+    sh = (out / "Test.sh").read_text()
+    assert '"-workdir" "${GAME}/Game.app/Contents/Resources" "-entry" "main.js"' in sh

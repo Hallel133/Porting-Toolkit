@@ -670,6 +670,11 @@
      0.4,
      "name",
      "*.tzjs"
+    ],
+    [
+     -0.5,
+     "name",
+     "cocos2d-jsb*.js"
     ]
    ],
    "samples": [
@@ -2857,14 +2862,15 @@
   },
   {
    "id": "cocos2d",
-   "name": "Cocos2d / Cocos2d-x / Cocos2d-html5",
+   "name": "Cocos2d-x (C++)",
    "kind": "engine",
    "status": "partial",
-   "how": "HTML5 builds are handled by the HTML5 plugins. Native builds are C++ (or C++ with Lua/JS) and need the source.",
+   "how": "Cocos2d-x games written in C++ are native code and need the source. Lua and JavaScript games are detected separately; HTML5 builds (Cocos2d-html5, Cocos Creator web) are exported by the HTML5 plugins.",
    "aliases": [
+    "Cocos2d",
     "Cocos2d-x"
    ],
-   "family": "",
+   "family": "Cocos",
    "runtime": null,
    "plugin": null,
    "via": null,
@@ -2878,10 +2884,176 @@
      0.6,
      "name",
      "cocos2d*.dll"
+    ],
+    [
+     -0.6,
+     "path",
+     "*/src/cocos/init.lua*"
+    ],
+    [
+     -0.6,
+     "path",
+     "*/src/main.lua*"
+    ],
+    [
+     -0.6,
+     "path",
+     "*/script/jsb*.js*"
+    ],
+    [
+     -0.6,
+     "name",
+     "main.jsc"
+    ],
+    [
+     -0.6,
+     "name",
+     "cocos2d-jsb*.js"
+    ],
+    [
+     -0.6,
+     "path",
+     "*/src/settings.js*"
     ]
    ],
    "samples": [
-    "libcocos2d.dll"
+    "libcocos2d.dll",
+    "Game.exe"
+   ]
+  },
+  {
+   "id": "cocos2dx-lua",
+   "name": "Cocos2d-x (Lua)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "The game's Lua scripts (src/) and resources (res/) run with the Cocos2d-x simulator of the same version, built once from Cocos2d-x's source. Encrypted scripts (XXTEA) and games with their own C++ code run only in the game's own executable.",
+   "aliases": [
+    "cocos2d-x lua",
+    "Quick-Cocos2d-x"
+   ],
+   "family": "Cocos",
+   "runtime": {
+    "name": "Cocos2d-x simulator (same version as the game)",
+    "url": "https://github.com/cocos2d/cocos2d-x",
+    "license": "MIT"
+   },
+   "plugin": "cocos2dx-export",
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "path",
+     "*/src/cocos/init.lua*"
+    ],
+    [
+     0.4,
+     "path",
+     "*/src/main.lua*"
+    ],
+    [
+     0.3,
+     "name",
+     "libcocos2d*"
+    ],
+    [
+     0.2,
+     "name",
+     "config.json"
+    ]
+   ],
+   "samples": [
+    "src/main.lua",
+    "src/cocos/init.lua",
+    "res/a.png",
+    "config.json"
+   ]
+  },
+  {
+   "id": "cocos2dx-js",
+   "name": "Cocos2d-x (JavaScript)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "The game's JavaScript (main.js, src/) and resources run with the Cocos2d-x simulator of the same version. Compiled .jsc scripts are encrypted and run only in the game's own executable.",
+   "aliases": [
+    "cocos2d-js",
+    "Cocos2d-JS"
+   ],
+   "family": "Cocos",
+   "runtime": {
+    "name": "Cocos2d-x simulator (same version as the game)",
+    "url": "https://github.com/cocos2d/cocos2d-x",
+    "license": "MIT"
+   },
+   "plugin": "cocos2dx-export",
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "path",
+     "*/script/jsb*.js*"
+    ],
+    [
+     0.3,
+     "name",
+     "project.json"
+    ],
+    [
+     0.2,
+     "name",
+     "main.js"
+    ],
+    [
+     0.3,
+     "name",
+     "libcocos2d*"
+    ]
+   ],
+   "samples": [
+    "main.js",
+    "project.json",
+    "script/jsb.js",
+    "src/app.js"
+   ]
+  },
+  {
+   "id": "cocos-creator",
+   "name": "Cocos Creator",
+   "kind": "engine",
+   "status": "partial",
+   "how": "Web builds are exported by the HTML5 plugins. Native builds embed a customised engine and usually encrypted scripts (.jsc): a port needs the Cocos Creator project.",
+   "aliases": [
+    "Cocos Creator"
+   ],
+   "family": "Cocos",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "cocos2d-jsb*.js"
+    ],
+    [
+     0.4,
+     "path",
+     "*/src/settings.js*"
+    ],
+    [
+     0.3,
+     "name",
+     "main.jsc"
+    ],
+    [
+     0.2,
+     "name",
+     "project.json"
+    ]
+   ],
+   "samples": [
+    "cocos2d-jsb.js",
+    "src/settings.jsc",
+    "main.jsc"
    ]
   },
   {
