@@ -1,0 +1,23 @@
+schema_version = 1
+
+[plugin]
+id = "ps5-import"
+name = "PS5 title import"
+version = "1.0.0"
+kind = "import"
+description = "Reads a PS5 title from your own dump (eboot.bin, sce_sys/param.json, sce_module/): title, ID, version, and whether its executables are decrypted ELF files that AnyPS5 can convert. Nothing is decrypted."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "ps5_import:Plugin"
+api = 2
+homepage = "https://github.com/boykopovar/AnyPS5"
+
+[formats]
+inputs = ["ps5"]
+outputs = ["ps5"]
+
+[permissions]
+read = ["$GAME"]
+write = ["$PROJECT/recipes"]
+network = false
+subprocess = false

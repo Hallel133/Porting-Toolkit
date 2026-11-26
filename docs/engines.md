@@ -2,7 +2,7 @@
 
 Generated from `engine/ptk_engine/data/engines.json` by `tools/gen_engines_doc.py`; do not edit by hand.
 
-Porting Toolkit recognises 186 engines from their files' names and first bytes (nothing is decoded). `ptk engines` lists them; `ptk scan` says which one a game uses.
+Porting Toolkit recognises 188 engines from their files' names and first bytes (nothing is decoded). `ptk engines` lists them; `ptk scan` says which one a game uses.
 
 ## Exported by built-in plugins (6)
 
@@ -55,7 +55,7 @@ Porting Toolkit recognises 186 engines from their files' names and first bytes (
 | Cocos Creator | yes | Web builds are exported by the HTML5 plugins. Native builds embed a customised engine and usually encrypted scripts (.jsc): a port needs the Cocos Creator project. |
 | Pixel Game Maker MV | yes | Games are data (Resources/data/project.json) for the Pixel Game Maker MV player, which runs on Windows only. The player is open source (MIT, built on Cocos2d-x 3.17.1: github.com/GGGweb-adm/PGMMV) but has no macOS or Linux build yet. |
 
-## Open-source runtimes (46)
+## Open-source runtimes (48)
 
 | Engine | Runtime | Plugin | How |
 |---|---|---|---|
@@ -105,6 +105,8 @@ Porting Toolkit recognises 186 engines from their files' names and first bytes (
 | Defold | [Defold engine](https://github.com/defold/defold) | `defold-export` | Defold's game archive (game.arcd, game.projectc) runs with the Defold engine of the exact same version, which Defold publishes for every platform; the plugin reads the version from the game's own engine. |
 | Cocos2d-x (Lua) | [Cocos2d-x simulator (same version as the game)](https://github.com/cocos2d/cocos2d-x) | `cocos2dx-export` | The game's Lua scripts (src/) and resources (res/) run with the Cocos2d-x simulator of the same version, built once from Cocos2d-x's source. Encrypted scripts (XXTEA) and games with their own C++ code run only in the game's own executable. |
 | Cocos2d-x (JavaScript) | [Cocos2d-x simulator (same version as the game)](https://github.com/cocos2d/cocos2d-x) | `cocos2dx-export` | The game's JavaScript (main.js, src/) and resources run with the Cocos2d-x simulator of the same version. Compiled .jsc scripts are encrypted and run only in the game's own executable. |
+| PlayStation 5 title (your own dump) | [AnyPS5](https://github.com/boykopovar/AnyPS5) | `ps5-export` | A decrypted PS5 executable (eboot.bin) and its modules are relinked by AnyPS5 into a native Linux or Windows program, with AnyPS5's PS5 system libraries. Encrypted (SELF) files cannot be converted; Porting Toolkit does not decrypt. Experimental: compatibility differs per title. |
+| PlayStation 4 title (your own dump) | [shadPS4](https://github.com/shadps4-emu/shadPS4) | none yet | PS4 titles are not converted by AnyPS5 (PS5 only). The shadPS4 emulator runs decrypted PS4 dumps on macOS, Windows and Linux; there is no Porting Toolkit plugin for it. |
 
 ## Needs the source code (78)
 

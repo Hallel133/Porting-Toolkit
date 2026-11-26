@@ -1,0 +1,24 @@
+schema_version = 1
+
+[plugin]
+id = "ps5-export"
+name = "PS5 title export (AnyPS5)"
+version = "1.0.0"
+kind = "export"
+description = "Converts a PS5 title from your own decrypted dump into a native Linux or Windows program with AnyPS5's relinker and its system libraries. Experimental: compatibility differs per title."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "ps5_export:Plugin"
+api = 2
+homepage = "https://github.com/boykopovar/AnyPS5"
+
+[formats]
+inputs = ["ps5"]
+outputs = ["folder"]
+targets = ["linux-x64", "windows-x64", "macos-x64", "macos-arm64"]
+
+[permissions]
+read = ["$GAME", "$PROJECT"]
+write = ["$OUTPUT"]
+network = ["github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"]
+subprocess = true   # runs AnyPS5's relinker

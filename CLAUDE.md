@@ -7,8 +7,8 @@ A community tool to manage, convert, export and import game projects between pla
 
 - Rust workspace: `crates/ptk-core` (manifest, targets, `.ptk` pack/unpack, verify, hashing, engine RPC client, plus shared operations `scan`/`project`/`doctor`/`plugins`/`banner`), `crates/ptk-cli` (binary `ptk`, clap), `crates/ptk-gui` (binary `ptk-gui`, egui 0.33 desktop app).
 - Python engine: `engine/ptk_engine` (uv + pytest, standard library only, Python 3.11+). Detection, plugin validation and the plugin runtime (`runtime.py` → `host.py`, API in `api.py`, format readers in `formats/`); Rust runs it as a subprocess over JSON-RPC on stdin/stdout.
-- Built-in plugins: `engine/plugins/*` (12, API 2). Marketplace (installable, **not built in, not shipped**) runtime plugins: `marketplace/plugins/*` (28).
-- Engine catalog: `engine/ptk_engine/data/engines.json` (187 entries: status, runtime, plugin, detection rules, samples), read by `signatures.py` and by Rust `routes.rs` (`include_str!`). Edit the JSON, then `python3 tools/gen_engines_doc.py` (a test checks `docs/engines.md` is current).
+- Built-in plugins: `engine/plugins/*` (12, API 2). Marketplace (installable, **not built in, not shipped**) runtime plugins: `marketplace/plugins/*` (30, incl. ps5-import).
+- Engine catalog: `engine/ptk_engine/data/engines.json` (189 entries: status, runtime, plugin, detection rules, samples), read by `signatures.py` and by Rust `routes.rs` (`include_str!`). Edit the JSON, then `python3 tools/gen_engines_doc.py` (a test checks `docs/engines.md` is current).
 - Docs: `README.md`, `ARCHITECTURE.md` (protocol, layout), `docs/project-format.md`, `docs/plugins.md`, `docs/legal.md`.
 - Fixtures: `fixtures/games/*` are fake game folders of **empty files** with the right names.
 
@@ -21,7 +21,7 @@ A community tool to manage, convert, export and import game projects between pla
 ## Git / release state (2026-11-26)
 - Remote `origin` = https://github.com/Hallel133/Porting-Toolkit (public; the owner created it with a one-line README). Work on `main`.
 - Phase 1 (commit 4c21302) was pushed to `origin/main` on 2026-11-09; pushing works despite the account flag.
-- **2026-11-26: the owner fixed the GitHub account.** github.com/Hallel133 and both repos are public again, raw.githubusercontent.com serves files, and GitHub Actions runs. CI (`ci.yml`, macos-15 + ubuntu-latest) passed for the first time on 757f885 after two fixes: macOS-only menu code was dead code for clippy on Linux (0e17933), and the retired macos-14 runner became macos-15. The marketplace repo `Hallel133/ptk-marketplace` now lists the 28 runtime plugins (`plugins/*.zip`, built by `tools/build_marketplace.py https://raw.githubusercontent.com/Hallel133/ptk-marketplace/main/plugins <clone>/plugins`, then move `index.json` to the repo root); `ptk market install doom-export` from the live index works. raw.githubusercontent.com caches for about 5 minutes after a push.
+- **2026-11-26: the owner fixed the GitHub account.** github.com/Hallel133 and both repos are public again, raw.githubusercontent.com serves files, and GitHub Actions runs. CI (`ci.yml`, macos-15 + ubuntu-latest) passed for the first time on 757f885 after two fixes: macOS-only menu code was dead code for clippy on Linux (0e17933), and the retired macos-14 runner became macos-15. The marketplace repo `Hallel133/ptk-marketplace` now lists the 30 runtime plugins (`plugins/*.zip`, built by `tools/build_marketplace.py https://raw.githubusercontent.com/Hallel133/ptk-marketplace/main/plugins <clone>/plugins`, then move `index.json` to the repo root); `ptk market install doom-export` from the live index works. raw.githubusercontent.com caches for about 5 minutes after a push.
 - Earlier: the owner said their GitHub account was "flagged" (Grand-V notes: GitHub Actions is disabled for the Hallel133 account, `HTTP 422`). So `.github/workflows/ci.yml` (macos-14 + ubuntu: fmt, clippy -D warnings, cargo test, uv run pytest) has probably never run. Run the same commands locally.
 
 ## Commands
@@ -30,7 +30,7 @@ export PATH="$HOME/.cargo/bin:$PATH"          # cargo is not on the default PATH
 cargo test --workspace                        # 92 Rust tests, starts the real Python engine
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-(cd engine && uv run pytest)                  # 524 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
+(cd engine && uv run pytest)                  # 532 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
 (cd engine && PTK_TOOL_TESTS=1 uv run pytest -k real)       # also runs real FFmpeg encodes
 (cd engine && PTK_GUI_TESTS=1 uv run pytest -k macos_app)   # also opens the wrapper app and checks the page loaded
 cargo run -q -p ptk-cli -- scan fixtures/games/unity-windows
@@ -192,6 +192,11 @@ The owner pasted a v1.0 prompt (v2 pipeline detect/stage/convert/package, APFS c
 ## Done (2026-11-26, FNA plugin and the owner's plugin bug)
 - **fna-export (3c01e09):** XNA 4 games on macOS/Linux with a user-built FNA kit (`KIT.md`: FNA + abi `Microsoft.Xna.Framework*.dll`, fnalibs `osx/` `lib64/`, MonoKickstart `kick.bin.*` + BCL + monoconfig). Game and kit merged in one folder, kick renamed `<Game>.bin.osx`, launcher cds there. Checks the kit, `--set exe=`, warns for .wmv, Steamworks, Rosetta.
 - **Owner's bug (Geometry Dash project, engine `cocos2d`):** Browse showed "Install…" for installed plugins, and "Find one" searched by target only, so it listed unrelated plugins (the owner installed cocos2dx-export, which is for Lua/JS games, and the export still said "no exporter"). Fixed: Browse cards show "✔ Installed (vX)" + Manage; "Find one" filters Browse to plugins for this engine and target (`App::market_for`, banner + "Show everything"), and says when none exists; export rows for engines that need source show the route label ("Needs source code") instead of "Find one"; the route card says when its plugin is installed. Also the catalog's `cocos2d` (C++) was still `partial`: now `closed`. **Geometry Dash is C++ Cocos2d-x: no plugin can port it without source.**
+
+## Done (2026-11-26, PS5 titles with AnyPS5)
+- Owner asked to research github.com/boykopovar/AnyPS5 (GPL-2.0; relinks a **decrypted** PS5 ELF + bundled modules into a native Linux ELF / Windows exe / x86-64 Mac executable, with its own PS5 system libraries; ships no keys or Sony code; does not decrypt). Releases v0.1.5: `relinker-v0.1.5` (Linux, static), `relinker-v0.1.5.exe`, `prx-linux|prx-windows-v0.1.5` (~120 MB, `libs/libc.prx`...), all with GitHub digests. No macOS relinker or macOS libraries are published.
+- Catalog: `ps5` (eboot.bin + sce_sys/param.json + sce_module/, runtime AnyPS5, plugin ps5-export) and `ps4` (param.sfo; detection only, shadPS4 named).
+- Marketplace `ps5-import` (recipe ps5.json: title ID/name/version, modules, ELF vs SELF from the first 4 bytes; warns when encrypted) and `ps5-export` (refuses SELF: Porting Toolkit never decrypts; runs the relinker at export time, cached by content, `--windows`/`--macos`; layout `<Title>.elf|.exe`, `libs/`, `app0/` + `.guest.prx`; zip off by default; macOS host needs `--set relinker=` (self-built), macOS target needs `--set libs=`). Tests use a fake relinker (`engine/tests/test_ps5.py`). **Not run with the real relinker or a real title.**
 
 ## Next task
 0. Owner: try one runtime plugin from the Marketplace with a game they own (ScummVM with Beneath a Steel Sky, which is freeware, is the easiest). A second host (Codeberg, docs/marketplace-hosting.md) is only needed if GitHub breaks again. When a plugin changes, bump its version, rebuild the marketplace files and push them to ptk-marketplace.

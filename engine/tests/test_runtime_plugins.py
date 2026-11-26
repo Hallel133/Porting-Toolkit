@@ -18,7 +18,9 @@ from ptk_engine.runtimes import RuntimeSpec
 from ptk_engine.signatures import CATALOG
 
 ROOT = Path(__file__).resolve().parents[2] / "marketplace" / "plugins"
-PLUGINS = sorted(p for p in ROOT.iterdir() if (p / "plugin.toml").is_file()) if ROOT.is_dir() else []
+ALL_PLUGINS = sorted(p for p in ROOT.iterdir() if (p / "plugin.toml").is_file()) if ROOT.is_dir() else []
+# Plugins driven by runtime.toml (RuntimeExportPlugin); others have their own tests.
+PLUGINS = [p for p in ALL_PLUGINS if (p / "runtime.toml").is_file()]
 BY_ID = {e["id"]: e for e in CATALOG}
 TARGETS = {
     "macos-arm64": {"id": "macos-arm64", "os": "macos", "arch": "arm64", "name": "macOS (Apple Silicon)"},
@@ -179,7 +181,7 @@ def test_marketplace_builder_writes_a_valid_reproducible_index(tmp_path):
     base = (tmp_path / "a").as_uri()
     index = mod.build(base, tmp_path / "a")
     assert json.loads((tmp_path / "a" / "index.json").read_text()) == index
-    assert {e["id"] for e in index["entries"]} == {p.name for p in PLUGINS}
+    assert {e["id"] for e in index["entries"]} == {p.name for p in ALL_PLUGINS}
     for e in index["entries"]:
         z = tmp_path / "a" / f"{e['id']}-{e['version']}.zip"
         assert e["download"] == f"{base}/{z.name}"
@@ -292,3 +294,13 @@ def test_fna_checks_the_kit_and_the_exe(tmp_path):
     assert r["ok"] and any("Rosetta" in p["message"] for p in r["problems"])
     r = run_plugin({**req, "settings": {}}, lambda m, p: None)["result"]
     assert "KIT.md" in r["problems"][0]["message"]
+
+
+@pytest.mark.parametrize("plugin", [p for p in ALL_PLUGINS if p not in PLUGINS], ids=lambda p: p.name)
+def test_other_marketplace_plugins_are_valid(plugin):
+    v = validate_plugin(str(plugin))
+    assert v["valid"], v
+    m = manifest(plugin)
+    if m["plugin"]["kind"] == "export":
+        claimed = sorted(e["id"] for e in CATALOG if e["plugin"] == m["plugin"]["id"])
+        assert sorted(m["formats"]["inputs"]) == claimed

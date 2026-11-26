@@ -5496,6 +5496,92 @@
    "via": null,
    "rules": [],
    "samples": []
+  },
+  {
+   "id": "ps5",
+   "name": "PlayStation 5 title (your own dump)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "A decrypted PS5 executable (eboot.bin) and its modules are relinked by AnyPS5 into a native Linux or Windows program, with AnyPS5's PS5 system libraries. Encrypted (SELF) files cannot be converted; Porting Toolkit does not decrypt. Experimental: compatibility differs per title.",
+   "aliases": [
+    "PS5",
+    "PlayStation 5"
+   ],
+   "family": "PlayStation",
+   "runtime": {
+    "name": "AnyPS5",
+    "url": "https://github.com/boykopovar/AnyPS5",
+    "license": "GPL-2.0-only"
+   },
+   "plugin": "ps5-export",
+   "via": null,
+   "rules": [
+    [
+     0.5,
+     "name",
+     "eboot.bin"
+    ],
+    [
+     0.4,
+     "path",
+     "*/sce_sys/param.json"
+    ],
+    [
+     0.2,
+     "dir",
+     "sce_module"
+    ],
+    [
+     -0.6,
+     "path",
+     "*/sce_sys/param.sfo"
+    ]
+   ],
+   "samples": [
+    "eboot.bin",
+    "sce_sys/param.json",
+    "sce_module/libSceFios2.prx"
+   ]
+  },
+  {
+   "id": "ps4",
+   "name": "PlayStation 4 title (your own dump)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "PS4 titles are not converted by AnyPS5 (PS5 only). The shadPS4 emulator runs decrypted PS4 dumps on macOS, Windows and Linux; there is no Porting Toolkit plugin for it.",
+   "aliases": [
+    "PS4",
+    "PlayStation 4"
+   ],
+   "family": "PlayStation",
+   "runtime": {
+    "name": "shadPS4",
+    "url": "https://github.com/shadps4-emu/shadPS4",
+    "license": "GPL-2.0-or-later"
+   },
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.5,
+     "name",
+     "eboot.bin"
+    ],
+    [
+     0.4,
+     "path",
+     "*/sce_sys/param.sfo"
+    ],
+    [
+     -0.6,
+     "path",
+     "*/sce_sys/param.json"
+    ]
+   ],
+   "samples": [
+    "eboot.bin",
+    "sce_sys/param.sfo"
+   ]
   }
  ]
 }
