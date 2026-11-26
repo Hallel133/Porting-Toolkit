@@ -30,7 +30,7 @@ export PATH="$HOME/.cargo/bin:$PATH"          # cargo is not on the default PATH
 cargo test --workspace                        # 92 Rust tests, starts the real Python engine
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-(cd engine && uv run pytest)                  # 509 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
+(cd engine && uv run pytest)                  # 510 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
 (cd engine && PTK_TOOL_TESTS=1 uv run pytest -k real)       # also runs real FFmpeg encodes
 (cd engine && PTK_GUI_TESTS=1 uv run pytest -k macos_app)   # also opens the wrapper app and checks the page loaded
 cargo run -q -p ptk-cli -- scan fixtures/games/unity-windows
