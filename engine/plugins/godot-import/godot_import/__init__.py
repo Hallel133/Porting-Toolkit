@@ -36,6 +36,11 @@ class Plugin(ImportPlugin):
         info = pck.summary()
         if pck.encrypted:
             ctx.warn("The pck is encrypted. Exporting needs templates compiled with the game's key, which only its developer has.")
+        if pck.sparse:
+            ctx.warn("This pck is a sparse bundle (Godot 4.7+): its files are stored next to it, not inside it. "
+                     "Exporting does not support sparse bundles yet.")
+        if pck.patch:
+            ctx.warn("This pck is a patch (Godot 4.7+): it changes another pack and does not run on its own.")
         if pck.uses_csharp():
             ctx.warn("This is a C# (.NET) Godot game. The built-in exporter supports GDScript games only.")
         if pck.extensions():

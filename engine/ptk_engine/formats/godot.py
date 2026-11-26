@@ -7,7 +7,8 @@ on any platform, which is how the Godot plugins port a build without its
 source. Only the header and the directory are read here; game files are
 never decoded.
 
-Supported pack formats: 1 (Godot 3.x), 2 (Godot 4.0-4.3), 3 (Godot 4.4+).
+Supported pack formats: 1 (Godot 3.x), 2 (Godot 4.0-4.3), 3 (Godot 4.4-4.6),
+4 (Godot 4.7+; same layout as 3, plus sparse bundles and patch entries).
 """
 
 from __future__ import annotations
@@ -21,7 +22,12 @@ from pathlib import Path
 MAGIC = b"GDPC"
 DIR_ENCRYPTED = 1
 REL_FILEBASE = 2
+SPARSE_BUNDLE = 4  # format 4: files are stored next to the pck, not inside it
 FILE_ENCRYPTED = 1
+FILE_REMOVAL = 2  # format 4 patch: removes a file of an earlier pack
+FILE_DELTA = 4  # format 4 patch: a delta against a file of an earlier pack
+#: Highest pack format this reader understands (Godot's PACK_FORMAT_VERSION).
+LATEST_FORMAT = 4
 
 
 class PckError(Exception):
@@ -49,6 +55,16 @@ class Pck:
     file_base: int = 0  # absolute
     files: list[Entry] = field(default_factory=list)
     v1_absolute: bool = False
+    removed: list[str] = field(default_factory=list)  # format 4 patch entries
+
+    @property
+    def sparse(self) -> bool:
+        return bool(self.flags & SPARSE_BUNDLE)
+
+    @property
+    def patch(self) -> bool:
+        """A format 4 patch pack: it changes another pack instead of standing alone."""
+        return bool(self.removed) or any(e.flags & FILE_DELTA for e in self.files)
 
     @property
     def version_string(self) -> str:
@@ -74,6 +90,8 @@ class Pck:
             "godot_version": self.version_string,
             "embedded": self.embedded,
             "encrypted": self.encrypted,
+            "sparse": self.sparse,
+            "patch": self.patch,
             "files": len(self.files),
             "size": self.size,
             "csharp": self.uses_csharp(),
@@ -129,17 +147,18 @@ def read(path: Path) -> Pck:
         pck = Pck(path, start, size, fmt, version, embedded=embedded)
         if fmt == 1:
             dir_pos = start + 20 + 64
-        elif fmt in (2, 3):
+        elif fmt in (2, 3, 4):
             pck.flags = _u32(head, 20)
             base = _u64(head, 24)
-            if fmt == 3:
+            if fmt >= 3:
                 pck.file_base = start + base
                 dir_pos = start + _u64(head, 32)
             else:
                 pck.file_base = start + base if pck.flags & REL_FILEBASE else base
                 dir_pos = start + 32 + 64
         else:
-            raise PckError(f"unknown pck format {fmt} (Godot {pck.version_string})")
+            raise PckError(f"pck format {fmt} (Godot {pck.version_string}) is newer than this Porting Toolkit "
+                           f"understands (formats 1-{LATEST_FORMAT}); update Porting Toolkit")
         if pck.flags & DIR_ENCRYPTED:
             return pck  # the directory itself is encrypted
         f.seek(dir_pos)
@@ -154,6 +173,9 @@ def read(path: Path) -> Pck:
             f.read(16)  # md5
             flags = struct.unpack("<I", f.read(4))[0] if fmt >= 2 else 0
             name = name.removeprefix("res://")
+            if flags & FILE_REMOVAL:
+                pck.removed.append(name)
+                continue
             pck.files.append(Entry(name, ofs, fsize, flags, ofs_field))
     if fmt == 1:
         _fix_v1_offsets(pck)
@@ -234,14 +256,15 @@ def find(game: Path) -> list[Path]:
 
 
 def write_pck(dest: Path, files: dict[str, bytes], version=(4, 4, 0), fmt: int = 3,
-              embed_into: bytes | None = None, v1_absolute: bool = False) -> Path:
+              embed_into: bytes | None = None, v1_absolute: bool = False,
+              pack_flags: int = 0, file_flags: dict[str, int] | None = None) -> Path:
     """Writes a pck (tests and fixtures). With ``embed_into``, appends it to
     those executable bytes with the ``GDPC`` trailer, like Godot does."""
     import hashlib
 
     prefix = embed_into or b""
     names = list(files)
-    header_len = {1: 20 + 64, 2: 32 + 64, 3: 40 + 64}[fmt]
+    header_len = {1: 20 + 64, 2: 32 + 64, 3: 40 + 64, 4: 40 + 64}[fmt]
 
     def entry_len(name: str) -> int:
         raw = len(name.encode())
@@ -268,7 +291,7 @@ def write_pck(dest: Path, files: dict[str, bytes], version=(4, 4, 0), fmt: int =
         directory += struct.pack("<I", len(padded)) + padded + struct.pack("<QQ", value, len(files[n]))
         directory += hashlib.md5(files[n]).digest()
         if fmt >= 2:
-            directory += struct.pack("<I", 0)
+            directory += struct.pack("<I", (file_flags or {}).get(n, 0))
     head = bytearray(MAGIC + struct.pack("<IIII", fmt, *version))
     if fmt == 1:
         head += b"\0" * 64
@@ -280,7 +303,7 @@ def write_pck(dest: Path, files: dict[str, bytes], version=(4, 4, 0), fmt: int =
         body += b"\0" * (data_start - len(body)) + bytes(blobs)
     else:
         dir_offset = data_start + len(blobs)
-        head += struct.pack("<IQQ", REL_FILEBASE, data_start, dir_offset) + b"\0" * 64
+        head += struct.pack("<IQQ", REL_FILEBASE | pack_flags, data_start, dir_offset) + b"\0" * 64
         body = bytes(head) + b"\0" * (data_start - len(head)) + bytes(blobs) + bytes(directory)
     if prefix:
         body = prefix + body + struct.pack("<Q", len(body)) + MAGIC

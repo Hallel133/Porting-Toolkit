@@ -30,7 +30,7 @@ export PATH="$HOME/.cargo/bin:$PATH"          # cargo is not on the default PATH
 cargo test --workspace                        # 92 Rust tests, starts the real Python engine
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-(cd engine && uv run pytest)                  # 532 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
+(cd engine && uv run pytest)                  # 537 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
 (cd engine && PTK_TOOL_TESTS=1 uv run pytest -k real)       # also runs real FFmpeg encodes
 (cd engine && PTK_GUI_TESTS=1 uv run pytest -k macos_app)   # also opens the wrapper app and checks the page loaded
 cargo run -q -p ptk-cli -- scan fixtures/games/unity-windows
@@ -210,3 +210,7 @@ The owner pasted a v1.0 prompt (v2 pipeline detect/stage/convert/package, APFS c
 2. Commit with a clear message and push to `main`.
 3. Update "Git / release state" and "Next task" here.
 4. Report in Hebrew: what changed, what was verified, what the owner must do, what is untested.
+
+## Done (2026-11-26, Godot 4.7 pck format 4, issue #1)
+- Godot 4.7+ writes pck format 4 (`PACK_FORMAT_VERSION_V4`; 4.4-4.6 write 3). `formats/godot.py` reads it (same layout as 3), skips `PACK_FILE_REMOVAL` entries and exposes `Pck.sparse` / `Pck.patch`. godot-import warns about both; godot-export refuses both (it needs every file inside the pck). A newer unknown format now says "update Porting Toolkit".
+- The test fixture now writes format 4 for 4.7.2. Not verified with a real Godot 4.7 game yet: the owner hit it with escapetheblack.

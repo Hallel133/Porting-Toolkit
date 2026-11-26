@@ -44,7 +44,7 @@ def run(tmp: Path, plugin: str, game: Path, project: Path, kind: str, target=Non
 # -- pck format ------------------------------------------------------------
 
 
-@pytest.mark.parametrize("fmt,version", [(1, (3, 5, 3)), (2, (4, 2, 2)), (3, (4, 7, 2))])
+@pytest.mark.parametrize("fmt,version", [(1, (3, 5, 3)), (2, (4, 2, 2)), (3, (4, 4, 1)), (4, (4, 7, 2))])
 @pytest.mark.parametrize("embedded", [False, True])
 def test_pck_read_and_extract(tmp_path, fmt, version, embedded):
     exe = b"MZ" + b"\x90" * 1000 if embedded else None
@@ -61,6 +61,25 @@ def test_pck_read_and_extract(tmp_path, fmt, version, embedded):
     data = (tmp_path / "out.pck").read_bytes()
     for e in alone.files:
         assert data[e.offset:e.offset + e.size] == GAME_FILES[e.path]
+
+
+def test_pck_format4_flags(tmp_path):
+    path = godot.write_pck(tmp_path / "patch.pck", GAME_FILES, (4, 7, 2), 4,
+                           file_flags={"main.gd": godot.FILE_REMOVAL})
+    pck = godot.read(path)
+    assert pck.removed == ["main.gd"] and "main.gd" not in pck.paths()
+    assert pck.patch and not pck.sparse and pck.summary()["patch"]
+    sparse = godot.read(godot.write_pck(tmp_path / "s.pck", GAME_FILES, (4, 7, 2), 4, pack_flags=godot.SPARSE_BUNDLE))
+    assert sparse.sparse and not sparse.patch
+
+
+def test_pck_newer_format_says_update(tmp_path):
+    path = godot.write_pck(tmp_path / "g.pck", GAME_FILES, (4, 7, 2), 4)
+    data = bytearray(path.read_bytes())
+    data[4:8] = (godot.LATEST_FORMAT + 1).to_bytes(4, "little")
+    path.write_bytes(data)
+    with pytest.raises(godot.PckError, match="update Porting Toolkit"):
+        godot.read(path)
 
 
 def test_godot3_absolute_offsets_are_rewritten(tmp_path):
@@ -127,7 +146,7 @@ def fake_templates(root: Path) -> Path:
 @pytest.fixture
 def godot_game(tmp_path):
     game = tmp_path / "game"
-    godot.write_pck(game / "PtkDemo.exe", GAME_FILES, (4, 7, 2), 3, b"MZ" + b"\0" * 4000)
+    godot.write_pck(game / "PtkDemo.exe", GAME_FILES, (4, 7, 2), 4, b"MZ" + b"\0" * 4000)
     project = tmp_path / "project"
     project.mkdir()
     return game, project
@@ -197,6 +216,17 @@ def test_godot_export_refuses_encrypted(tmp_path, godot_game):
     struct.pack_into("<I", data, start + 20, godot.DIR_ENCRYPTED | godot.REL_FILEBASE)
     pck.write_bytes(data)
     with pytest.raises(Exception, match="encrypted"):
+        run(tmp_path, "godot-export", game, project, "export", WEB, {"templates": str(fake_templates(tmp_path))}, tmp_path / "w")
+
+
+def test_godot_export_refuses_sparse_bundle(tmp_path, godot_game):
+    game, project = godot_game
+    pck = game / "PtkDemo.exe"
+    data = bytearray(pck.read_bytes())
+    start = godot.read(pck).start
+    struct.pack_into("<I", data, start + 20, godot.SPARSE_BUNDLE | godot.REL_FILEBASE)
+    pck.write_bytes(data)
+    with pytest.raises(Exception, match="sparse bundle"):
         run(tmp_path, "godot-export", game, project, "export", WEB, {"templates": str(fake_templates(tmp_path))}, tmp_path / "w")
 
 

@@ -212,6 +212,11 @@ class Plugin(StagedExportPlugin):
             ctx.fail(str(e))
         if pck.encrypted:
             ctx.fail("the .pck is encrypted; it only runs with templates built with the game's own key")
+        if pck.sparse:
+            ctx.fail("this .pck is a sparse bundle (Godot 4.7+): its files are stored next to it, which the "
+                     "exporter does not support yet")
+        if pck.patch:
+            ctx.fail(f"{pck_path.name} is a patch pack (Godot 4.7+) that changes another pack; it does not run on its own")
         if pck.uses_csharp():
             ctx.fail("C# (.NET) Godot games are not supported by the built-in exporter yet (GDScript games are)")
         self.settings = godot.project_settings(pck)
