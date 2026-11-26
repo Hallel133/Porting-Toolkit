@@ -1,0 +1,26 @@
+# Exult: https://github.com/exult/exult (GPL-2.0-or-later).
+# Exult for Windows is an installer: Windows and Linux need --set runtime=PATH. The build writes an exult.cfg pointing at the game folder. The macOS pin was hashed by Porting Toolkit.
+[runtime]
+id = "exult"
+name = "Exult"
+version = "1.12.1"
+source = "https://github.com/exult/exult"
+license = "GPL-2.0-or-later"
+
+[runtime.executable]
+macos = "Exult.app"
+windows = "Exult.exe"
+linux = "exult"
+
+[runtime.installed]
+macos = ["/Applications/Exult.app", "~/Applications/Exult.app"]
+
+[download.macos]
+url = "https://prdownloads.sourceforge.net/exult/exult-1.12.1.dmg"
+sha256 = "fd8637f9bc0fa06ca89e5c71cb9211d1ad29b0b808d2d1440105a79d751d348e"
+
+[launch]
+args = []
+
+[game]
+required = ["static/u7chunks"]

@@ -109,3 +109,54 @@ def test_builds_each_engine_sample_with_a_fake_runtime(tmp_path, plugin, engine,
     lic = next(built.rglob(f"LICENSE-{spec.id}.txt"))
     assert spec.source in lic.read_text()
     assert run_plugin(request, lambda m, p: None)["result"]["build"]["written"] == 0
+
+
+def build_with_fake(tmp: Path, plugin_id: str, engine: str, target: str, files: dict[str, bytes]) -> Path:
+    plugin = ROOT / plugin_id
+    spec = RuntimeSpec.load(plugin / "runtime.toml")
+    t = TARGETS[target]
+    runtime = fake_runtime(tmp, spec, t["os"])
+    game = tmp / "game"
+    for rel, data in files.items():
+        (game / rel).parent.mkdir(parents=True, exist_ok=True)
+        (game / rel).write_bytes(data)
+    (tmp / "project").mkdir()
+    r = run_plugin({"plugin": str(plugin), "kind": "export", "engine": engine, "target": t,
+                    "manifest": {"name": "p", "version": "1.0.0", "game": {"title": "Test"}},
+                    "settings": {"runtime": str(runtime), "sign": "false", "zip": "false"},
+                    "folders": {"$GAME": str(game), "$PROJECT": str(tmp / "project"), "$OUTPUT": str(tmp / "out")},
+                    "cache_root": str(tmp / "cache")}, lambda m, p: None)["result"]
+    return Path(r["outputs"][0])
+
+
+def test_openmw_loads_the_content_the_game_has(tmp_path):
+    out = build_with_fake(tmp_path, "morrowind-export", "openmw", "linux-x64",
+                          {"Data Files/Morrowind.esm": b"x", "Data Files/Tribunal.esm": b"x",
+                           "Data Files/Morrowind.bsa": b"x", "Data Files/Tribunal.bsa": b"x"})
+    sh = (out / "Test.sh").read_text()
+    assert ('"--data" "${GAME}/Data Files" "--content" "Morrowind.esm" "--content" "Tribunal.esm" '
+            '"--fallback-archive" "Morrowind.bsa" "--fallback-archive" "Tribunal.bsa"') in sh
+    assert "Bloodmoon" not in sh
+
+
+def test_exult_writes_its_config_for_the_right_game(tmp_path):
+    out = build_with_fake(tmp_path, "exult-export", "exult", "linux-x64",
+                          {"STATIC/U7CHUNKS": b"x", "STATIC/SISPEECH.SPC": b"x"})
+    assert "<serpentisle>" in (out / "game" / "exult.cfg").read_text()
+    assert '"-c" "${GAME}/exult.cfg" "--si"' in (out / "Test.sh").read_text()
+
+
+def test_ikemen_merges_mugen_content_into_its_folder(tmp_path):
+    out = build_with_fake(tmp_path, "mugen-export", "mugen", "windows-x64",
+                          {"mugen.exe": b"MZ", "data/mugen.cfg": b"cfg", "chars/kfm/kfm.def": b"def"})
+    assert (out / "runtime" / "Ikemen_GO.exe").is_file()
+    assert (out / "runtime" / "chars" / "kfm" / "kfm.def").is_file() and not (out / "game").exists()
+    assert not (out / "runtime" / "mugen.exe").exists()
+    assert 'cd /d "%~dp0runtime"' in (out / "Test.cmd").read_bytes().decode()
+
+
+def test_ikemen_on_macos_keeps_the_folder_around_its_app(tmp_path):
+    out = build_with_fake(tmp_path, "mugen-export", "mugen", "macos-arm64", {"data/mugen.cfg": b"cfg"})
+    res = out / "Contents" / "Resources" / "runtime"
+    assert (res / "Fake.app" / "Contents" / "Info.plist").is_file() and (res / "data" / "mugen.cfg").is_file()
+    assert 'exec "${RUNTIME}/Fake.app/Contents/MacOS/runtime"' in (out / "Contents" / "MacOS" / "Test").read_text()

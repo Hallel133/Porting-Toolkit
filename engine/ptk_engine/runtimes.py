@@ -32,6 +32,7 @@ next to its ``plugin.toml``::
     required = ["*.000", "*.la0"] # at least one must exist (globs, any depth)
     exclude = ["*.exe", "*.dll"]  # left out of the build
     main = ["*.wad"]              # {main}: the first match, as a path in {game}
+    dir = "game"                  # "runtime" merges the game into the runtime's folder
 
 ``{game}`` is the game folder of the build and ``{runtime}`` the runtime's
 folder, both resolved when the game starts, so a build can be moved.
@@ -97,6 +98,9 @@ class RuntimeSpec:
     exclude: list[str] = field(default_factory=list)
     main: list[str] = field(default_factory=list)
     game_dir: str = "game"
+    #: The whole folder around the program is the runtime (its data folders
+    #: sit next to it), also on macOS where the program is an app.
+    whole_folder: bool = False
 
     @classmethod
     def load(cls, path: Path) -> RuntimeSpec:
@@ -115,6 +119,7 @@ class RuntimeSpec:
             env={str(k): str(v) for k, v in ((data.get("launch") or {}).get("env") or {}).items()},
             required=list(game.get("required") or []), exclude=list(game.get("exclude") or []),
             main=list(game.get("main") or []), game_dir=game.get("dir", "game"),
+            whole_folder=bool(rt.get("whole_folder", False)),
         )
 
     def download_for(self, target: dict) -> dict | None:
@@ -244,11 +249,11 @@ def _app_binary(app: Path) -> Path | None:
     return binary if name and binary.is_file() else None
 
 
-def runtime_root(executable: Path, os_: str) -> Path:
+def runtime_root(executable: Path, os_: str, whole_folder: bool = False) -> Path:
     """What goes into the build: the app (macOS), the program's folder, or the
-    single file (an AppImage)."""
+    single file (an AppImage). ``whole_folder``: the folder around the app."""
     if os_ == "macos" and len(executable.parents) > 2 and executable.parents[2].suffix == ".app":
-        return executable.parents[2]  # X.app/Contents/MacOS/x
+        return executable.parents[3] if whole_folder else executable.parents[2]  # X.app/Contents/MacOS/x
     if os_ == "linux" and executable.suffix.lower() == ".appimage":
         return executable
     return executable.parent
@@ -283,19 +288,19 @@ def locate(ctx: Context, spec: RuntimeSpec, target: dict, download: bool) -> Fou
                                 f"(expected {spec.executable.get(os_, '?')}).")
         if download:
             ctx.write_text(_remembered(ctx, target), str(p) + "\n")
-        return Found(found.root, found.executable, "setting")
+        return Found(runtime_root(found.executable, os_, spec.whole_folder), found.executable, "setting")
     rem = _remembered(ctx, target)
     if rem.is_file():
         p = Path(rem.read_text(encoding="utf-8").strip())
         found = _from_path(ctx, p, spec, os_, unpack=download) if p.exists() else None
         if found:
-            return Found(found.root, found.executable, "remembered")
+            return Found(runtime_root(found.executable, os_, spec.whole_folder), found.executable, "remembered")
     for guess in spec.installed.get(os_, []):
         p = Path(guess).expanduser()
         if p.exists() and not (os_ == "macos" and is_homebrew(p)):
             exe = executable_in(p, spec, os_)
             if exe:
-                return Found(runtime_root(exe, os_), exe, "installed")
+                return Found(runtime_root(exe, os_, spec.whole_folder), exe, "installed")
     pin = spec.download_for(target)
     if pin is None:
         return None
@@ -303,7 +308,7 @@ def locate(ctx: Context, spec: RuntimeSpec, target: dict, download: bool) -> Fou
     if (cached / ".complete").is_file():
         exe = executable_in(cached / "runtime", spec, os_)
         if exe:
-            return Found(runtime_root(exe, os_), exe, "cached")
+            return Found(runtime_root(exe, os_, spec.whole_folder), exe, "cached")
     if not download:
         return None
     return _download(ctx, spec, target, pin)
@@ -351,7 +356,7 @@ def _download(ctx: Context, spec: RuntimeSpec, target: dict, pin: dict) -> Found
     if exe is None:
         raise RuntimeError_(f"{archive.name} has no {spec.executable.get(os_)}")
     (dest / ".complete").write_text(archive.name + "\n")
-    return Found(runtime_root(exe, os_), exe, "download")
+    return Found(runtime_root(exe, os_, spec.whole_folder), exe, "download")
 
 
 # -- unpacking --------------------------------------------------------------------------------------------------
@@ -447,7 +452,7 @@ def _sh_escape(text: str) -> str:
 
 
 def sh_launcher(exe_rel: str, args: list[str], main: str | None, resources: str,
-                env: dict[str, str] | None = None) -> str:
+                env: dict[str, str] | None = None, game_dir: str = "game") -> str:
     """A POSIX shell launcher. ``resources`` is the folder holding runtime/ and
     game/, relative to the launcher's own folder."""
     values = {"game": '${GAME}', "runtime": '${RUNTIME}', "main": '${GAME}/' + _sh_escape(main or "")}
@@ -459,17 +464,18 @@ def sh_launcher(exe_rel: str, args: list[str], main: str | None, resources: str,
             'HERE="$(cd "$(dirname "$0")" && pwd)"\n'
             f'BASE="$(cd "$HERE/{_sh_escape(resources)}" && pwd)"\n'
             'RUNTIME="$BASE/runtime"\n'
-            'GAME="$BASE/game"\n'
+            f'GAME="$BASE/{_sh_escape(game_dir)}"\n'
             f"{exports}"
             'cd "$GAME" || exit 1\n'
             f"exec {line}\n")
 
 
-def cmd_launcher(exe_rel: str, args: list[str], main: str | None, env: dict[str, str] | None = None) -> str:
+def cmd_launcher(exe_rel: str, args: list[str], main: str | None, env: dict[str, str] | None = None,
+                 game_dir: str = "game") -> str:
     """A Windows .cmd next to runtime\\ and game\\."""
     def fill(a: str) -> str:
-        a = a.replace("{game}", "%~dp0game").replace("{runtime}", "%~dp0runtime")
-        return a.replace("{main}", "%~dp0game\\" + (main or "").replace("/", "\\"))
+        a = a.replace("{game}", f"%~dp0{game_dir}").replace("{runtime}", "%~dp0runtime")
+        return a.replace("{main}", f"%~dp0{game_dir}\\" + (main or "").replace("/", "\\"))
 
     def win(a: str) -> str:
         a = fill(a)
@@ -481,7 +487,7 @@ def cmd_launcher(exe_rel: str, args: list[str], main: str | None, env: dict[str,
     return ("@echo off\r\n"
             "rem Made by Porting Toolkit: starts the game with its open-source runtime.\r\n"
             f"{sets}"
-            'cd /d "%~dp0game"\r\n'
+            f'cd /d "%~dp0{game_dir}"\r\n'
             f"{line}\r\n")
 
 

@@ -1,0 +1,23 @@
+# OHRRPGCE: https://rpg.hamsterrepublic.com/ohrrpgce/Source (GPL-2.0-or-later).
+# OHRRPGCE's downloads have no version in their names and no checksums, so nothing is pinned: pass --set runtime=PATH to the unzipped player.
+[runtime]
+id = "ohrrpgce"
+name = "OHRRPGCE"
+version = "any"
+source = "https://rpg.hamsterrepublic.com/ohrrpgce/Source"
+license = "GPL-2.0-or-later"
+
+[runtime.executable]
+macos = "*.app"
+windows = "game.exe"
+linux = "ohrrpgce-game"
+
+[runtime.installed]
+macos = ["/Applications/OHRRPGCE-Game.app", "~/Applications/OHRRPGCE-Game.app"]
+
+[launch]
+args = ["{main}"]
+
+[game]
+required = ["*.rpg"]
+main = ["*.rpg"]

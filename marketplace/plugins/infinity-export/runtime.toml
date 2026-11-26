@@ -1,0 +1,34 @@
+# GemRB: https://github.com/gemrb/gemrb (GPL-2.0-or-later).
+# GemRB is given the game folder and detects which game it is. The Intel Mac build is a tar.bz2 without a published checksum: use --set runtime=PATH. Pins were hashed by Porting Toolkit (SourceForge publishes no SHA-256).
+[runtime]
+id = "gemrb"
+name = "GemRB"
+version = "0.9.5"
+source = "https://github.com/gemrb/gemrb"
+license = "GPL-2.0-or-later"
+
+[runtime.executable]
+macos = "GemRB.app"
+windows = "gemrb.exe"
+linux = "*.AppImage"
+
+[runtime.installed]
+macos = ["/Applications/GemRB.app", "~/Applications/GemRB.app"]
+
+[download.macos-arm64]
+url = "https://downloads.sourceforge.net/project/gemrb/Releases/0.9.5/gemrb-macos-arm64-v0.9.5.zip"
+sha256 = "4e3368b2e31cbd551faeb775d91c304db48f184b10492ef767623c3c8cf7cab2"
+
+[download.windows-x64]
+url = "https://downloads.sourceforge.net/project/gemrb/Releases/0.9.5/gemrb-win32-v0.9.5.zip"
+sha256 = "356e210a5b13d81ec0c16da5081c42f9949b8bf7d46d19cf532750b4042e1243"
+
+[download.linux-x64]
+url = "https://downloads.sourceforge.net/project/gemrb/Releases/0.9.5/gemrb-linux-v0.9.5.AppImage"
+sha256 = "767e5a5b1540dd9e15455a4c2a8fc95eac83ec52134241dfcfba9557dee6b657"
+
+[launch]
+args = ["{game}"]
+
+[game]
+required = ["chitin.key"]

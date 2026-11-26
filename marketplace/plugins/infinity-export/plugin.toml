@@ -1,0 +1,24 @@
+schema_version = 1
+
+[plugin]
+id = "infinity-export"
+name = "Infinity Engine export (GemRB)"
+version = "1.0.0"
+kind = "export"
+description = "Runs Baldur's Gate, Baldur's Gate II, Icewind Dale and Planescape: Torment (chitin.key and their .bif data) on macOS, Windows and Linux with GemRB."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "infinity_export:Plugin"
+api = 2
+homepage = "https://github.com/gemrb/gemrb"
+
+[formats]
+inputs = ["infinity"]
+outputs = ["app", "folder", "zip"]
+targets = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"]
+
+[permissions]
+read = ["$GAME", "$PROJECT"]
+write = ["$OUTPUT"]
+network = ["downloads.sourceforge.net", "prdownloads.sourceforge.net", "*.sourceforge.net", "*.dl.sourceforge.net"]
+subprocess = true   # codesign for the macOS app, hdiutil to open disk images

@@ -1,0 +1,19 @@
+# Stratagus: https://github.com/Wargus/stratagus (GPL-2.0-or-later).
+# Stratagus's last release (3.3.2, 2022) ships only installers without checksums, so nothing is pinned: pass --set runtime=PATH. Wargus needs data extracted from the original Warcraft II with its own tool first.
+[runtime]
+id = "stratagus"
+name = "Stratagus"
+version = "3.3.2"
+source = "https://github.com/Wargus/stratagus"
+license = "GPL-2.0-or-later"
+
+[runtime.executable]
+macos = "*.app"
+windows = "stratagus.exe"
+linux = "stratagus"
+
+[launch]
+args = ["-d", "{game}"]
+
+[game]
+required = ["scripts/stratagus.lua"]

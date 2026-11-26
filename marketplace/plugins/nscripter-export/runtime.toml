@@ -1,0 +1,22 @@
+# ONScripter: https://onscripter.osdn.jp/onscripter.html (GPL-2.0-or-later).
+# ONScripter's home (OSDN) no longer serves pinned releases, so nothing is pinned: pass --set runtime=PATH (ONScripter, or a fork such as ONScripter-EN or ONScripter-RU).
+[runtime]
+id = "onscripter"
+name = "ONScripter"
+version = "any"
+source = "https://onscripter.osdn.jp/onscripter.html"
+license = "GPL-2.0-or-later"
+
+[runtime.executable]
+macos = "*.app"
+windows = "onscripter*.exe"
+linux = "onscripter*"
+
+[runtime.installed]
+macos = ["/Applications/ONScripter.app", "~/Applications/ONScripter.app"]
+
+[launch]
+args = ["--root", "{game}"]
+
+[game]
+required = ["nscript.dat", "0.txt", "00.txt", "*.nsa"]

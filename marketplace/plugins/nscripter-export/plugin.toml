@@ -1,0 +1,24 @@
+schema_version = 1
+
+[plugin]
+id = "nscripter-export"
+name = "NScripter export (ONScripter)"
+version = "1.0.0"
+kind = "export"
+description = "Runs NScripter visual novels (nscript.dat, .nsa archives) with an ONScripter build you provide."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "nscripter_export:Plugin"
+api = 2
+homepage = "https://onscripter.osdn.jp/onscripter.html"
+
+[formats]
+inputs = ["nscripter"]
+outputs = ["app", "folder", "zip"]
+targets = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"]
+
+[permissions]
+read = ["$GAME", "$PROJECT"]
+write = ["$OUTPUT"]
+network = false
+subprocess = true   # codesign for the macOS app, hdiutil to open disk images

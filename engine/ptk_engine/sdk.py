@@ -315,10 +315,15 @@ class RuntimeExportPlugin(ExportPlugin):
         if os_ == "macos":
             app = f"{name}.app"
             res = f"{app}/Contents/Resources"
-            build.add_tree(found.root, f"{res}/runtime/{found.root.name}", links=True)
-            exe_rel = f"{found.root.name}/" + found.executable.relative_to(found.root).as_posix()
+            if found.root.suffix == ".app":  # keep the app's own name
+                build.add_tree(found.root, f"{res}/runtime/{found.root.name}", links=True)
+                exe_rel = f"{found.root.name}/" + found.executable.relative_to(found.root).as_posix()
+            else:
+                build.add_tree(found.root, f"{res}/runtime", links=True)
+                exe_rel = found.executable.relative_to(found.root).as_posix()
             build.add_text(f"{app}/Contents/MacOS/{name}",
-                           runtimes.sh_launcher(exe_rel, args, self._main, "../Resources", spec.env), mode=0o755)
+                           runtimes.sh_launcher(exe_rel, args, self._main, "../Resources", spec.env, spec.game_dir),
+                           mode=0o755)
             icon = runtimes.app_icon(found.root) if found.root.suffix == ".app" else None
             if icon:
                 build.add_file(icon, f"{res}/icon.icns")
@@ -338,9 +343,10 @@ class RuntimeExportPlugin(ExportPlugin):
                 exe_rel = found.executable.relative_to(found.root).as_posix()
                 build.executable(f"{name}/runtime/{exe_rel}")
             if os_ == "windows":
-                build.add_text(f"{name}/{name}.cmd", runtimes.cmd_launcher(exe_rel, args, self._main, spec.env))
+                build.add_text(f"{name}/{name}.cmd", runtimes.cmd_launcher(exe_rel, args, self._main, spec.env, spec.game_dir))
             else:
-                build.add_text(f"{name}/{name}.sh", runtimes.sh_launcher(exe_rel, args, self._main, ".", spec.env), mode=0o755)
+                build.add_text(f"{name}/{name}.sh", runtimes.sh_launcher(exe_rel, args, self._main, ".", spec.env, spec.game_dir),
+                               mode=0o755)
             build.add_text(f"{name}/LICENSE-{spec.id}.txt", licence)
             game_dest = f"{name}/{spec.game_dir}"
             if ctx.flag("zip", True):

@@ -1,0 +1,24 @@
+schema_version = 1
+
+[plugin]
+id = "exult-export"
+name = "Ultima VII export (Exult)"
+version = "1.0.0"
+kind = "export"
+description = "Runs Ultima VII: The Black Gate and Serpent Isle (their STATIC/ data) on macOS with Exult."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "exult_export:Plugin"
+api = 2
+homepage = "https://github.com/exult/exult"
+
+[formats]
+inputs = ["exult"]
+outputs = ["app", "folder", "zip"]
+targets = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"]
+
+[permissions]
+read = ["$GAME", "$PROJECT"]
+write = ["$OUTPUT"]
+network = ["downloads.sourceforge.net", "prdownloads.sourceforge.net", "*.sourceforge.net", "*.dl.sourceforge.net"]
+subprocess = true   # codesign for the macOS app, hdiutil to open disk images

@@ -1,0 +1,35 @@
+# OpenMW: https://github.com/OpenMW/openmw (GPL-3.0-or-later).
+# OpenMW for Windows is an installer, so Windows needs --set runtime=PATH to an installed OpenMW folder. If OpenMW reports missing fallback values, run the OpenMW Launcher once to import Morrowind.ini.
+[runtime]
+id = "openmw"
+name = "OpenMW"
+version = "0.51.0"
+source = "https://github.com/OpenMW/openmw"
+license = "GPL-3.0-or-later"
+
+[runtime.executable]
+macos = "OpenMW.app"
+windows = "openmw.exe"
+linux = "openmw"
+
+[runtime.installed]
+macos = ["/Applications/OpenMW.app", "~/Applications/OpenMW.app"]
+
+[download.macos-arm64]
+url = "https://github.com/OpenMW/openmw/releases/download/openmw-0.51.0/OpenMW-0.51.0-macOS-arm64.dmg"
+sha256 = "76bc0436413ed500dcd846a2cc3889711af948645bdd4eafd36ad16bc0c5615c"
+
+[download.macos-x64]
+url = "https://github.com/OpenMW/openmw/releases/download/openmw-0.51.0/OpenMW-0.51.0-macOS-x86_64.dmg"
+sha256 = "cce014e1827cf2b1a23017894015648298c90e3324097fac157dd9e40b341602"
+
+[download.linux-x64]
+url = "https://github.com/OpenMW/openmw/releases/download/openmw-0.51.0/openmw-0.51.0-Linux-64Bit.tar.gz"
+sha256 = "a39459e6adad06163eb0ffd4d80229e13aec8748211c3dfd5bf95c204ae68f0b"
+
+[launch]
+args = []
+
+[game]
+required = ["morrowind.esm"]
+main = ["morrowind.esm"]

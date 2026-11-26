@@ -1,0 +1,24 @@
+schema_version = 1
+
+[plugin]
+id = "daggerfall-export"
+name = "Daggerfall export (Daggerfall Unity)"
+version = "1.0.0"
+kind = "export"
+description = "Runs The Elder Scrolls II: Daggerfall (its ARENA2 folder) on macOS, Windows and Linux with Daggerfall Unity."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "daggerfall_export:Plugin"
+api = 2
+homepage = "https://github.com/Interkarma/daggerfall-unity"
+
+[formats]
+inputs = ["xngine"]
+outputs = ["app", "folder", "zip"]
+targets = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"]
+
+[permissions]
+read = ["$GAME", "$PROJECT"]
+write = ["$OUTPUT"]
+network = ["github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"]
+subprocess = true   # codesign for the macOS app, hdiutil to open disk images

@@ -1,0 +1,34 @@
+# Ikemen GO: https://github.com/ikemen-engine/Ikemen-GO (MIT).
+# Ikemen GO keeps its own data/, external/ and font/ next to the program; the M.U.G.E.N content is merged into that folder (the game's files win where both have one).
+[runtime]
+id = "ikemen-go"
+name = "Ikemen GO"
+version = "1.0.0"
+source = "https://github.com/ikemen-engine/Ikemen-GO"
+license = "MIT"
+whole_folder = true
+
+[runtime.executable]
+macos = "*.app"
+windows = "Ikemen_GO.exe"
+linux = "Ikemen_GO_Linux"
+
+[download.macos]
+url = "https://github.com/ikemen-engine/Ikemen-GO/releases/download/v1.0.0/Ikemen_GO-v1.0.0-macos.zip"
+sha256 = "2b0a8ff44c23b764340d7e428ddbf3a86c4d157c16ee78fe7a960117464bfc12"
+
+[download.windows-x64]
+url = "https://github.com/ikemen-engine/Ikemen-GO/releases/download/v1.0.0/Ikemen_GO-v1.0.0-windows.zip"
+sha256 = "9338eaeb68599ceb13b0867819a091ea3f92eba58077e800b4540b7a1f9c3731"
+
+[download.linux-x64]
+url = "https://github.com/ikemen-engine/Ikemen-GO/releases/download/v1.0.0/Ikemen_GO-v1.0.0-linux.zip"
+sha256 = "cc533c1a2ab84d63cbf9126d9dcb3f2dcc1a41c6206f2da419b0c91084f193e4"
+
+[launch]
+args = []
+
+[game]
+required = ["mugen.cfg"]
+exclude = ["*.exe", "*.dll"]
+dir = "runtime"
