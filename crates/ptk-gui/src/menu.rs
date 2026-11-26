@@ -32,6 +32,8 @@ pub const HELP_LINKS: &[(&str, &str)] = &[
     ),
 ];
 
+// The native menu is macOS only; on other platforms these are unused.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Command {
     NewProject,
@@ -74,6 +76,8 @@ pub const NAV: [View; 5] = [
     View::Export,
 ];
 
+// The native menu is macOS only; on other platforms these are unused.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 impl Command {
     /// Stable menu id.
     pub fn id(self) -> String {
@@ -169,6 +173,8 @@ impl Command {
     }
 }
 
+// The native menu is macOS only; on other platforms these are unused.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 /// Every fixed command (for id lookups).
 pub const ALL: &[Command] = &[
     Command::NewProject,
