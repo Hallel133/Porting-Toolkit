@@ -265,6 +265,67 @@ and ad-hoc `codesign` calls afterwards on the real output, so they are
 incremental too. The built-in Godot, HTML5, LÖVE, Ren'Py and RGSS exporters work
 this way; the Unity exporter declares its output with `layout`.
 
+**Step names.** Other tools call these stages *detect → stage → convert →
+package*. In API 2: **detect** is the import plugin's `detect()` (plus the core
+scan, `ptk_engine/signatures.py` and the engine catalog); **stage** is `layout()`
+and the base class's sync (or `stage()` in a `StagedExportPlugin`); **convert** is
+the media step in `finish()` (`self.media`); **package** is `self.zip` and
+`codesign_if_changed` in `finish()`.
+
+### Runtime plugins
+
+A game whose data runs on an open-source program (ScummVM, a source port, GemRB,
+OpenMW...) needs almost no code: subclass **`RuntimeExportPlugin`** and describe
+the runtime in a `runtime.toml` next to `plugin.toml`:
+
+```toml
+[runtime]
+id = "scummvm"
+name = "ScummVM"
+version = "2026.4.0"
+source = "https://github.com/scummvm/scummvm"   # written into LICENSE-<id>.txt
+license = "GPL-3.0-or-later"
+# whole_folder = true    # the runtime's data sits next to its app (Ikemen GO)
+
+[runtime.executable]     # per OS; wildcards allowed (*.app, *.AppImage)
+macos = "ScummVM.app"
+windows = "scummvm.exe"
+linux = "scummvm"
+
+[runtime.installed]      # used before downloading (macOS apps only)
+macos = ["/Applications/ScummVM.app"]
+
+[download.macos-arm64]   # or [download.macos]; url must be on a [permissions] network host
+url = "https://downloads.scummvm.org/frs/scummvm/2026.4.0/scummvm-2026.4.0-macosx.dmg"
+sha256 = "..."           # from the project's published checksums
+# root = "folder/in/archive"
+
+[launch]
+args = ["--path={game}", "--auto-detect"]   # {game}, {runtime}, {main}
+# env = { XASH3D_BASEDIR = "{game}" }
+
+[game]
+required = ["*.000", "*.la0"]   # at least one (globs on names or paths)
+# exclude = ["*.exe"]           # left out of the build
+# main = ["doom2.wad", "*.wad"] # {main}: the first match
+# dir = "runtime"               # merge the game into the runtime's folder
+```
+
+```python
+from ptk_engine.sdk import RuntimeExportPlugin
+
+class Plugin(RuntimeExportPlugin):
+    pass   # or override launch_args(ctx, files, main) / extra_layout(ctx, build, game_dest)
+```
+
+The base class checks the game files and the runtime before building, finds the
+runtime (`--set runtime.<target>=PATH`, `--set runtime=PATH`, the remembered path,
+an installed app, then the pinned download, unpacked once into the cache; Homebrew
+builds are refused for macOS), and builds `<Title>.app` (macOS, a small launcher
+script, signed ad hoc) or `<Title>/` with a `.cmd`/`.sh` launcher and a zip. The
+runtime plugins live in `marketplace/plugins/` and are installed from the
+Marketplace; `tools/build_marketplace.py` packs them (see `docs/marketplace-hosting.md`).
+
 An **import** plugin subclasses `ImportPlugin`: `detect(ctx)` returns the
 recipe (saved as `recipes/<recipe_name>.json`) and `report(ctx, recipe)`
 returns `summary`, `title`, `engine_version` and `warnings`.

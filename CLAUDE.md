@@ -7,17 +7,18 @@ A community tool to manage, convert, export and import game projects between pla
 
 - Rust workspace: `crates/ptk-core` (manifest, targets, `.ptk` pack/unpack, verify, hashing, engine RPC client, plus shared operations `scan`/`project`/`doctor`/`plugins`/`banner`), `crates/ptk-cli` (binary `ptk`, clap), `crates/ptk-gui` (binary `ptk-gui`, egui 0.33 desktop app).
 - Python engine: `engine/ptk_engine` (uv + pytest, standard library only, Python 3.11+). Detection, plugin validation and the plugin runtime (`runtime.py` → `host.py`, API in `api.py`, format readers in `formats/`); Rust runs it as a subprocess over JSON-RPC on stdin/stdout.
-- Built-in plugins: `engine/plugins/{godot,html5}-{import,export}` (macOS + web targets).
+- Built-in plugins: `engine/plugins/*` (12, API 2). Marketplace (installable, **not built in, not shipped**) runtime plugins: `marketplace/plugins/*` (18).
+- Engine catalog: `engine/ptk_engine/data/engines.json` (182 entries: status, runtime, plugin, detection rules, samples), read by `signatures.py` and by Rust `routes.rs` (`include_str!`). Edit the JSON, then `python3 tools/gen_engines_doc.py` (a test checks `docs/engines.md` is current).
 - Docs: `README.md`, `ARCHITECTURE.md` (protocol, layout), `docs/project-format.md`, `docs/plugins.md`, `docs/legal.md`.
 - Fixtures: `fixtures/games/*` are fake game folders of **empty files** with the right names.
 
 ## Non-negotiable rules
 - A tool, not a distribution channel. `.ptk` files contain recipes, settings, community patches and SHA-256 hashes, **never** game files or decompiled code. `ptk pack` refuses third-party files (manifest `third_party` globs, copies of recorded game files by hash, engine archives) unless `game.content_license` is redistributable (open license or `LicenseRef-Own-Work`). Never weaken this.
-- `ptk scan` uses names and 4-byte executable headers only; never decode archives.
+- `ptk scan` uses names, 4-byte executable headers and the first 16 bytes of files an engine rule names (`head` rules in the catalog); never decode or extract archives.
 - NoVA (owner's RISC-V SoC) is out of scope until the owner's NoVA SDK exists. It plugs in via `[[target]]` TOML in `<data>/targets/` with `export_backend` = an export plugin id. Keep that path working.
 - `LICENSE` is MIT (owner's choice, 2026-11-09).
 
-## Git / release state (2026-11-24)
+## Git / release state (2026-11-26)
 - Remote `origin` = https://github.com/Hallel133/Porting-Toolkit (public; the owner created it with a one-line README). Work on `main`.
 - Phase 1 (commit 4c21302) was pushed to `origin/main` on 2026-11-09; pushing works despite the account flag.
 - The owner said their GitHub account is "flagged" (Grand-V notes: GitHub Actions is disabled for the Hallel133 account, `HTTP 422`). So `.github/workflows/ci.yml` (macos-14 + ubuntu: fmt, clippy -D warnings, cargo test, uv run pytest) has probably never run. Run the same commands locally.
@@ -25,10 +26,10 @@ A community tool to manage, convert, export and import game projects between pla
 ## Commands
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"          # cargo is not on the default PATH on the owner's Mac
-cargo test --workspace                        # 88 Rust tests, starts the real Python engine
+cargo test --workspace                        # 92 Rust tests, starts the real Python engine
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-(cd engine && uv run pytest)                  # 196 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
+(cd engine && uv run pytest)                  # 456 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
 (cd engine && PTK_TOOL_TESTS=1 uv run pytest -k real)       # also runs real FFmpeg encodes
 (cd engine && PTK_GUI_TESTS=1 uv run pytest -k macos_app)   # also opens the wrapper app and checks the page loaded
 cargo run -q -p ptk-cli -- scan fixtures/games/unity-windows
@@ -165,8 +166,17 @@ Owner asked to plan and design new compression algorithms for new platforms and 
 - Export page: problems under each exporter (errors with fix buttons, warnings folded).
 - **Mistake, fixed 2026-11-26:** a commit included the owner's untracked `docs/debug screenshots/` (they show the username). With the owner's approval, history was rewritten (`git filter-branch`, the commits from "Plugin API 2" on; their content is unchanged) and force-pushed: old tip ec0e209 → new 61041d1, a870333 → aed6b99, the removal commit dropped as empty. The folder stays on disk and is in `.git/info/exclude`. GitHub still serves the old commit a870333 by its SHA (unreferenced commits stay cached); only GitHub Support can purge it. Anyone with an older clone must reset to `origin/main`.
 
+## Done (2026-11-26, "v1.0" prompt: engine catalog, runtime plugins, marketplace sources)
+The owner pasted a v1.0 prompt (v2 pipeline detect/stage/convert/package, APFS clones, incremental cache, parallel zips, Installed-tab fix, ~190 engines). Part 1 already existed (API 2). Owner's answers: detect every engine + export through open-source runtimes; keep API 2 step names and document the mapping (docs/plugins.md); families ScummVM, id/Build source ports, RPG/strategy (not Flash); runtimes = installed copy, then pinned download; **engines as installable marketplace plugins, not on the owner's computer or shipped with the app**; marketplace on another host while GitHub is blocked.
+- **Phase A (daf20e8):** the catalog (see "What this repo is"). Statuses: supported 6, web 11 (detected as the html5 variant), partial 15, runtime 44 (24 with a plugin), closed 75, not_engine 6, unresolved 24 (no public reliable signature: Buildbox, C4, CraftStudio, Coretech, Dim3, Enigma, GameSalad, id Tech 6, id Tech 8, Iron Engine, Leadwerks, LyN, Messiah, Moai, Monkey X, Panta Rhei, Pie in the Sky, Pixel Game Maker MV, Q, Shark 3D, Silent Storm, Treyarch NGL, V-Play, Visual3D), native 1 (macos). Rule kind `head` and negative weights. `ptk engines [--status|--search|--json]`; route card links runtime + plugin; test: every engine's samples detect it and no other.
+- **Phase B (3919d82):** `sdk.RuntimeExportPlugin` + `ptk_engine/runtimes.py` driven by `runtime.toml` (runtime, per-OS executable (globs ok), installed paths, `[download.<target>|<os>]` url/sha256/root, `[launch] args/env` with `{game}` `{runtime}` `{main}`, `[game] required/exclude/main/dir`, `whole_folder`). Runtime lookup: `runtime.<target>=` (strict), `runtime=` (skipped if for another platform), remembered path, installed macOS app, cached/pinned download (zip, tar.*, dmg via read-only hdiutil, AppImage). Homebrew refused for macOS. Builds: `<Title>.app` with sh launcher (Resources/runtime + Resources/game, signed when changed) or `<Title>/` + .cmd/.sh + zip; LICENSE-<runtime>.txt always.
+- **Phase C (b72699d, 00fdc34, 4cd34dc):** 18 plugins in `marketplace/plugins/`: scummvm, doom (UZDoom), quake (vkQuake), quake2 (Yamagi), quake3 (ioquake3, unpinned), doom3 (dhewm3), wolf3d (ECWolf), build (Raze), jedi (TFE), goldsrc (Xash3D, unpinned), infinity (GemRB), morrowind (OpenMW), exult, daggerfall (DFU), stratagus/nscripter/ohrrpgce (unpinned), mugen (Ikemen GO). Pins only from official stable releases; SHA-256 from GitHub asset digests or published .sha256 files; Raze, ECWolf, Yamagi, GemRB, Exult had none, so they were downloaded once into the scratchpad to hash, never run, deleted. Each README says which targets are pinned. `engine/tests/test_runtime_plugins.py` checks every plugin against the catalog and builds each engine's sample with a fake runtime.
+- **Phase D (eb959c9):** `AppSettings.marketplace_sources`, `market::fetch_all` (merge, newest wins, failing source reported), Settings → Marketplace tab (`ptk-gui --view sources`), `ptk market sources [--add|--remove|--reset]`, `tools/build_marketplace.py BASE_URL OUT_DIR`, `docs/marketplace-hosting.md` (Codeberg). Verified with a file:// index: list, install scummvm-export, `ptk export` of a fake SCUMM game picks it, the launcher starts the fake runtime with the game path.
+- **Not verified:** no real runtime was run (standing rule: never execute downloaded binaries) and no real game exported through them; launch arguments of GemRB, Raze, TFE, Exult (cfg), OpenMW (fallback values), Stratagus, ONScripter are from docs/knowledge, not tried; Windows/Linux launchers not run; .dmg unpacking of real images not run (hdiutil path only covered by code). Codeberg hosting needs the owner's account.
+
 ## Next task
-0. Owner: ask GitHub Support to lift the flag on the Hallel133 account (it hides both repos from the public and disables Actions). Then publish a first entry with `ptk market submit`.
+0. Owner: create a Codeberg account and a public `ptk-marketplace` repo, then `python3 tools/build_marketplace.py https://codeberg.org/USER/ptk-marketplace/raw/branch/main dist-marketplace`, push it (docs/marketplace-hosting.md), and add the source in Settings → Marketplace. Then try one runtime plugin with a game they own (ScummVM with Beneath a Steel Sky, which is freeware, is the easiest).
+0b. Owner: ask GitHub Support to lift the flag on the Hallel133 account (it hides both repos from the public and disables Actions). Then publish a first entry with `ptk market submit`.
 1. Owner: re-export Buckshot Roulette for macOS and check the gray screen is gone and Steam features work; check the web build's loading screen. Try the Game page, Settings → Defaults, Icon & poster.
 2. Owner: try a real Godot game and a real RPG Maker MV/MZ game (`ptk import <build>` then `ptk export`, or the app's Export tab); open the Godot `.app` on the Mac (not done by Claude). Check the macOS menu bar. Create the ptk-marketplace repo (see above).
 3. Owner: run a Windows/Linux export of a real game on a Windows PC / Linux machine (or Steam Deck); try a real Ren'Py, LÖVE and RPG Maker XP/VX/Ace game (for the last one, download mkxp-z once and pass --set mkxp=PATH). Install an Android build on a phone (`adb install -r`) and report what happens. The plan's 5 phases are done; Unity is in (experimental); owner can install Unity 2022.3.62f2 + Windows/Linux Mono support via the unityhub:// link to try The Lost City (Apple Arcade: personal testing only). Other ideas: a real-device test round, Godot 3 Android, ETC2 for phones without ASTC, love.js/Ren'Py web. Owner should try `ptk assets` / Estimate savings on a real RPG Maker game and check the music still loops after `brew install vorbis-tools`.
