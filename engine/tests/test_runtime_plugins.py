@@ -160,3 +160,26 @@ def test_ikemen_on_macos_keeps_the_folder_around_its_app(tmp_path):
     res = out / "Contents" / "Resources" / "runtime"
     assert (res / "Fake.app" / "Contents" / "Info.plist").is_file() and (res / "data" / "mugen.cfg").is_file()
     assert 'exec "${RUNTIME}/Fake.app/Contents/MacOS/runtime"' in (out / "Contents" / "MacOS" / "Test").read_text()
+
+
+def test_marketplace_builder_writes_a_valid_reproducible_index(tmp_path):
+    import hashlib
+    import importlib.util
+    import json
+    import zipfile as zf
+
+    spec = importlib.util.spec_from_file_location("build_marketplace", ROOT.parents[1] / "tools" / "build_marketplace.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    base = (tmp_path / "a").as_uri()
+    index = mod.build(base, tmp_path / "a")
+    assert json.loads((tmp_path / "a" / "index.json").read_text()) == index
+    assert {e["id"] for e in index["entries"]} == {p.name for p in PLUGINS}
+    for e in index["entries"]:
+        z = tmp_path / "a" / f"{e['id']}-{e['version']}.zip"
+        assert e["download"] == f"{base}/{z.name}"
+        assert hashlib.sha256(z.read_bytes()).hexdigest() == e["sha256"]
+        names = zf.ZipFile(z).namelist()
+        assert f"{e['id']}/plugin.toml" in names and not any("__pycache__" in n for n in names)
+    again = mod.build(base, tmp_path / "b")
+    assert [e["sha256"] for e in again["entries"]] == [e["sha256"] for e in index["entries"]]

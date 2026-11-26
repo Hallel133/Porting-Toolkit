@@ -39,11 +39,97 @@ pub const DEFAULT_INDEX_URL: &str =
 /// Placeholder `download` value printed by [`package`].
 pub const DOWNLOAD_PLACEHOLDER: &str = "REPLACE-with-the-URL-of-the-uploaded-file";
 
+/// The first index read (see [`index_urls`]).
 pub fn index_url() -> String {
-    std::env::var("PTK_MARKETPLACE_URL")
+    index_urls()
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| DEFAULT_INDEX_URL.into())
+}
+
+/// The indexes to read: `PTK_MARKETPLACE_URL` when set, else the sources in
+/// the app settings, else the default index.
+pub fn index_urls() -> Vec<String> {
+    index_urls_from(&crate::settings::AppSettings::load())
+}
+
+/// [`index_urls`] for given settings (the app's unsaved ones, for example).
+pub fn index_urls_from(settings: &crate::settings::AppSettings) -> Vec<String> {
+    if let Some(v) = std::env::var("PTK_MARKETPLACE_URL")
         .ok()
         .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| DEFAULT_INDEX_URL.into())
+    {
+        return vec![v];
+    }
+    if settings.marketplace_sources.is_empty() {
+        vec![DEFAULT_INDEX_URL.into()]
+    } else {
+        settings.marketplace_sources.clone()
+    }
+}
+
+/// Whether a marketplace source is a URL Porting Toolkit reads.
+pub fn valid_source(url: &str) -> bool {
+    let u = url.trim();
+    (u.starts_with("https://") && u.len() > "https://".len() && !u.contains(char::is_whitespace))
+        || u.starts_with("file://")
+}
+
+/// Merges indexes: for the same id and kind, the newest version wins (the
+/// first source on a tie). Entries keep the order they first appear in.
+pub fn merge(indexes: Vec<MarketIndex>) -> MarketIndex {
+    let mut out: Vec<MarketEntry> = Vec::new();
+    for index in indexes {
+        for e in index.entries {
+            match out.iter_mut().find(|x| x.id == e.id && x.kind == e.kind) {
+                Some(x) if version_newer(&e.version, &x.version) => *x = e,
+                Some(_) => {}
+                None => out.push(e),
+            }
+        }
+    }
+    MarketIndex {
+        schema_version: 1,
+        entries: out,
+    }
+}
+
+/// Reads every source and merges them ([`merge`]). A source that cannot be
+/// read is reported with the skipped entries; it is an error only when no
+/// source could be read.
+pub fn fetch_all(urls: &[String]) -> Result<(MarketIndex, Vec<String>)> {
+    fetch_all_with(urls, fetch_index)
+}
+
+fn fetch_all_with(
+    urls: &[String],
+    fetch: impl Fn(&str) -> Result<(MarketIndex, Vec<String>)>,
+) -> Result<(MarketIndex, Vec<String>)> {
+    let mut indexes = Vec::new();
+    let mut problems = Vec::new();
+    let mut errors = Vec::new();
+    for url in urls {
+        match fetch(url) {
+            Ok((index, p)) => {
+                indexes.push(index);
+                problems.extend(p);
+            }
+            Err(e) => errors.push(format!("{url}: {e}")),
+        }
+    }
+    if indexes.is_empty() {
+        return Err(Error::Invalid(if errors.is_empty() {
+            "no marketplace source is set".into()
+        } else {
+            errors.join("; ")
+        }));
+    }
+    problems.extend(
+        errors
+            .into_iter()
+            .map(|e| format!("source not loaded: {e}")),
+    );
+    Ok((merge(indexes), problems))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -693,6 +779,65 @@ mod tests {
             path: path.into(),
             size: data.len() as u64,
             sha256: crate::hash::sha256_bytes(data),
+        }
+    }
+
+    #[test]
+    fn sources_merge_newest_first_and_survive_a_failing_one() {
+        let mut old = entry();
+        old.version = "0.1.0".into();
+        let mut new = entry();
+        new.version = "0.2.0".into();
+        new.download =
+            "https://codeberg.org/x/ptk-marketplace/raw/branch/main/unity-import-0.2.0.zip".into();
+        let mut other = entry();
+        other.id = "scummvm-export".into();
+        let a = MarketIndex {
+            schema_version: 1,
+            entries: vec![old.clone(), other.clone()],
+        };
+        let b = MarketIndex {
+            schema_version: 1,
+            entries: vec![new.clone()],
+        };
+        let merged = merge(vec![a.clone(), b.clone()]);
+        assert_eq!(merged.entries.len(), 2);
+        assert_eq!(merged.entries[0].version, "0.2.0");
+        assert_eq!(
+            merge(vec![b.clone(), a.clone()]).entries[0].version,
+            "0.2.0"
+        );
+
+        let urls = vec![
+            "https://a/index.json".to_string(),
+            "https://down/index.json".to_string(),
+        ];
+        let (index, problems) = fetch_all_with(&urls, |u| {
+            if u.contains("down") {
+                Err(Error::Invalid("HTTP 404".into()))
+            } else {
+                Ok((a.clone(), vec![]))
+            }
+        })
+        .unwrap();
+        assert_eq!(index.entries.len(), 2);
+        assert!(problems[0].contains("source not loaded: https://down/index.json"));
+        assert!(fetch_all_with(&urls[1..], |_| Err(Error::Invalid("HTTP 404".into()))).is_err());
+    }
+
+    #[test]
+    fn sources_come_from_settings() {
+        assert!(valid_source(
+            "https://codeberg.org/x/ptk-marketplace/raw/branch/main/index.json"
+        ));
+        assert!(valid_source("file:///tmp/index.json"));
+        assert!(!valid_source("http://example.org/index.json") && !valid_source("https://"));
+        if std::env::var_os("PTK_MARKETPLACE_URL").is_none() {
+            let mut s = crate::settings::AppSettings::default();
+            assert_eq!(index_urls_from(&s), vec![DEFAULT_INDEX_URL.to_string()]);
+            s.marketplace_sources =
+                vec!["https://a/index.json".into(), "https://b/index.json".into()];
+            assert_eq!(index_urls_from(&s).len(), 2);
         }
     }
 

@@ -132,9 +132,15 @@ pub fn market(style: &Style, action: MarketAction) -> anyhow::Result<ExitCode> {
     {
         return submit(style, &path, store.as_deref(), &output, dry_run, yes);
     }
-    let url = market::index_url();
-    let (index, problems) = market::fetch_index(&url).map_err(|e| {
-        anyhow::anyhow!("{e}\nThe marketplace index is {url} (repository {MARKETPLACE_REPO}).")
+    if let MarketAction::Sources { add, remove, reset } = action {
+        return sources(style, add, remove, reset);
+    }
+    let urls = market::index_urls();
+    let (index, problems) = market::fetch_all(&urls).map_err(|e| {
+        anyhow::anyhow!(
+            "{e}\nThe marketplace is read from {} (repository {MARKETPLACE_REPO}); `ptk market sources --add URL` adds a mirror.",
+            urls.join(", ")
+        )
     })?;
     for p in &problems {
         eprintln!("{} skipped entry: {p}", style.warn());
@@ -249,7 +255,7 @@ pub fn market(style: &Style, action: MarketAction) -> anyhow::Result<ExitCode> {
             );
             Ok(ExitCode::SUCCESS)
         }
-        MarketAction::Submit { .. } => unreachable!("handled above"),
+        MarketAction::Submit { .. } | MarketAction::Sources { .. } => unreachable!("handled above"),
         MarketAction::Install { id, yes } => {
             let Some(entry) = index.entries.iter().find(|e| e.id == id) else {
                 bail!("no marketplace entry {id:?}");
@@ -368,5 +374,55 @@ pub fn publish(style: &Style, path: &Path, out: &Path) -> anyhow::Result<ExitCod
     );
     println!("  (or upload the file yourself, put its URL in \"download\" and open a pull request");
     println!("  adding the entry to index.json in {MARKETPLACE_REPO})");
+    Ok(ExitCode::SUCCESS)
+}
+
+/// `ptk market sources`: list, add or remove marketplace indexes.
+fn sources(
+    style: &Style,
+    add: Option<String>,
+    remove: Option<String>,
+    reset: bool,
+) -> anyhow::Result<ExitCode> {
+    let mut settings = ptk_core::settings::AppSettings::load();
+    let before = settings.marketplace_sources.clone();
+    if reset {
+        settings.marketplace_sources.clear();
+    }
+    if let Some(url) = remove {
+        let url = url.trim().to_string();
+        if !settings.marketplace_sources.contains(&url) {
+            anyhow::bail!("{url} is not a marketplace source");
+        }
+        settings.marketplace_sources.retain(|s| *s != url);
+    }
+    if let Some(url) = add {
+        let url = url.trim().to_string();
+        if !market::valid_source(&url) {
+            anyhow::bail!("{url}: a source is an https:// (or file://) URL of an index.json");
+        }
+        if settings.marketplace_sources.is_empty() {
+            settings
+                .marketplace_sources
+                .push(market::DEFAULT_INDEX_URL.into());
+        }
+        if !settings.marketplace_sources.contains(&url) {
+            settings.marketplace_sources.push(url);
+        }
+    }
+    if settings.marketplace_sources != before {
+        settings.save()?;
+        println!("{} saved", style.ok());
+    }
+    println!("{}", style.heading("Marketplace sources"));
+    for url in market::index_urls_from(&settings) {
+        println!("  {url}");
+    }
+    if std::env::var_os("PTK_MARKETPLACE_URL").is_some() {
+        println!(
+            "  {}",
+            style.dim("PTK_MARKETPLACE_URL is set: only that index is read.")
+        );
+    }
     Ok(ExitCode::SUCCESS)
 }

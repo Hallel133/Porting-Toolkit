@@ -271,6 +271,18 @@ pub enum SdkAction {
 
 #[derive(Subcommand)]
 pub enum MarketAction {
+    /// Where the marketplace is read from (several indexes are merged)
+    Sources {
+        /// Add an index (https:// or file:// URL of an index.json)
+        #[arg(long, value_name = "URL")]
+        add: Option<String>,
+        /// Remove an index
+        #[arg(long, value_name = "URL")]
+        remove: Option<String>,
+        /// Read only the default index again
+        #[arg(long)]
+        reset: bool,
+    },
     /// List marketplace entries
     List {
         /// Filter by text

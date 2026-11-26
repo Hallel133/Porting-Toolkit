@@ -291,3 +291,24 @@ def test_executable_lookup_and_homebrew(tmp_path):
     assert rt.executable_in(tmp_path / "w", spec, "windows") == nested / "fakevm.exe"
     assert rt.is_homebrew(Path("/opt/homebrew/Cellar/fakevm/1/bin/fakevm"))
     assert not rt.is_homebrew(Path("/Applications/FakeVM.app"))
+
+
+def test_a_general_runtime_for_another_platform_falls_back(tmp_path):
+    plugin = make_plugin(tmp_path, RUNTIME_TOML + '\n[download.windows-x64]\nurl = "https://example.org/w.zip"\n'
+                                                   'sha256 = "' + "0" * 64 + '"\n')
+    game, app = fake_game(tmp_path), fake_app(tmp_path / "rt")
+    # runtime= is the Mac app: Windows still has its pinned download.
+    assert run(plugin, game, None, tmp_path, "windows-x64", phase="check", settings={"runtime": str(app)})["ok"]
+    # Linux has no other way: the error names the per-target key.
+    r = run(plugin, game, None, tmp_path, "linux-x64", phase="check", settings={"runtime": str(app)})
+    assert "runtime.linux-x64=PATH" in r["problems"][0]["message"]
+    # A per-target key is strict.
+    r = run(plugin, game, None, tmp_path, "windows-x64", phase="check", settings={"runtime.windows-x64": str(app)})
+    assert not r["ok"]
+    win = tmp_path / "w"
+    win.mkdir()
+    (win / "fakevm.exe").write_bytes(b"MZ")
+    r = run(plugin, game, tmp_path / "out", tmp_path, "windows-x64",
+            settings={"runtime": str(app), "runtime.windows-x64": str(win), "zip": "false"})
+    assert (tmp_path / "out" / "Monkey Island 2" / "runtime" / "fakevm.exe").is_file()
+

@@ -618,8 +618,8 @@ impl App {
                     hint(
                         ui,
                         &format!(
-                            "The index is read from {}. Until it is published, you can still install plugins and SDKs from a folder (Installed tab) and prepare your own (Publish tab).",
-                            ptk_core::market::index_url()
+                            "The index is read from {}. Add another source in Settings → Marketplace, install plugins and SDKs from a folder (Installed tab), or prepare your own (Publish tab).",
+                            ptk_core::market::index_urls_from(&self.app_settings).join(", ")
                         ),
                     );
                 });
@@ -1599,6 +1599,7 @@ impl App {
             &[
                 (SettingsTab::Defaults, "Defaults", FOCUS),
                 (SettingsTab::Environment, "Environment", FOCUS),
+                (SettingsTab::Marketplace, "Marketplace", FOCUS),
                 (SettingsTab::Targets, "Targets", FOCUS),
                 (SettingsTab::About, "About", FOCUS),
             ],
@@ -1607,6 +1608,7 @@ impl App {
         match self.settings_tab {
             SettingsTab::Defaults => self.defaults_page(ui),
             SettingsTab::Environment => self.doctor_page(ui),
+            SettingsTab::Marketplace => self.market_sources_page(ui),
             SettingsTab::Targets => self.targets_page(ui),
             SettingsTab::About => self.about_page(ui),
         }
@@ -3129,6 +3131,89 @@ impl App {
     }
 
     // =============================================================== about
+
+    /// Where the Marketplace is read from (several indexes are merged).
+    fn market_sources_page(&mut self, ui: &mut Ui) {
+        let mut remove = None;
+        let mut reload = false;
+        card(ui, |ui| {
+            card_title(ui, "Marketplace sources");
+            hint(
+                ui,
+                "The Marketplace merges every index listed here (the newest version of a plugin wins). Add a mirror on another host, for example a Codeberg repository's raw index.json, when the default one cannot be reached.",
+            );
+            ui.add_space(6.0);
+            let env = std::env::var("PTK_MARKETPLACE_URL")
+                .ok()
+                .filter(|v| !v.is_empty());
+            if let Some(v) = &env {
+                widgets::message(
+                    ui,
+                    WARN,
+                    &format!("PTK_MARKETPLACE_URL is set, so only {v} is read."),
+                );
+            }
+            let sources = self.app_settings.marketplace_sources.clone();
+            if sources.is_empty() {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(
+                        RichText::new(ptk_core::market::DEFAULT_INDEX_URL)
+                            .monospace()
+                            .color(TEXT),
+                    );
+                    badge(ui, "default", TEXT_FAINT);
+                });
+            }
+            for (i, s) in sources.iter().enumerate() {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(RichText::new(s).monospace().color(TEXT));
+                    if ui.small_button("Remove").clicked() {
+                        remove = Some(i);
+                    }
+                });
+            }
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.market_source_input)
+                        .hint_text(
+                            "https://codeberg.org/you/ptk-marketplace/raw/branch/main/index.json",
+                        )
+                        .desired_width(ui.available_width() - 160.0),
+                );
+                let url = self.market_source_input.trim().to_string();
+                let ok = ptk_core::market::valid_source(&url);
+                if ui
+                    .add_enabled(ok, egui::Button::new("Add source"))
+                    .on_disabled_hover_text("An https:// (or file://) URL of an index.json")
+                    .clicked()
+                {
+                    if self.app_settings.marketplace_sources.is_empty() {
+                        // Keep reading the default index next to the new one.
+                        self.app_settings
+                            .marketplace_sources
+                            .push(ptk_core::market::DEFAULT_INDEX_URL.into());
+                    }
+                    if !self.app_settings.marketplace_sources.contains(&url) {
+                        self.app_settings.marketplace_sources.push(url);
+                    }
+                    self.market_source_input.clear();
+                    reload = true;
+                }
+            });
+            if !sources.is_empty() && ui.button("Use only the default index").clicked() {
+                self.app_settings.marketplace_sources.clear();
+                reload = true;
+            }
+        });
+        if let Some(i) = remove {
+            self.app_settings.marketplace_sources.remove(i);
+            reload = true;
+        }
+        if reload {
+            self.refresh_market(ui.ctx());
+        }
+    }
 
     fn about_page(&mut self, ui: &mut Ui) {
         card(ui, |ui| {

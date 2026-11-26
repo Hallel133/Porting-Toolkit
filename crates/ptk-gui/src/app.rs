@@ -84,7 +84,7 @@ impl View {
             "project" | "overview" | "options" => Some(View::Overview),
             "share" => Some(View::Export),
             "plugins" | "market" | "installed" => Some(View::Marketplace),
-            "doctor" | "targets" | "about" => Some(View::Settings),
+            "doctor" | "targets" | "about" | "sources" => Some(View::Settings),
             _ => None,
         };
         alias.or_else(|| {
@@ -100,6 +100,7 @@ impl View {
 pub enum SettingsTab {
     Defaults,
     Environment,
+    Marketplace,
     Targets,
     About,
 }
@@ -292,6 +293,8 @@ pub struct Config {
     pub view: Option<View>,
     /// `--view installed`: the Marketplace's Installed tab.
     pub installed_tab: bool,
+    /// `--view sources`: Settings opens on its Marketplace tab.
+    pub sources_tab: bool,
     /// `--plugin PATH`: check this plugin folder once the list is loaded.
     pub check_plugin: Option<PathBuf>,
     pub project: Option<PathBuf>,
@@ -359,6 +362,8 @@ pub struct App {
     /// "Check my copy" results, by port id.
     pub copy_checks: HashMap<String, Result<ptk_core::market::CopyCheck, String>>,
     pub market_search: String,
+    /// The URL typed in Settings → Marketplace.
+    pub market_source_input: String,
     pub market_kind: Option<EntryKind>,
     pub publish_path: String,
     pub published: Option<Result<Published, String>>,
@@ -466,7 +471,11 @@ impl App {
             export_checks_for: None,
             check_plugin_on_start: config.check_plugin.is_some(),
             pending: None,
-            settings_tab: SettingsTab::Defaults,
+            settings_tab: if config.sources_tab {
+                SettingsTab::Marketplace
+            } else {
+                SettingsTab::Defaults
+            },
             market_tab: if config.installed_tab {
                 MarketTab::Installed
             } else {
@@ -486,6 +495,7 @@ impl App {
             submit_result: None,
             copy_checks: HashMap::new(),
             market_search: String::new(),
+            market_source_input: String::new(),
             market_kind: None,
             publish_path: String::new(),
             published: None,
@@ -1274,10 +1284,10 @@ impl App {
     }
 
     pub fn refresh_market(&mut self, ctx: &egui::Context) {
-        let url = ptk_core::market::index_url();
+        let urls = ptk_core::market::index_urls_from(&self.app_settings);
         self.market = None;
         self.spawn(ctx, "Loading the marketplace", move |_| {
-            Msg::Market(ptk_core::market::fetch_index(&url).map_err(|e| e.to_string()))
+            Msg::Market(ptk_core::market::fetch_all(&urls).map_err(|e| e.to_string()))
         });
     }
 

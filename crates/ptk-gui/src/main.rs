@@ -34,6 +34,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<(Config, [f32; 2]), 
                 let v = value("--view")?;
                 config.view = Some(View::parse(&v).ok_or(format!("unknown view {v:?}"))?);
                 config.installed_tab = v.eq_ignore_ascii_case("installed");
+                config.sources_tab = v.eq_ignore_ascii_case("sources");
             }
             "--project" => config.project = Some(PathBuf::from(value("--project")?)),
             "--game" => config.game = Some(PathBuf::from(value("--game")?)),

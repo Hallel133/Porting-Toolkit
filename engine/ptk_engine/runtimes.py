@@ -37,8 +37,9 @@ next to its ``plugin.toml``::
 ``{game}`` is the game folder of the build and ``{runtime}`` the runtime's
 folder, both resolved when the game starts, so a build can be moved.
 
-Where a runtime comes from, in order: ``--set runtime=PATH`` (remembered on
-this computer for that target), an installed copy (macOS apps only: a
+Where a runtime comes from, in order: ``--set runtime.<target>=PATH`` or
+``--set runtime=PATH`` (remembered on this computer for that target; a
+``runtime`` for another platform is skipped), an installed copy (macOS apps only: a
 system install on Windows or Linux is not portable), then the pinned
 download, checked against its SHA-256 and unpacked once into the plugin's
 cache. Homebrew builds are refused for macOS builds: they load libraries
@@ -275,8 +276,12 @@ def locate(ctx: Context, spec: RuntimeSpec, target: dict, download: bool) -> Fou
     pinned download that is not cached yet is reported as None plus
     :func:`can_download`."""
     os_ = target.get("os", "")
-    chosen = ctx.setting("runtime")
-    if chosen:
+    key = f"runtime.{target.get('id', os_)}"
+    missed = None  # a general runtime=PATH that is for another platform
+    for setting, strict in ((key, True), ("runtime", False)):
+        chosen = ctx.setting(setting)
+        if not chosen:
+            continue
         p = Path(chosen).expanduser()
         if os_ == "macos" and is_homebrew(p):
             raise RuntimeError_(
@@ -284,11 +289,23 @@ def locate(ctx: Context, spec: RuntimeSpec, target: dict, download: bool) -> Fou
                 f"other Macs. Use the official {spec.name} app instead ({spec.source}).")
         found = _from_path(ctx, p, spec, os_, unpack=download)
         if found is None:
-            raise RuntimeError_(f"runtime={chosen} is not {spec.name} for {target.get('name') or os_} "
-                                f"(expected {spec.executable.get(os_, '?')}).")
+            message = (f"{setting}={chosen} is not {spec.name} for {target.get('name') or os_} "
+                       f"(expected {spec.executable.get(os_, '?')}).")
+            if strict:
+                raise RuntimeError_(message)
+            missed = message  # runtime= may be meant for another target: try the other ways first
+            continue
         if download:
             ctx.write_text(_remembered(ctx, target), str(p) + "\n")
         return Found(runtime_root(found.executable, os_, spec.whole_folder), found.executable, "setting")
+    found = _locate_other(ctx, spec, target, download)
+    if found is None and missed and spec.download_for(target) is None:
+        raise RuntimeError_(missed + f" Use {key}=PATH to give one per target.")
+    return found
+
+
+def _locate_other(ctx: Context, spec: RuntimeSpec, target: dict, download: bool) -> Found | None:
+    os_ = target.get("os", "")
     rem = _remembered(ctx, target)
     if rem.is_file():
         p = Path(rem.read_text(encoding="utf-8").strip())

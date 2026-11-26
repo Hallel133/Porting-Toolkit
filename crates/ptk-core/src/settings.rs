@@ -32,6 +32,10 @@ pub struct AppSettings {
     /// present; otherwise the newest runs.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub plugin_versions: BTreeMap<String, PathBuf>,
+    /// Marketplace indexes to read (https:// or file:// URLs of index.json),
+    /// merged; empty: the default index.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub marketplace_sources: Vec<String>,
     /// Unknown fields from newer versions survive a save.
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
