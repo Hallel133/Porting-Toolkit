@@ -1973,7 +1973,7 @@
    "name": "XNA (Microsoft XNA Framework 4)",
    "kind": "engine",
    "status": "runtime",
-   "how": "XNA games are .NET with XNA's content (.xnb). FNA reimplements XNA for macOS and Linux, but FNA, its native libraries (fnalibs) and a Mono runtime have no prebuilt official releases to download: they are built from source, so there is no Porting Toolkit plugin yet.",
+   "how": "XNA games are .NET with XNA's content (.xnb). They run unchanged on macOS and Linux with FNA, its XNA assemblies, fnalibs and MonoKickstart: none has a prebuilt official release, so the fna-export plugin uses an FNA kit you build once.",
    "aliases": [
     "XNA"
    ],
@@ -1983,7 +1983,7 @@
     "url": "https://fna-xna.github.io",
     "license": "MS-PL"
    },
-   "plugin": null,
+   "plugin": "fna-export",
    "via": null,
    "rules": [
     [

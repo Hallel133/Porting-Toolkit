@@ -73,6 +73,11 @@ def fake_runtime(tmp: Path, spec: RuntimeSpec, os_: str) -> Path:
     exe.parent.mkdir(parents=True, exist_ok=True)
     exe.write_bytes(b"fake")
     exe.chmod(0o755)
+    if spec.id == "fna":  # an FNA kit has more than its launcher
+        for name in ("FNA.dll", "monoconfig", "monomachineconfig", "mscorlib.dll", "Microsoft.Xna.Framework.dll",
+                     "osx/libFNA3D.0.dylib", "lib64/libFNA3D.so.0"):
+            (base / name).parent.mkdir(parents=True, exist_ok=True)
+            (base / name).write_bytes(b"kit")
     return base
 
 
@@ -249,3 +254,41 @@ def test_defold_reads_the_engine_version_from_the_game(tmp_path):
     assert not r["ok"] and "defold_sha1" in r["problems"][0]["message"]
     r = run_plugin({**req, "settings": {"defold_sha1": sha1}}, lambda m, p: None)["result"]
     assert r["ok"]
+
+
+def test_fna_merges_the_kit_and_names_the_launcher_after_the_game(tmp_path):
+    out = build_with_fake(tmp_path, "fna-export", "xna", "linux-x64",
+                          {"Bastion.exe": b"MZ", "Microsoft.Xna.Framework.dll": b"xna", "Content/a.xnb": b"x",
+                           "intro.wmv": b"v"})
+    game = out / "game"
+    assert (game / "Bastion.bin.x86_64").is_file() and (game / "Bastion.exe").is_file()
+    assert (game / "Microsoft.Xna.Framework.dll").read_bytes() == b"kit"
+    assert (game / "monoconfig").is_file() and (game / "lib64" / "libFNA3D.so.0").is_file()
+    assert not (game / "kick.bin.x86_64").exists()
+    sh = (out / "Test.sh").read_text()
+    assert 'exec "$GAME/Bastion.bin.x86_64" "$@"' in sh and 'cd "$GAME"' in sh
+
+
+def test_fna_checks_the_kit_and_the_exe(tmp_path):
+    plugin = ROOT / "fna-export"
+    spec = RuntimeSpec.load(plugin / "runtime.toml")
+    kit = fake_runtime(tmp_path, spec, "macos")
+    (kit / "monoconfig").unlink()
+    game = tmp_path / "game"
+    (game / "Content").mkdir(parents=True)
+    (game / "Content" / "a.xnb").write_bytes(b"x")
+    (game / "Game.exe").write_bytes(b"MZ")
+    (game / "Editor.exe").write_bytes(b"MZ")
+    (tmp_path / "project").mkdir()
+    req = {"plugin": str(plugin), "kind": "export", "engine": "xna", "phase": "check", "target": TARGETS["macos-arm64"],
+           "manifest": {"name": "p", "version": "1", "game": {}}, "settings": {"runtime": str(kit)},
+           "folders": {"$GAME": str(game), "$PROJECT": str(tmp_path / "project")}, "cache_root": str(tmp_path / "cache")}
+    r = run_plugin(req, lambda m, p: None)["result"]
+    assert "--set exe=" in r["problems"][0]["message"]
+    r = run_plugin({**req, "settings": {"runtime": str(kit), "exe": "Game.exe"}}, lambda m, p: None)["result"]
+    assert "missing monoconfig" in r["problems"][0]["message"]
+    (kit / "monoconfig").write_text("x")
+    r = run_plugin({**req, "settings": {"runtime": str(kit), "exe": "Game.exe"}}, lambda m, p: None)["result"]
+    assert r["ok"] and any("Rosetta" in p["message"] for p in r["problems"])
+    r = run_plugin({**req, "settings": {}}, lambda m, p: None)["result"]
+    assert "KIT.md" in r["problems"][0]["message"]

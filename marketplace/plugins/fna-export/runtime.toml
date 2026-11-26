@@ -1,0 +1,18 @@
+# FNA (MS-PL) with MonoKickstart (zlib) and fnalibs (SDL, FNA3D, FAudio, Theorafile: zlib).
+# None of them has a prebuilt official release, so the "FNA kit" is built once
+# (see KIT.md) and given with --set runtime=PATH.
+[runtime]
+id = "fna"
+name = "FNA kit (FNA, fnalibs, MonoKickstart)"
+version = "your kit"
+source = "https://github.com/FNA-XNA/FNA"
+license = "MS-PL (FNA), zlib (MonoKickstart, fnalibs)"
+
+[runtime.executable]
+macos = "kick.bin.osx"
+linux = "kick.bin.x86_64"
+
+[game]
+required = ["*.xnb"]
+# The game's own XNA assemblies are replaced by the kit's FNA ones.
+exclude = ["microsoft.xna.framework*.dll", "*.bin.osx", "*.bin.x86_64", "*.pdb"]
