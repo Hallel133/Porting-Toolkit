@@ -1,0 +1,24 @@
+schema_version = 1
+
+[plugin]
+id = "scummvm-export"
+name = "ScummVM export (SCUMM, AGI, AGS, Wintermute, Freescape)"
+version = "1.0.0"
+kind = "export"
+description = "Runs LucasArts SCUMM, Sierra AGI, Adventure Game Studio, Wintermute and Freescape games on macOS, Windows and Linux with ScummVM, from the game's own data files."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "scummvm_export:Plugin"
+api = 2
+homepage = "https://www.scummvm.org"
+
+[formats]
+inputs = ["scumm", "agi", "ags", "wintermute", "freescape"]
+outputs = ["app", "folder", "zip"]
+targets = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"]
+
+[permissions]
+read = ["$GAME", "$PROJECT"]
+write = ["$OUTPUT"]
+network = ["downloads.scummvm.org"]
+subprocess = true   # codesign for the macOS app, hdiutil to open ScummVM's disk image

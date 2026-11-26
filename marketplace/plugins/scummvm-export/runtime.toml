@@ -1,0 +1,39 @@
+# ScummVM: https://www.scummvm.org (GPL-3.0-or-later).
+# Pins come from the .sha256 files published next to each download.
+[runtime]
+id = "scummvm"
+name = "ScummVM"
+version = "2026.4.0"
+source = "https://github.com/scummvm/scummvm"
+license = "GPL-3.0-or-later"
+
+[runtime.executable]
+macos = "ScummVM.app"
+windows = "scummvm.exe"
+linux = "scummvm"   # no official portable Linux build: --set runtime=PATH (an AppImage or a folder)
+
+[runtime.installed]
+macos = ["/Applications/ScummVM.app", "~/Applications/ScummVM.app"]
+
+[download.macos-arm64]
+url = "https://downloads.scummvm.org/frs/scummvm/2026.4.0/scummvm-2026.4.0-macosx.dmg"
+sha256 = "5614527fa57ffce14773c69923b96eeb7b1b135bcd96bfe74640ca341cad4598"
+
+[download.macos-x64]
+url = "https://downloads.scummvm.org/frs/scummvm/2026.4.0/scummvm-2026.4.0-macosx-x86_64.dmg"
+sha256 = "159069c79541f1f72da560ee8d14316c7e92c7d197374922cf19ca840b9fd0dc"
+
+[download.windows-x64]
+url = "https://downloads.scummvm.org/frs/scummvm/2026.4.0/scummvm-2026.4.0-win32-x86_64.zip"
+sha256 = "fb60cfc0828ed86ef24a60c04b9390676493ab85892d81c56d1de90367d56736"
+root = "scummvm-2026.4.0-win32-x86_64"
+
+[launch]
+# Detects the game in the folder and starts it.
+args = ["--path={game}", "--auto-detect"]
+
+[game]
+# SCUMM, AGI, AGS, Wintermute, Freescape: one of these must be there.
+required = ["*.000", "*.la0", "logdir", "*vol.0", "ac2game.dat", "*.ags", "acsetup.cfg", "*.dcp",
+            "drille.exe", "drillc.exe", "driller.exe", "dsidee.exe", "totee.exe"]
+# AGS and Freescape keep game data in their .exe, so nothing is left out.
