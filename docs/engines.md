@@ -15,7 +15,7 @@ Porting Toolkit recognises 184 engines from their files' names and first bytes (
 | LÖVE | yes | The game is a .love archive of Lua scripts and assets (on its own or fused into the .exe). It runs with the official LÖVE build of the same version for each platform. |
 | HTML5 (Construct, GDevelop, Twine, NW.js, Electron) | yes | The game is a web page: it runs in a browser, in a WebKit app on macOS, or with NW.js on Windows and Linux. Electron games that call Node.js need those parts changed. |
 
-## Web engines (exported by the HTML5 plugins) (11)
+## Web engines (exported by the HTML5 plugins) (12)
 
 | Engine | Detected | How |
 |---|---|---|
@@ -30,8 +30,9 @@ Porting Toolkit recognises 184 engines from their files' names and first bytes (
 | LayaAir | as `html5` | Web games: the HTML5 plugins export them (browser, WebKit app on macOS, NW.js on Windows and Linux). |
 | Blend4Web | as `html5` | Web games: the HTML5 plugins export them (browser, WebKit app on macOS, NW.js on Windows and Linux). |
 | Turbulenz | as `html5` | Web games: the HTML5 plugins export them (browser, WebKit app on macOS, NW.js on Windows and Linux). |
+| GameSalad | as `html5` | GameSalad's HTML5 export (js/gse/gse-export.js) is a web game: the HTML5 plugins export it. Its native builds have no documented layout. |
 
-## Depends on the build (16)
+## Depends on the build (17)
 
 | Engine | Detected | How |
 |---|---|---|
@@ -51,6 +52,7 @@ Porting Toolkit recognises 184 engines from their files' names and first bytes (
 | Game Editor | yes | Game Editor is open source; a project (.ged) can be exported again for another platform with Game Editor itself. |
 | Cocos2d-x (C++) | yes | Cocos2d-x games written in C++ are native code and need the source. Lua and JavaScript games are detected separately; HTML5 builds (Cocos2d-html5, Cocos Creator web) are exported by the HTML5 plugins. |
 | Cocos Creator | yes | Web builds are exported by the HTML5 plugins. Native builds embed a customised engine and usually encrypted scripts (.jsc): a port needs the Cocos Creator project. |
+| Pixel Game Maker MV | yes | Games are data (Resources/data/project.json) for the Pixel Game Maker MV player, which runs on Windows only. The player is open source (MIT, built on Cocos2d-x 3.17.1: github.com/GGGweb-adm/PGMMV) but has no macOS or Linux build yet. |
 
 ## Open-source runtimes (46)
 
@@ -103,7 +105,7 @@ Porting Toolkit recognises 184 engines from their files' names and first bytes (
 | Cocos2d-x (Lua) | [Cocos2d-x simulator (same version as the game)](https://github.com/cocos2d/cocos2d-x) | `cocos2dx-export` | The game's Lua scripts (src/) and resources (res/) run with the Cocos2d-x simulator of the same version, built once from Cocos2d-x's source. Encrypted scripts (XXTEA) and games with their own C++ code run only in the game's own executable. |
 | Cocos2d-x (JavaScript) | [Cocos2d-x simulator (same version as the game)](https://github.com/cocos2d/cocos2d-x) | `cocos2dx-export` | The game's JavaScript (main.js, src/) and resources run with the Cocos2d-x simulator of the same version. Compiled .jsc scripts are encrypted and run only in the game's own executable. |
 
-## Needs the source code (75)
+## Needs the source code (77)
 
 | Engine | Detected | How |
 |---|---|---|
@@ -182,6 +184,8 @@ Porting Toolkit recognises 184 engines from their files' names and first bytes (
 | Vengeance Engine | as `unreal` | A modified Unreal Engine 2 (Tribes: Vengeance, BioShock): native code, detected as Unreal Engine. |
 | Kinetica | no | A PlayStation 2 engine: no PC builds to port. |
 | Roblox | no | Roblox games live on Roblox's servers and run only in the Roblox app; there is no game build to port. |
+| id Tech 6 | yes | Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere. Detected by base/gameresources.index next to its .resources archive (Doom 2016, Wolfenstein II). |
+| LyN | as `jade` | LyN games keep their data in Ubisoft's BigFile (.bf), the same format as Jade, so they are detected as Jade. Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere. |
 
 ## Nothing to port (6)
 
@@ -194,31 +198,27 @@ Porting Toolkit recognises 184 engines from their files' names and first bytes (
 | WorldForge | no | An open source online world framework: worlds run on servers, joined with its client. |
 | DimensioneX Multiplayer Engine | no | A server-side engine: games run on a web server and are played in a browser. |
 
-## Not recognised yet (24)
+## Not recognised yet (20)
 
 | Engine | Detected | How |
 |---|---|---|
-| Buildbox | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| C4 Engine | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| CraftStudio | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| Coretech | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| Dim3 | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| Enigma Engine | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| GameSalad | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| id Tech 6 | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| id Tech 8 | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| Iron Engine | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| Leadwerks | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| LyN | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| Messiah | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| Moai SDK | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| Monkey X | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| Panta Rhei | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| Pie in the Sky | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| Pixel Game Maker MV | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| Q | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| Shark 3D | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| Silent Storm engine | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| Treyarch NGL | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| V-Play Game Engine (Felgo) | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
-| Visual3D Game Engine | no | No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it. |
+| Buildbox | no | Buildbox's export formats are not publicly documented, and no file name or header unique to its games was found. |
+| C4 Engine | no | The C4 Engine wiki documents its pack files, but no file name or header unique to shipped C4 games could be confirmed. |
+| CraftStudio | no | Only the editor's project format (Project.dat) is documented, by the community; exported games' files are not. CraftStudio is discontinued. |
+| Coretech | no | No public documentation of this engine's game files was found. |
+| Dim3 | no | dim3 is open source and its games are self-contained XML data folders, but no file name unique to them could be confirmed. |
+| Enigma Engine | no | ENIGMA compiles games into native executables with no separate data file, so nothing identifies them. |
+| id Tech 8 | no | id Tech 8 (Doom: The Dark Ages) has no publicly documented file layout yet. Indiana Jones and the Great Circle runs on id Tech 7. |
+| Iron Engine | no | No public documentation of this engine's game files was found. |
+| Leadwerks | no | Published Leadwerks games keep their assets in an encrypted data.zip, a name too common to identify the engine. |
+| Messiah | no | No public documentation of this engine's game files was found. |
+| Moai SDK | no | Moai games are Lua scripts (main.lua) run by a Moai host; neither is unique to Moai. |
+| Monkey X | no | Monkey X desktop builds are an executable plus a data/ folder, and HTML5 builds a generic main.js; nothing is unique to Monkey X. |
+| Panta Rhei | no | Capcom's internal engine for Deep Down, which was never released; it became the RE Engine. |
+| Pie in the Sky | no | No public documentation of this engine's game files was found. |
+| Q | no | No public documentation of this engine's game files was found. |
+| Shark 3D | no | No public documentation of this engine's game files was found. |
+| Silent Storm engine | no | No public documentation of the archive format of Silent Storm's data was found. |
+| Treyarch NGL | no | Treyarch's internal engine; no public documentation of its game files was found. |
+| V-Play Game Engine (Felgo) | no | Felgo (V-Play) apps are Qt apps: their files are Qt's, not Felgo's. |
+| Visual3D Game Engine | no | No public documentation of this engine's game files was found. |

@@ -30,7 +30,7 @@ export PATH="$HOME/.cargo/bin:$PATH"          # cargo is not on the default PATH
 cargo test --workspace                        # 92 Rust tests, starts the real Python engine
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-(cd engine && uv run pytest)                  # 507 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
+(cd engine && uv run pytest)                  # 509 Python tests (+1 skipped; compiles the Swift wrapper on macOS; builds a real APK when the Android SDK is installed)
 (cd engine && PTK_TOOL_TESTS=1 uv run pytest -k real)       # also runs real FFmpeg encodes
 (cd engine && PTK_GUI_TESTS=1 uv run pytest -k macos_app)   # also opens the wrapper app and checks the page loaded
 cargo run -q -p ptk-cli -- scan fixtures/games/unity-windows
@@ -180,6 +180,10 @@ The owner pasted a v1.0 prompt (v2 pipeline detect/stage/convert/package, APFS c
 - **7 more plugins (3c20ae4):** tic80, fs2 (FreeSpace Open 26.2.0), alephone, rpgmaker2k (EasyRPG 0.8.1.1, hashed here), flash (Ruffle nightly-2026-11-26: only nightlies exist), scratch (TurboWarp 1.17.1, portable .exe), dos-export (DOSBox Staging 0.83.1 for Gold Box). Runtime layer: shortest wildcard match wins, single-file .exe, `single_file = true`.
 - Published: ptk-marketplace has 26 entries (6022c0d there); `ptk market install cocos2dx-export` from the live index works.
 - Runtime engines still without a plugin, and why (also in the catalog text): UPBGE (weekly builds only), Serious Sam Classic (7z, no checksums), ITGmania (Windows installer only), Visual Pinball (needs ROMs/backglasses), FNA/XNA (needs FNA + fnalibs + MonoKickstart per game), Defold (engine must match the game's version), 0 A.D./OpenClonk/Warsow/Cube/Cube 2 (the games are free and released for every platform already), HPL (games already ship for macOS/Linux).
+
+## Done (2026-11-26, research on the unresolved engines)
+- Resolved with public sources: **id Tech 6** (base/gameresources.index + .resources, from DOOMExtract/modding docs; closed), **GameSalad** (HTML5 export js/gse/gse-export.js; web variant of html5), **Pixel Game Maker MV** (Resources/data/project.json + info.json, read from the open-source MIT player github.com/GGGweb-adm/PGMMV, Cocos2d-x 3.17.1; partial: the player is Windows-only), **LyN** (Ubisoft BigFile .bf = Jade's format; closed, detected as Jade).
+- Still unresolved (20), each with its reason in the catalog: Buildbox, C4, CraftStudio (only Project.dat of the editor is documented), Coretech, Dim3, Enigma (native executables only), id Tech 8, Iron Engine, Leadwerks (encrypted data.zip is too common a name), Messiah, Moai, Monkey X, Panta Rhei (never shipped), Pie in the Sky, Q, Shark 3D, Silent Storm, Treyarch NGL, V-Play/Felgo (plain Qt apps), Visual3D. Real game folders from the owner would be the way to add them.
 
 ## Next task
 0. Owner: try one runtime plugin from the Marketplace with a game they own (ScummVM with Beneath a Steel Sky, which is freeware, is the easiest). A second host (Codeberg, docs/marketplace-hosting.md) is only needed if GitHub breaks again. When a plugin changes, bump its version, rebuild the marketplace files and push them to ptk-marketplace.

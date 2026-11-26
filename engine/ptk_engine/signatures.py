@@ -172,6 +172,7 @@ def _variant(engine_id: str, index: GameIndex) -> str | None:
             ("name", "b4w*.js", "Blend4Web"),
             ("name", "turbulenz*.js", "Turbulenz"),
             ("name", "*.tzjs", "Turbulenz"),
+            ("path", "*/js/gse/gse-export*.js", "GameSalad"),
         ):
             if f(kind, pattern):
                 framework = name

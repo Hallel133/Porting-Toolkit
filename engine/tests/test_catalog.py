@@ -78,3 +78,8 @@ def test_engines_doc_is_up_to_date():
     root = Path(__file__).resolve().parents[2]
     r = subprocess.run([sys.executable, str(root / "tools" / "gen_engines_doc.py"), "--check"], capture_output=True)
     assert r.returncode == 0, r.stderr.decode()
+
+
+def test_gamesalad_is_an_html5_variant():
+    found = detect(index_of(["index.html", "js/gse/gse-export.js"]))
+    assert found[0]["id"] == "html5" and found[0]["variant"] == "GameSalad"
