@@ -1,0 +1,24 @@
+schema_version = 1
+
+[plugin]
+id = "quake2-export"
+name = "Quake II export (Yamagi Quake II)"
+version = "1.0.0"
+kind = "export"
+description = "Runs Quake II (its baseq2/ folder) on Windows with Yamagi Quake II, and on macOS and Linux with a Yamagi build you choose."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "quake2_export:Plugin"
+api = 2
+homepage = "https://github.com/yquake2/yquake2"
+
+[formats]
+inputs = ["idtech2"]
+outputs = ["app", "folder", "zip"]
+targets = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"]
+
+[permissions]
+read = ["$GAME", "$PROJECT"]
+write = ["$OUTPUT"]
+network = ["deponie.yamagi.org"]
+subprocess = true   # codesign for the macOS app, hdiutil to open disk images

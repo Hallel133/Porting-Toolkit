@@ -318,8 +318,8 @@ class RuntimeExportPlugin(ExportPlugin):
             build.add_tree(found.root, f"{res}/runtime/{found.root.name}", links=True)
             exe_rel = f"{found.root.name}/" + found.executable.relative_to(found.root).as_posix()
             build.add_text(f"{app}/Contents/MacOS/{name}",
-                           runtimes.sh_launcher(exe_rel, args, self._main, "../Resources"), mode=0o755)
-            icon = runtimes.app_icon(found.root)
+                           runtimes.sh_launcher(exe_rel, args, self._main, "../Resources", spec.env), mode=0o755)
+            icon = runtimes.app_icon(found.root) if found.root.suffix == ".app" else None
             if icon:
                 build.add_file(icon, f"{res}/icon.icns")
             bundle = ctx.setting("bundle_id") or f"org.portingtoolkit.{runtimes.slug(title)}"
@@ -338,9 +338,9 @@ class RuntimeExportPlugin(ExportPlugin):
                 exe_rel = found.executable.relative_to(found.root).as_posix()
                 build.executable(f"{name}/runtime/{exe_rel}")
             if os_ == "windows":
-                build.add_text(f"{name}/{name}.cmd", runtimes.cmd_launcher(exe_rel, args, self._main))
+                build.add_text(f"{name}/{name}.cmd", runtimes.cmd_launcher(exe_rel, args, self._main, spec.env))
             else:
-                build.add_text(f"{name}/{name}.sh", runtimes.sh_launcher(exe_rel, args, self._main, "."), mode=0o755)
+                build.add_text(f"{name}/{name}.sh", runtimes.sh_launcher(exe_rel, args, self._main, ".", spec.env), mode=0o755)
             build.add_text(f"{name}/LICENSE-{spec.id}.txt", licence)
             game_dest = f"{name}/{spec.game_dir}"
             if ctx.flag("zip", True):

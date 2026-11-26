@@ -1,0 +1,30 @@
+# vkQuake: https://github.com/Novum/vkQuake (GPL-2.0-or-later).
+# vkQuake publishes no macOS build. On a Mac, install QuakeSpasm (https://quakespasm.sourceforge.net) in Applications or pass --set runtime=PATH to its app.
+[runtime]
+id = "vkquake"
+name = "vkQuake"
+version = "1.37.0"
+source = "https://github.com/Novum/vkQuake"
+license = "GPL-2.0-or-later"
+
+[runtime.executable]
+macos = "*.app"
+windows = "vkQuake.exe"
+linux = "*.AppImage"
+
+[runtime.installed]
+macos = ["/Applications/QuakeSpasm.app", "~/Applications/QuakeSpasm.app", "/Applications/vkQuake.app", "~/Applications/vkQuake.app"]
+
+[download.windows-x64]
+url = "https://github.com/Novum/vkQuake/releases/download/1.37.0/vkQuake-1.37.0_windows_x64.zip"
+sha256 = "c2f9a6c591c119681ada626aed029719871790bd8208bbae08b58185b62a7d83"
+
+[download.linux-x64]
+url = "https://github.com/Novum/vkQuake/releases/download/1.37.0/vkQuake-1.37.0-x86_64.AppImage"
+sha256 = "abf8546316997d16b86fea242d90afc8203fecb9e5016d6262f7bec1f36a5a9e"
+
+[launch]
+args = ["-basedir", "{game}"]
+
+[game]
+required = ["id1/pak0.pak"]

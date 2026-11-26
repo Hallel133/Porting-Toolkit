@@ -1,0 +1,24 @@
+# Yamagi Quake II: https://github.com/yquake2/yquake2 (GPL-2.0-or-later).
+# Yamagi publishes Windows builds only (no checksums: the pin was hashed by Porting Toolkit). macOS and Linux need --set runtime=PATH to a build of yquake2.
+[runtime]
+id = "yquake2"
+name = "Yamagi Quake II"
+version = "8.70a"
+source = "https://github.com/yquake2/yquake2"
+license = "GPL-2.0-or-later"
+
+[runtime.executable]
+macos = "*.app"
+windows = "yquake2.exe"
+linux = "quake2"
+
+[download.windows-x64]
+url = "https://deponie.yamagi.org/quake2/windows/quake2-8.70a.zip"
+sha256 = "26cc30f81598d746d691c4adfd7010403969680dc6c65e83df30260cea1e652a"
+root = "quake2-8.70a"
+
+[launch]
+args = ["-datadir", "{game}"]
+
+[game]
+required = ["baseq2/pak0.pak"]

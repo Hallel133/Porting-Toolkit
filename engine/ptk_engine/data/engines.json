@@ -1236,7 +1236,7 @@
    "name": "Jake2",
    "kind": "engine",
    "status": "runtime",
-   "how": "Jake2 is a Java port of Quake II; the quake2-export plugin packs the same baseq2/ data with Yamagi Quake II.",
+   "how": "Jake2 is a Java port of Quake II. Quake II's own data (baseq2/) runs on Yamagi Quake II with the quake2-export plugin.",
    "aliases": [],
    "family": "id Software",
    "runtime": {
@@ -1244,7 +1244,7 @@
     "url": "https://github.com/yquake2/yquake2",
     "license": "GPL-2.0-or-later"
    },
-   "plugin": "quake2-export",
+   "plugin": null,
    "via": null,
    "rules": [
     [
@@ -1293,7 +1293,7 @@
    "name": "ioquake3",
    "kind": "engine",
    "status": "runtime",
-   "how": "ioquake3 is itself the open source port of id Tech 3; the quake3-export plugin packs baseq3/ with it.",
+   "how": "ioquake3 is itself the open source port of id Tech 3. Quake III Arena's baseq3/ data runs on it with the quake3-export plugin.",
    "aliases": [],
    "family": "id Software",
    "runtime": {
@@ -1301,7 +1301,7 @@
     "url": "https://github.com/ioquake/ioq3",
     "license": "GPL-2.0-or-later"
    },
-   "plugin": "quake3-export",
+   "plugin": null,
    "via": null,
    "rules": [
     [

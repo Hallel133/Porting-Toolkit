@@ -1,0 +1,24 @@
+schema_version = 1
+
+[plugin]
+id = "wolf3d-export"
+name = "Wolfenstein 3D export (ECWolf)"
+version = "1.0.0"
+kind = "export"
+description = "Runs Wolfenstein 3D and Spear of Destiny (VSWAP.*, GAMEMAPS.*) on macOS and Windows with ECWolf."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "wolf3d_export:Plugin"
+api = 2
+homepage = "https://bitbucket.org/ecwolf/ecwolf"
+
+[formats]
+inputs = ["wolf3d"]
+outputs = ["app", "folder", "zip"]
+targets = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"]
+
+[permissions]
+read = ["$GAME", "$PROJECT"]
+write = ["$OUTPUT"]
+network = ["maniacsvault.net"]
+subprocess = true   # codesign for the macOS app, hdiutil to open disk images

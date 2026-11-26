@@ -1,0 +1,24 @@
+schema_version = 1
+
+[plugin]
+id = "quake-export"
+name = "Quake export (vkQuake)"
+version = "1.0.0"
+kind = "export"
+description = "Runs Quake (its id1/ folder and mission packs) on Windows and Linux with vkQuake, and on macOS with a Quake port app you choose."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "quake_export:Plugin"
+api = 2
+homepage = "https://github.com/Novum/vkQuake"
+
+[formats]
+inputs = ["quake"]
+outputs = ["app", "folder", "zip"]
+targets = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"]
+
+[permissions]
+read = ["$GAME", "$PROJECT"]
+write = ["$OUTPUT"]
+network = ["github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"]
+subprocess = true   # codesign for the macOS app, hdiutil to open disk images

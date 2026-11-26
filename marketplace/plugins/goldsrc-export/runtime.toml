@@ -1,0 +1,20 @@
+# Xash3D FWGS: https://github.com/FWGS/xash3d-fwgs (GPL-3.0-or-later).
+# Xash3D FWGS publishes only rolling 'continuous' builds, which cannot be pinned: download one for the target and pass --set runtime=PATH. Half-Life's own game libraries (valve/dlls) are Windows-only: other platforms need hlsdk-portable builds of them (https://github.com/FWGS/hlsdk-portable) in valve/.
+[runtime]
+id = "xash3d"
+name = "Xash3D FWGS"
+version = "continuous"
+source = "https://github.com/FWGS/xash3d-fwgs"
+license = "GPL-3.0-or-later"
+
+[runtime.executable]
+macos = "xash3d"
+windows = "xash3d.exe"
+linux = "xash3d"
+
+[launch]
+args = ["-game", "valve"]
+env = { XASH3D_BASEDIR = "{game}" }
+
+[game]
+required = ["liblist.gam"]

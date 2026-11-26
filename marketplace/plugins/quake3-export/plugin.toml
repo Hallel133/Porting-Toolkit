@@ -1,0 +1,24 @@
+schema_version = 1
+
+[plugin]
+id = "quake3-export"
+name = "Quake III Arena export (ioquake3)"
+version = "1.0.0"
+kind = "export"
+description = "Runs Quake III Arena (its baseq3/ folder) on macOS, Windows and Linux with ioquake3."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "quake3_export:Plugin"
+api = 2
+homepage = "https://github.com/ioquake/ioq3"
+
+[formats]
+inputs = ["idtech3"]
+outputs = ["app", "folder", "zip"]
+targets = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"]
+
+[permissions]
+read = ["$GAME", "$PROJECT"]
+write = ["$OUTPUT"]
+network = false
+subprocess = true   # codesign for the macOS app, hdiutil to open disk images

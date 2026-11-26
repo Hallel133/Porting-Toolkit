@@ -1,0 +1,24 @@
+schema_version = 1
+
+[plugin]
+id = "build-export"
+name = "Build engine export (Raze)"
+version = "1.0.0"
+kind = "export"
+description = "Runs Duke Nukem 3D, Blood, Shadow Warrior, Redneck Rampage and other Build engine games on macOS and Windows with Raze."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "build_export:Plugin"
+api = 2
+homepage = "https://github.com/ZDoom/Raze"
+
+[formats]
+inputs = ["build"]
+outputs = ["app", "folder", "zip"]
+targets = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"]
+
+[permissions]
+read = ["$GAME", "$PROJECT"]
+write = ["$OUTPUT"]
+network = ["github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"]
+subprocess = true   # codesign for the macOS app, hdiutil to open disk images

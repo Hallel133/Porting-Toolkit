@@ -1,0 +1,24 @@
+schema_version = 1
+
+[plugin]
+id = "goldsrc-export"
+name = "Half-Life export (Xash3D FWGS)"
+version = "1.0.0"
+kind = "export"
+description = "Runs Half-Life (its valve/ folder) with Xash3D FWGS, an open GoldSrc-compatible engine you provide."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "goldsrc_export:Plugin"
+api = 2
+homepage = "https://github.com/FWGS/xash3d-fwgs"
+
+[formats]
+inputs = ["goldsrc"]
+outputs = ["app", "folder", "zip"]
+targets = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"]
+
+[permissions]
+read = ["$GAME", "$PROJECT"]
+write = ["$OUTPUT"]
+network = false
+subprocess = true   # codesign for the macOS app, hdiutil to open disk images

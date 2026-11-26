@@ -63,9 +63,9 @@ Porting Toolkit recognises 181 engines from their files' names and first bytes (
 | Doom engine (id Tech 1) | [GZDoom / UZDoom](https://github.com/UZDoom/UZDoom) | `doom-export` | The game's IWAD (DOOM.WAD, DOOM2.WAD, HERETIC.WAD...) runs on a Doom source port for every platform. |
 | Quake engine | [QuakeSpasm / vkQuake](https://github.com/Novum/vkQuake) | `quake-export` | Quake's id1/ folder (pak0.pak, pak1.pak) runs on QuakeSpasm or vkQuake. |
 | id Tech 2 (Quake II) | [Yamagi Quake II](https://github.com/yquake2/yquake2) | `quake2-export` | Quake II's baseq2/ folder runs on Yamagi Quake II. |
-| Jake2 | [Yamagi Quake II](https://github.com/yquake2/yquake2) | `quake2-export` | Jake2 is a Java port of Quake II; the quake2-export plugin packs the same baseq2/ data with Yamagi Quake II. |
+| Jake2 | [Yamagi Quake II](https://github.com/yquake2/yquake2) | none yet | Jake2 is a Java port of Quake II. Quake II's own data (baseq2/) runs on Yamagi Quake II with the quake2-export plugin. |
 | id Tech 3 (Quake III Arena) | [ioquake3](https://github.com/ioquake/ioq3) | `quake3-export` | Quake III Arena's baseq3/ folder runs on ioquake3. Other id Tech 3 games need their own source ports. |
-| ioquake3 | [ioquake3](https://github.com/ioquake/ioq3) | `quake3-export` | ioquake3 is itself the open source port of id Tech 3; the quake3-export plugin packs baseq3/ with it. |
+| ioquake3 | [ioquake3](https://github.com/ioquake/ioq3) | none yet | ioquake3 is itself the open source port of id Tech 3. Quake III Arena's baseq3/ data runs on it with the quake3-export plugin. |
 | id Tech 4 (Doom 3) | [dhewm3](https://github.com/dhewm/dhewm3) | `doom3-export` | Doom 3 and Resurrection of Evil (base/*.pk4) run on dhewm3. Quake 4 and Prey are not supported by it. |
 | Wolfenstein 3D engine | [ECWolf](https://bitbucket.org/ecwolf/ecwolf) | `wolf3d-export` | The game's data files (VSWAP.WL6, GAMEMAPS.WL6...) run on ECWolf. |
 | Build engine | [Raze](https://github.com/ZDoom/Raze) | `build-export` | Duke Nukem 3D, Blood, Shadow Warrior and other Build games run on Raze with their original data. |

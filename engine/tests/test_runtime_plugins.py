@@ -59,7 +59,7 @@ def test_plugin_is_valid_and_matches_the_catalog(plugin):
 
 
 def fake_runtime(tmp: Path, spec: RuntimeSpec, os_: str) -> Path:
-    want = spec.executable[os_]
+    want = spec.executable[os_].replace("*", "Fake")
     base = tmp / f"fake-{os_}"
     if want.endswith(".app"):
         app = base / want

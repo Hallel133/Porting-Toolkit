@@ -1,0 +1,35 @@
+# UZDoom: https://github.com/UZDoom/UZDoom (GPL-3.0-or-later).
+# UZDoom publishes no Intel Mac build; an Intel Mac build can use --set runtime=PATH (a GZDoom app, for example).
+[runtime]
+id = "uzdoom"
+name = "UZDoom"
+version = "5.0.3"
+source = "https://github.com/UZDoom/UZDoom"
+license = "GPL-3.0-or-later"
+
+[runtime.executable]
+macos = "*.app"
+windows = "uzdoom.exe"
+linux = "*.AppImage"
+
+[runtime.installed]
+macos = ["/Applications/UZDoom.app", "~/Applications/UZDoom.app", "/Applications/GZDoom.app", "~/Applications/GZDoom.app"]
+
+[download.macos-arm64]
+url = "https://github.com/UZDoom/UZDoom/releases/download/5.0.3/MacOS-UZDoom-Release-ARM64.dmg"
+sha256 = "789465d31dd970c3bff7b929c7f74d090f730d8934a3a0f7aef92befd5582666"
+
+[download.windows-x64]
+url = "https://github.com/UZDoom/UZDoom/releases/download/5.0.3/Windows-UZDoom-Release-x86_64.zip"
+sha256 = "3a41131845415bc4bb5474f8de301a77736bd858e2ab489926325a2675e8263f"
+
+[download.linux-x64]
+url = "https://github.com/UZDoom/UZDoom/releases/download/5.0.3/Linux-UZDoom-Release-x86_64.AppImage"
+sha256 = "9c5166febc09cbf80c24612a78829037c953f38c4d986e36f8475ddd507e0228"
+
+[launch]
+args = ["-iwad", "{main}"]
+
+[game]
+required = ["*.wad"]
+main = ["doom2.wad", "doom.wad", "doom1.wad", "plutonia.wad", "tnt.wad", "heretic.wad", "hexen.wad", "strife1.wad", "chex.wad", "freedoom2.wad", "freedoom1.wad", "*.wad"]

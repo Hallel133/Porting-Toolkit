@@ -1,0 +1,22 @@
+# ioquake3: https://github.com/ioquake/ioq3 (GPL-2.0-or-later).
+# ioquake3's downloads (files.ioquake3.org) have no version in their names and no checksums, so nothing is pinned: install ioquake3, or pass --set runtime=PATH to the unzipped build.
+[runtime]
+id = "ioquake3"
+name = "ioquake3"
+version = "1.36+"
+source = "https://github.com/ioquake/ioq3"
+license = "GPL-2.0-or-later"
+
+[runtime.executable]
+macos = "*.app"
+windows = "ioquake3*.exe"
+linux = "ioquake3*"
+
+[runtime.installed]
+macos = ["/Applications/ioquake3.app", "~/Applications/ioquake3.app"]
+
+[launch]
+args = ["+set", "fs_basepath", "{game}"]
+
+[game]
+required = ["baseq3/pak0.pk3"]

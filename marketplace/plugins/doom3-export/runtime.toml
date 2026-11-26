@@ -1,0 +1,31 @@
+# dhewm3: https://github.com/dhewm/dhewm3 (GPL-3.0-or-later).
+# dhewm3 1.5.5 has no macOS build (only its release candidates had one): pass --set runtime=PATH to a dhewm3 app. The Windows build is 32-bit and runs on 64-bit Windows.
+[runtime]
+id = "dhewm3"
+name = "dhewm3"
+version = "1.5.5"
+source = "https://github.com/dhewm/dhewm3"
+license = "GPL-3.0-or-later"
+
+[runtime.executable]
+macos = "*.app"
+windows = "dhewm3.exe"
+linux = "dhewm3"
+
+[runtime.installed]
+macos = ["/Applications/dhewm3.app", "~/Applications/dhewm3.app"]
+
+[download.windows-x64]
+url = "https://github.com/dhewm/dhewm3/releases/download/1.5.5/dhewm3-1.5.5_win32.zip"
+sha256 = "7fb23ced41b902c2ca14fa0da37f30f7656a7087310bc70b367f3257ddb0a7f7"
+root = "dhewm3"
+
+[download.linux-x64]
+url = "https://github.com/dhewm/dhewm3/releases/download/1.5.5/dhewm3-1.5.5_Linux_amd64.tar.gz"
+sha256 = "793f8dbfb523f8e065b99357f438d0f23f8524c85382098264c3278ac8219290"
+
+[launch]
+args = ["+set", "fs_basepath", "{game}"]
+
+[game]
+required = ["base/pak000.pk4"]

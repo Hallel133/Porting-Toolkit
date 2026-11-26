@@ -1,0 +1,22 @@
+# The Force Engine: https://github.com/luciusDXL/TheForceEngine (GPL-2.0-only).
+# The Force Engine has no macOS release. On first start it asks where Dark Forces is: choose the game folder inside the build. Linux needs --set runtime=PATH (a build from source).
+[runtime]
+id = "theforceengine"
+name = "The Force Engine"
+version = "1.22.420"
+source = "https://github.com/luciusDXL/TheForceEngine"
+license = "GPL-2.0-only"
+
+[runtime.executable]
+windows = "TheForceEngine.exe"
+linux = "theforceengine"
+
+[download.windows-x64]
+url = "https://github.com/luciusDXL/TheForceEngine/releases/download/v1.22.420/TheForceEngine-v1.22.420.zip"
+sha256 = "30ee44b296f18273842c50c2db5d5e5dccb2bba278d4909881273737f90c4eac"
+
+[launch]
+args = []
+
+[game]
+required = ["dark.gob"]

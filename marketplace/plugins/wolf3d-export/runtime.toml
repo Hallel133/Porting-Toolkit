@@ -1,0 +1,30 @@
+# ECWolf: https://bitbucket.org/ecwolf/ecwolf (GPL-2.0-or-later).
+# ECWolf reads the game's files from the folder it starts in (the launcher starts it in the game folder). Linux needs --set runtime=PATH. The pins were hashed by Porting Toolkit (no published checksums).
+[runtime]
+id = "ecwolf"
+name = "ECWolf"
+version = "1.4.2"
+source = "https://bitbucket.org/ecwolf/ecwolf"
+license = "GPL-2.0-or-later"
+
+[runtime.executable]
+macos = "*.app"
+windows = "ecwolf.exe"
+linux = "ecwolf"
+
+[runtime.installed]
+macos = ["/Applications/ECWolf.app", "~/Applications/ECWolf.app"]
+
+[download.macos]
+url = "https://maniacsvault.net/ecwolf/files/ecwolf/1.x/ecwolf-1.4.2.dmg"
+sha256 = "9261a1105c48669ff27bde975a82c95605e8d36503505e3e3bee39de76baca95"
+
+[download.windows-x64]
+url = "https://maniacsvault.net/ecwolf/files/ecwolf/1.x/ecwolf-1.4.2_x64.zip"
+sha256 = "61bd6bf62d2e44975e46f86ca57fdabd8a3937da04750a842a970d7a8b56a58a"
+
+[launch]
+args = []
+
+[game]
+required = ["vswap.*"]

@@ -1,0 +1,24 @@
+schema_version = 1
+
+[plugin]
+id = "jedi-export"
+name = "Dark Forces export (The Force Engine)"
+version = "1.0.0"
+kind = "export"
+description = "Runs Star Wars: Dark Forces (DARK.GOB and its other .GOB files) on Windows with The Force Engine."
+license = "MIT"
+authors = ["Porting Toolkit contributors"]
+entry = "jedi_export:Plugin"
+api = 2
+homepage = "https://github.com/luciusDXL/TheForceEngine"
+
+[formats]
+inputs = ["jedi"]
+outputs = ["app", "folder", "zip"]
+targets = ["windows-x64", "linux-x64"]
+
+[permissions]
+read = ["$GAME", "$PROJECT"]
+write = ["$OUTPUT"]
+network = ["github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"]
+subprocess = true   # codesign for the macOS app, hdiutil to open disk images

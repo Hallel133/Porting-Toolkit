@@ -26,6 +26,7 @@ next to its ``plugin.toml``::
 
     [launch]
     args = ["--path={game}", "--auto-detect"]
+    env = { SOME_DIR = "{game}" }  # optional environment variables
 
     [game]
     required = ["*.000", "*.la0"] # at least one must exist (globs, any depth)
@@ -91,6 +92,7 @@ class RuntimeSpec:
     installed: dict[str, list[str]] = field(default_factory=dict)
     downloads: dict[str, dict] = field(default_factory=dict)
     args: list[str] = field(default_factory=list)
+    env: dict[str, str] = field(default_factory=dict)
     required: list[str] = field(default_factory=list)
     exclude: list[str] = field(default_factory=list)
     main: list[str] = field(default_factory=list)
@@ -110,6 +112,7 @@ class RuntimeSpec:
             installed={k: list(v) for k, v in (rt.get("installed") or {}).items()},
             downloads={k: dict(v) for k, v in (data.get("download") or {}).items()},
             args=list((data.get("launch") or {}).get("args") or []),
+            env={str(k): str(v) for k, v in ((data.get("launch") or {}).get("env") or {}).items()},
             required=list(game.get("required") or []), exclude=list(game.get("exclude") or []),
             main=list(game.get("main") or []), game_dir=game.get("dir", "game"),
         )
@@ -184,6 +187,8 @@ def executable_in(root: Path, spec: RuntimeSpec, os_: str) -> Path | None:
     if not want:
         return None
     root = Path(root)
+    if any(c in want for c in "*?["):
+        return _glob_executable(root, want)
     if root.is_file():
         return root if root.name.lower() == Path(want).name.lower() or os_ == "linux" else None
     if root.suffix == ".app" and want.endswith(".app"):
@@ -205,6 +210,28 @@ def executable_in(root: Path, spec: RuntimeSpec, os_: str) -> Path | None:
     return None
 
 
+def _glob_executable(root: Path, pattern: str) -> Path | None:
+    """For names with a wildcard (``*.app``, ``*.AppImage``): ``root`` itself,
+    or the first match in it or one folder below."""
+    low = pattern.lower()
+
+    def resolve(p: Path) -> Path | None:
+        if p.suffix == ".app":
+            return _app_binary(p)
+        return p if p.is_file() else None
+
+    if fnmatch.fnmatchcase(root.name.lower(), low):
+        return resolve(root)
+    if not root.is_dir():
+        return None
+    levels = [root] + sorted(p for p in root.iterdir() if p.is_dir() and p.suffix != ".app")
+    for folder in levels:
+        for p in sorted(folder.iterdir()):
+            if not p.is_symlink() and fnmatch.fnmatchcase(p.name.lower(), low) and (found := resolve(p)):
+                return found
+    return None
+
+
 def _app_binary(app: Path) -> Path | None:
     plist = app / "Contents" / "Info.plist"
     if not plist.is_file():
@@ -220,7 +247,7 @@ def _app_binary(app: Path) -> Path | None:
 def runtime_root(executable: Path, os_: str) -> Path:
     """What goes into the build: the app (macOS), the program's folder, or the
     single file (an AppImage)."""
-    if os_ == "macos":
+    if os_ == "macos" and len(executable.parents) > 2 and executable.parents[2].suffix == ".app":
         return executable.parents[2]  # X.app/Contents/MacOS/x
     if os_ == "linux" and executable.suffix.lower() == ".appimage":
         return executable
@@ -419,31 +446,41 @@ def _sh_escape(text: str) -> str:
     return re.sub(r'([\\"$`])', r"\\\1", text)
 
 
-def sh_launcher(exe_rel: str, args: list[str], main: str | None, resources: str) -> str:
+def sh_launcher(exe_rel: str, args: list[str], main: str | None, resources: str,
+                env: dict[str, str] | None = None) -> str:
     """A POSIX shell launcher. ``resources`` is the folder holding runtime/ and
     game/, relative to the launcher's own folder."""
     values = {"game": '${GAME}', "runtime": '${RUNTIME}', "main": '${GAME}/' + _sh_escape(main or "")}
     line = " ".join([f'"${{RUNTIME}}/{_sh_escape(exe_rel)}"', *(_sh_arg(a, values) for a in args), '"$@"'])
+    exports = "".join(f"export {k}={_sh_arg(v, values)}\n" for k, v in sorted((env or {}).items())
+                      if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", k))
     return ("#!/bin/sh\n"
             "# Made by Porting Toolkit: starts the game with its open-source runtime.\n"
             'HERE="$(cd "$(dirname "$0")" && pwd)"\n'
             f'BASE="$(cd "$HERE/{_sh_escape(resources)}" && pwd)"\n'
             'RUNTIME="$BASE/runtime"\n'
             'GAME="$BASE/game"\n'
+            f"{exports}"
             'cd "$GAME" || exit 1\n'
             f"exec {line}\n")
 
 
-def cmd_launcher(exe_rel: str, args: list[str], main: str | None) -> str:
+def cmd_launcher(exe_rel: str, args: list[str], main: str | None, env: dict[str, str] | None = None) -> str:
     """A Windows .cmd next to runtime\\ and game\\."""
-    def win(a: str) -> str:
+    def fill(a: str) -> str:
         a = a.replace("{game}", "%~dp0game").replace("{runtime}", "%~dp0runtime")
-        a = a.replace("{main}", "%~dp0game\\" + (main or "").replace("/", "\\"))
+        return a.replace("{main}", "%~dp0game\\" + (main or "").replace("/", "\\"))
+
+    def win(a: str) -> str:
+        a = fill(a)
         return f'"{a}"' if (" " in a or "%~dp0" in a) else a
     exe = "%~dp0runtime\\" + exe_rel.replace("/", "\\")
     line = " ".join(["start", '""', f'"{exe}"', *(win(a) for a in args), "%*"])
+    sets = "".join(f'set "{k}={fill(v)}"\r\n' for k, v in sorted((env or {}).items())
+                   if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", k))
     return ("@echo off\r\n"
             "rem Made by Porting Toolkit: starts the game with its open-source runtime.\r\n"
+            f"{sets}"
             'cd /d "%~dp0game"\r\n'
             f"{line}\r\n")
 

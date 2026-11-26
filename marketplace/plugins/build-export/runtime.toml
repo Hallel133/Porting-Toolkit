@@ -1,0 +1,30 @@
+# Raze: https://github.com/ZDoom/Raze (GPL-2.0-or-later).
+# Raze looks for the game data in the folder it starts in (the launcher starts it in the game folder). Linux needs --set runtime=PATH. The pins were hashed by Porting Toolkit (the 1.11.0 release has no published digests).
+[runtime]
+id = "raze"
+name = "Raze"
+version = "1.11.0"
+source = "https://github.com/ZDoom/Raze"
+license = "GPL-2.0-or-later"
+
+[runtime.executable]
+macos = "*.app"
+windows = "raze.exe"
+linux = "raze"
+
+[runtime.installed]
+macos = ["/Applications/Raze.app", "~/Applications/Raze.app"]
+
+[download.macos]
+url = "https://github.com/ZDoom/Raze/releases/download/1.11.0/raze-macos-1.11.0.zip"
+sha256 = "b7980849a507cfcfeaf8f76298c032bfe4415b2f246f41e3c0c9a6291770c70c"
+
+[download.windows-x64]
+url = "https://github.com/ZDoom/Raze/releases/download/1.11.0/Raze-1.11.0b-windows.zip"
+sha256 = "16718c28d8d6853b418d467af0354b8c2a21f6c1bebb1686ef2da9896caac2e5"
+
+[launch]
+args = []
+
+[game]
+required = ["*.grp", "blood.rff", "*.art"]
