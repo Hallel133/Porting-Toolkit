@@ -238,6 +238,137 @@ def _remap(value, old: str, new: str):
     return value
 
 
+class RuntimeExportPlugin(ExportPlugin):
+    """Exports a game's data with an open-source runtime (ScummVM, GemRB...),
+    described by ``runtime.toml`` next to the plugin's ``plugin.toml`` (see
+    :mod:`ptk_engine.runtimes`). A plugin usually only sets nothing at all;
+    it may override :meth:`launch_args` or :meth:`extra_layout`."""
+
+    def spec(self):
+        from .runtimes import RuntimeSpec
+        if not hasattr(self, "_spec"):
+            import inspect
+            root = Path(inspect.getfile(type(self))).resolve().parent.parent
+            self._spec = RuntimeSpec.load(root / "runtime.toml")
+        return self._spec
+
+    # -- steps a runtime plugin may change --------------------------------------------------------------
+
+    def launch_args(self, ctx: Context, files: list[str], main: str | None) -> list[str]:
+        """The runtime's arguments (``{game}``, ``{runtime}``, ``{main}`` are
+        filled in when the game starts)."""
+        return list(self.spec().args)
+
+    def extra_layout(self, ctx: Context, build: Build, game_dest: str) -> None:
+        """More files for the build (``game_dest`` is the game folder in it)."""
+
+    # -- the lifecycle -------------------------------------------------------------------------------------
+
+    def check(self, ctx: Context) -> list[Problem]:
+        from . import runtimes
+        spec = self.spec()
+        target = ctx.target or {}
+        os_ = target.get("os", "")
+        if os_ not in spec.executable:
+            return [error(f"{spec.name} builds are made for {', '.join(sorted(spec.executable))}, "
+                          f"not {target.get('name') or target.get('id')}")]
+        if ctx.game is None or not Path(ctx.game).is_dir():
+            return [error("choose the game folder first")]
+        self._files = runtimes.game_files(Path(ctx.game), spec)
+        if runtimes.required_found(self._files, spec) is None:
+            return [error(f"this folder has none of the files {spec.name} needs ({', '.join(spec.required)}); "
+                          "choose the folder with the game's data")]
+        self._main = runtimes.main_file(self._files, spec)
+        if spec.main and self._main is None:
+            return [error(f"no {' or '.join(spec.main)} in the game folder")]
+        try:
+            found = runtimes.locate(ctx, spec, target, download=False)
+        except runtimes.RuntimeError_ as e:
+            return [error(str(e))]
+        if found is None and not runtimes.can_download(spec, target):
+            return [error(f"{spec.name} has no official build for {target.get('name') or os_} that Porting "
+                          f"Toolkit knows; download one from {spec.source} and export with --set runtime=PATH")]
+        return []
+
+    def prepare(self, ctx: Context) -> None:
+        from . import runtimes
+        self._found = runtimes.locate(ctx, self.spec(), ctx.target or {}, download=True)
+        if self._found is None:  # check() made sure there is a way; keep the error clear anyway
+            raise PluginError(f"{self.spec().name} is not available for this target")
+
+    def variant(self, ctx: Context) -> str:
+        found = getattr(self, "_found", None)
+        return f"{self.spec().id}|{self.spec().version}|{found.executable if found else ''}"
+
+    def estimate(self, ctx: Context) -> dict:
+        return {"summary": f"Nothing to estimate: {self.spec().name} uses the game's files as they are."}
+
+    def layout(self, ctx: Context, build: Build) -> None:
+        from . import runtimes
+        spec, found = self.spec(), self._found
+        os_ = (ctx.target or {}).get("os", "")
+        title = ctx.title
+        name = runtimes.safe_name(title)
+        game = Path(ctx.game)
+        args = self.launch_args(ctx, self._files, self._main)
+        licence = runtimes.licence_note(spec)
+        if os_ == "macos":
+            app = f"{name}.app"
+            res = f"{app}/Contents/Resources"
+            build.add_tree(found.root, f"{res}/runtime/{found.root.name}", links=True)
+            exe_rel = f"{found.root.name}/" + found.executable.relative_to(found.root).as_posix()
+            build.add_text(f"{app}/Contents/MacOS/{name}",
+                           runtimes.sh_launcher(exe_rel, args, self._main, "../Resources"), mode=0o755)
+            icon = runtimes.app_icon(found.root)
+            if icon:
+                build.add_file(icon, f"{res}/icon.icns")
+            bundle = ctx.setting("bundle_id") or f"org.portingtoolkit.{runtimes.slug(title)}"
+            version = str(ctx.manifest.get("version") or "1.0.0")
+            build.add_bytes(f"{app}/Contents/Info.plist",
+                            runtimes.info_plist(title, name, bundle, version, "icon" if icon else None))
+            build.add_text(f"{res}/LICENSE-{spec.id}.txt", licence)
+            game_dest = f"{res}/{spec.game_dir}"
+            self._outputs = {"app": app}
+        else:
+            if found.root.is_file():  # an AppImage
+                build.add_file(found.root, f"{name}/runtime/{found.root.name}", mode=0o755)
+                exe_rel = found.root.name
+            else:
+                build.add_tree(found.root, f"{name}/runtime", links=True)
+                exe_rel = found.executable.relative_to(found.root).as_posix()
+                build.executable(f"{name}/runtime/{exe_rel}")
+            if os_ == "windows":
+                build.add_text(f"{name}/{name}.cmd", runtimes.cmd_launcher(exe_rel, args, self._main))
+            else:
+                build.add_text(f"{name}/{name}.sh", runtimes.sh_launcher(exe_rel, args, self._main, "."), mode=0o755)
+            build.add_text(f"{name}/LICENSE-{spec.id}.txt", licence)
+            game_dest = f"{name}/{spec.game_dir}"
+            if ctx.flag("zip", True):
+                build.artifact(f"{name}.zip")
+            self._outputs = {"folder": name}
+        for rel in self._files:
+            build.add_file(game / rel, f"{game_dest}/{rel}")
+        self.extra_layout(ctx, build, game_dest)
+
+    def finish(self, ctx: Context, build: Build) -> dict:
+        from .build import codesign_if_changed
+        spec = self.spec()
+        notes = [f"Runs on {spec.name} {spec.version} ({spec.license}; source: {spec.source})."]
+        if "app" in self._outputs:
+            app = build.root / self._outputs["app"]
+            if ctx.flag("sign", True) and ctx.which("codesign"):
+                ctx.progress(0.9, "Signing (ad hoc)")
+                codesign_if_changed(app, ctx.run)
+            return {"outputs": [str(app)], "open": str(app), "notes": notes,
+                    "summary": f"Built {app.name} with {spec.name} {spec.version}"}
+        folder = build.root / self._outputs["folder"]
+        outputs = [str(folder)]
+        if ctx.flag("zip", True):
+            outputs.append(str(self.zip(ctx, build, self._outputs["folder"], f"{folder.name}.zip")))
+        return {"outputs": outputs, "notes": notes,
+                "summary": f"Built {folder.name}/ for {(ctx.target or {}).get('name')} with {spec.name} {spec.version}"}
+
+
 class ImportPlugin:
     #: The recipe file name (``recipes/<name>.json``).
     recipe_name: str = "import"
@@ -262,4 +393,4 @@ class ImportPlugin:
         return {"problems": [], "ok": True}
 
 
-__all__ = ["ExportPlugin", "ImportPlugin", "StagedExportPlugin", "Problem", "ProblemsError", "error", "warning", "options_set"]
+__all__ = ["ExportPlugin", "ImportPlugin", "RuntimeExportPlugin", "StagedExportPlugin", "Problem", "ProblemsError", "error", "warning", "options_set"]
