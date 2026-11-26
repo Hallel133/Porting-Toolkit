@@ -84,6 +84,17 @@ enum Command {
         #[arg(long, value_name = "PROJECT")]
         record: Option<PathBuf>,
     },
+    /// Every engine Porting Toolkit recognises, and what porting each one takes
+    Engines {
+        /// Only this status: supported, web, partial, runtime, closed, not_engine, unresolved
+        #[arg(long)]
+        status: Option<String>,
+        /// Only engines whose name or id contains this text
+        #[arg(long)]
+        search: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Pack a project into a shareable .ptk file (never game files)
     Pack {
         #[arg(default_value = ".")]
@@ -437,6 +448,11 @@ fn run(cli: Cli, style: &Style) -> anyhow::Result<ExitCode> {
             json,
             record,
         } => scan::run(style, &game_dir, json, record.as_deref()),
+        Command::Engines {
+            status,
+            search,
+            json,
+        } => scan::engines(style, status.as_deref(), search.as_deref(), json),
         Command::Pack {
             project,
             output,

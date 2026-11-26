@@ -1844,6 +1844,15 @@ impl App {
     }
 
     /// Switches view, loading what the view needs.
+    /// Ids of the plugins listed so far (built-in and installed).
+    pub fn installed_plugin_ids(&self) -> Vec<String> {
+        self.plugins
+            .as_ref()
+            .and_then(|r| r.as_ref().ok())
+            .map(|v| v.iter().map(|p| p.id.clone()).collect())
+            .unwrap_or_default()
+    }
+
     pub fn go(&mut self, view: View, ctx: &egui::Context) {
         self.view = view;
         if view == View::Marketplace && self.market.is_none() && self.busy.is_none() {

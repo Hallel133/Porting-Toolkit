@@ -67,8 +67,9 @@ def test_counts_sizes_and_categories(tmp_path):
 
 
 def test_lone_pak_is_not_enough_for_unreal():
-    # Quake and others use .pak too.
-    assert detect(GameIndex(["id1/pak0.pak"])) == []
+    # Quake and others use .pak too: Quake's id1/ folder is Quake, not Unreal.
+    assert [r["id"] for r in detect(GameIndex(["id1/pak0.pak"]))] == ["quake"]
+    assert detect(GameIndex(["data/pak0.pak"])) == []
     assert detect(GameIndex(["Game/Content/Paks/a.pak"]))[0]["id"] == "unreal"
 
 

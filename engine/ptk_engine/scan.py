@@ -1,8 +1,9 @@
 """``ptk scan``: what is in a game folder.
 
 Walks the folder without following symbolic links, classifies files by name
-and extension, reads the first four bytes of likely executables, and detects
-the engine. It never reads or decodes game archives.
+and extension, reads the first four bytes of likely executables and the first
+16 bytes of files an engine rule names (``*.wad``, ``chitin.key``...), and
+detects the engine. It never decodes or extracts game archives.
 """
 
 from __future__ import annotations
@@ -13,12 +14,13 @@ from pathlib import Path
 
 from . import EngineError
 from .categories import CATEGORY_IDS, classify
-from .signatures import GameIndex, detect, guess_platforms
+from .signatures import HEAD_SIZE, GameIndex, detect, guess_platforms, wants_head
 
 JUNK_NAMES = {".DS_Store", "Thumbs.db", "desktop.ini"}
 MAGIC_EXTENSIONS = {"", "exe", "dll", "so", "dylib", "bin", "x86_64", "pck", "arm64"}
 MAX_MAGIC_READS = 4000
 MAX_MARK_READS = 10
+MAX_HEAD_READS = 2000
 MAX_MARK_SIZE = 32 << 20  # Twine stories inline their story format: a few MB
 
 
@@ -30,6 +32,14 @@ def read_mark(path: str) -> str | None:
     except OSError:
         return None
     return "twine" if b"<tw-storydata" in data else None
+
+
+def read_head(path: str) -> bytes | None:
+    try:
+        with open(path, "rb") as f:
+            return f.read(HEAD_SIZE)
+    except OSError:
+        return None
 
 
 def is_junk(name: str) -> bool:
@@ -95,7 +105,8 @@ def scan(
     magic: dict[str, str] = {}
     embedded: list[str] = []
     marks: dict[str, str] = {}
-    symlinks = unreadable = magic_reads = mark_reads = 0
+    heads: dict[str, bytes] = {}
+    symlinks = unreadable = magic_reads = mark_reads = head_reads = 0
     truncated = False
 
     # A single file (a Windows .exe, a Linux binary, a .pck) is scanned as a
@@ -110,6 +121,8 @@ def scan(
             magic[single.name] = kind
         if kind in ("pe", "elf", "mach-o") and has_embedded_pck(str(single)):
             embedded.append(single.name)
+        if wants_head(single.name) and (head := read_head(str(single))) is not None:
+            heads[single.name] = head
     else:
         single = None
         stack = [("", str(root))]
@@ -148,6 +161,10 @@ def scan(
                     magic[rel] = kind
                 if kind in ("pe", "elf", "mach-o") and has_embedded_pck(entry.path):
                     embedded.append(rel)
+            if head_reads < MAX_HEAD_READS and wants_head(name):
+                head_reads += 1
+                if (head := read_head(entry.path)) is not None:
+                    heads[rel] = head
             if (_ext(name) in ("html", "htm") and rel.count("/") <= 1 and mark_reads < MAX_MARK_READS
                     and size <= MAX_MARK_SIZE):
                 mark_reads += 1
@@ -161,7 +178,7 @@ def scan(
 
     if single is not None and _ext(single.name) in ("html", "htm") and (mark := read_mark(str(single))):
         marks[single.name] = mark
-    index = GameIndex([f for f, _ in files], dirs, magic, embedded, marks)
+    index = GameIndex([f for f, _ in files], dirs, magic, embedded, marks, heads)
     engines = detect(index)
 
     per_cat = {c: {"id": c, "files": 0, "size": 0} for c in CATEGORY_IDS}

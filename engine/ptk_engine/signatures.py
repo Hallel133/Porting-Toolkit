@@ -12,13 +12,16 @@ need a second hint before they count.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from fnmatch import translate
+from pathlib import Path
 
 THRESHOLD = 0.5
 
-# (weight, kind, pattern). Kinds:
+# Rules are (weight, kind, pattern) or, for "head", (weight, "head", name glob,
+# header prefix). Kinds:
 #   name     file name (case-insensitive glob)
 #   path     "/" + relative file path (so "*/x" also matches a top-level x)
 #   dir      folder name
@@ -26,7 +29,14 @@ THRESHOLD = 0.5
 #   magic    a file whose header is "pe", "elf", "mach-o" or "godot-pck"
 #   embedded an executable with a Godot .pck appended (ends with GDPC)
 #   mark     a top-level HTML page carrying a marker ("twine": <tw-storydata)
-Rule = tuple[float, str, str]
+#   head     a file matching the glob whose first bytes are the prefix
+#            (at most HEAD_SIZE bytes are read; nothing is decoded)
+# A negative weight counts against an engine (Morrowind's data is not a
+# Gamebryo game for Porting Toolkit's purposes, but OpenMW's).
+Rule = tuple
+
+HEAD_SIZE = 16
+CATALOG_FILE = Path(__file__).with_name("data") / "engines.json"
 
 
 @dataclass(frozen=True)
@@ -38,175 +48,26 @@ class EngineSignature:
     website: str = ""
 
 
-ENGINES: tuple[EngineSignature, ...] = (
-    EngineSignature(
-        "unity",
-        "Unity",
-        "engine",
-        (
-            (0.6, "name", "unityplayer.dll"),
-            (0.6, "name", "unityplayer.so"),
-            (0.6, "name", "unityplayer.dylib"),
-            (0.6, "name", "unityframework"),
-            (0.6, "name", "globalgamemanagers"),
-            (0.5, "name", "data.unity3d"),
-            (0.3, "dir", "*_data"),
-            (0.3, "name", "sharedassets*.assets"),
-            (0.3, "path", "*/managed/assembly-csharp.dll"),
-            (0.3, "name", "gameassembly.dll"),
-            (0.2, "path", "*/il2cpp_data/*"),
-        ),
-    ),
-    EngineSignature(
-        "unreal",
-        "Unreal Engine",
-        "engine",
-        (
-            (0.4, "name", "*.pak"),
-            (0.5, "name", "*.utoc"),
-            (0.5, "name", "*.ucas"),
-            (0.5, "path", "*/content/paks/*"),
-            (0.2, "dirpath", "/engine"),
-            (0.3, "path", "/engine/binaries/*"),
-            (0.5, "name", "*-shipping.exe"),
-            (0.3, "name", "*.uproject"),
-        ),
-    ),
-    EngineSignature(
-        "godot",
-        "Godot",
-        "engine",
-        (
-            (0.6, "name", "*.pck"),
-            (0.6, "magic", "godot-pck"),
-            (0.9, "embedded", "pck"),
-            (0.8, "name", "project.godot"),
-            (0.3, "dir", ".godot"),
-            (0.3, "name", "*.gdc"),
-            (0.2, "name", "*.gd"),
-        ),
-    ),
-    EngineSignature(
-        "rage",
-        "RAGE (Rockstar Advanced Game Engine)",
-        "engine",
-        (
-            (0.7, "name", "*.rpf"),
-            (0.3, "path", "*/update/update.rpf"),
-            (0.2, "name", "x64*.rpf"),
-        ),
-    ),
-    EngineSignature(
-        "source",
-        "Source",
-        "engine",
-        (
-            (0.5, "name", "*.vpk"),
-            (0.3, "name", "*_dir.vpk"),
-            (0.5, "name", "gameinfo.txt"),
-            (0.2, "name", "hl2.exe"),
-            (0.2, "name", "*.bsp"),
-        ),
-    ),
-    EngineSignature(
-        "gamemaker",
-        "GameMaker",
-        "engine",
-        (
-            (0.8, "name", "data.win"),
-            (0.8, "name", "game.unx"),
-            (0.8, "name", "game.ios"),
-            (0.8, "name", "game.droid"),
-            (0.2, "name", "audiogroup*.dat"),
-            (0.1, "name", "options.ini"),
-        ),
-    ),
-    EngineSignature(
-        "renpy",
-        "Ren'Py",
-        "engine",
-        (
-            (0.5, "dirpath", "/renpy"),
-            (0.5, "name", "*.rpa"),
-            (0.4, "name", "*.rpyc"),
-            (0.3, "name", "*.rpy"),
-            (0.2, "path", "*/game/script.rpy*"),
-        ),
-    ),
-    EngineSignature(
-        "rpgmaker",
-        "RPG Maker MV/MZ",
-        "engine",
-        (
-            (0.8, "path", "*/js/rpg_core.js"),
-            (0.8, "path", "*/js/rmmz_core.js"),
-            (0.2, "path", "*/data/system.json"),
-        ),
-    ),
-    EngineSignature(
-        "rgss",
-        "RPG Maker XP/VX/VX Ace (RGSS)",
-        "engine",
-        (
-            (0.8, "name", "*.rgss3a"),
-            (0.8, "name", "*.rgss2a"),
-            (0.8, "name", "*.rgssad"),
-            (0.4, "name", "rgss*.dll"),
-            (0.5, "name", "*.rvdata2"),
-            (0.5, "name", "*.rvdata"),
-            (0.5, "name", "*.rxdata"),
-            (0.1, "name", "game.ini"),
-        ),
-    ),
-    EngineSignature(
-        "love",
-        "LÖVE",
-        "engine",
-        (
-            (0.8, "name", "*.love"),
-            (0.6, "name", "love.dll"),
-            (0.2, "name", "lua51.dll"),
-            (0.3, "name", "main.lua"),
-            (0.2, "name", "conf.lua"),
-        ),
-    ),
-    EngineSignature(
-        "html5",
-        "HTML5 (web, NW.js, Electron)",
-        "engine",
-        (
-            (0.6, "name", "c2runtime.js"),
-            (0.6, "name", "c3runtime.js"),
-            (0.6, "name", "c3main.js"),
-            (0.4, "name", "gd.js"),
-            (0.3, "dir", "pixi-renderers"),
-            (0.5, "name", "phaser*.js"),
-            (0.5, "name", "cocos2d-js*.js"),
-            (0.5, "name", "dmloader.js"),
-            (0.9, "mark", "twine"),
-            (0.8, "name", "package.nw"),
-            (0.5, "name", "nw.dll"),
-            (0.4, "name", "nw_elf.dll"),
-            (0.4, "path", "*/resources/app.nw/*"),
-            (0.6, "path", "*/resources/app.asar"),
-            (0.5, "path", "*/resources/app/package.json"),
-            (0.4, "path", "*/contents/resources/app.nw/package.json"),
-            (0.2, "name", "package.json"),
-            (0.1, "name", "index.html"),
-        ),
-    ),
-    EngineSignature(
-        "macos",
-        "macOS app / Mach-O",
-        "format",
-        (
-            (0.6, "path", "*.app/contents/info.plist"),
-            (0.3, "path", "*.app/contents/macos/*"),
-            (0.5, "magic", "mach-o"),
-            (0.3, "name", "*.dylib"),
-        ),
-    ),
+def load_catalog() -> list[dict]:
+    """Every engine Porting Toolkit knows, with its porting status
+    (``data/engines.json``; also read by the Rust side)."""
+    return json.loads(CATALOG_FILE.read_text(encoding="utf-8"))["engines"]
+
+
+CATALOG: list[dict] = load_catalog()
+ENGINES: tuple[EngineSignature, ...] = tuple(
+    EngineSignature(e["id"], e["name"], e.get("kind", "engine"), tuple(tuple(r) for r in e["rules"]))
+    for e in CATALOG if e["rules"]
 )
+#: Name globs whose first bytes a "head" rule looks at (lower case).
+HEAD_GLOBS: tuple[str, ...] = tuple(sorted({r[2] for s in ENGINES for r in s.rules if r[1] == "head"}))
+
+
+def wants_head(name: str) -> bool:
+    """Whether a scan should read the first bytes of a file with this name."""
+    low = name.lower()
+    return any(_compile(g).match(low) for g in HEAD_GLOBS)
+
 
 ENGINE_IDS = [e.id for e in ENGINES]
 
@@ -220,6 +81,8 @@ class GameIndex:
     magic: dict[str, str] = field(default_factory=dict)
     embedded_pck: list[str] = field(default_factory=list)
     marks: dict[str, str] = field(default_factory=dict)
+    #: First bytes of the files a "head" rule names.
+    heads: dict[str, bytes] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self._names = [f.rsplit("/", 1)[-1].lower() for f in self.files]
@@ -231,14 +94,19 @@ class GameIndex:
         self._dir_paths = ["/" + d.lower() for d in self.dirs]
         self._cache: dict[tuple[str, str], str | None] = {}
 
-    def find(self, kind: str, pattern: str) -> str | None:
+    def find(self, kind: str, pattern: str, prefix: str | None = None) -> str | None:
         """First path matching a rule, or None."""
-        key = (kind, pattern)
+        key = (kind, pattern, prefix)
         if key not in self._cache:
-            self._cache[key] = self._find(kind, pattern)
+            self._cache[key] = self._find(kind, pattern, prefix)
         return self._cache[key]
 
-    def _find(self, kind: str, pattern: str) -> str | None:
+    def _find(self, kind: str, pattern: str, prefix: str | None = None) -> str | None:
+        if kind == "head":
+            want = (prefix or "").encode("latin-1")
+            rx = _compile(pattern)
+            return next((p for p, h in sorted(self.heads.items())
+                         if h.startswith(want) and rx.match(p.rsplit("/", 1)[-1].lower())), None)
         if kind == "magic":
             return next((p for p, m in self.magic.items() if m == pattern), None)
         if kind == "embedded":
@@ -295,6 +163,15 @@ def _variant(engine_id: str, index: GameIndex) -> str | None:
             ("name", "cocos2d-js*.js", "Cocos"),
             ("name", "dmloader.js", "Defold"),
             ("mark", "twine", "Twine"),
+            ("name", "three*.min.js", "Three.js"),
+            ("name", "three.module*.js", "Three.js"),
+            ("name", "babylon*.js", "Babylon.js"),
+            ("name", "playcanvas*.js", "PlayCanvas"),
+            ("name", "aframe*.js", "A-Frame"),
+            ("name", "laya.core*.js", "LayaAir"),
+            ("name", "b4w*.js", "Blend4Web"),
+            ("name", "turbulenz*.js", "Turbulenz"),
+            ("name", "*.tzjs", "Turbulenz"),
         ):
             if f(kind, pattern):
                 framework = name
@@ -348,11 +225,11 @@ def detect(index: GameIndex) -> list[dict]:
     for sig in ENGINES:
         score = 0.0
         evidence: list[str] = []
-        for weight, kind, pattern in sig.rules:
-            hit = index.find(kind, pattern)
+        for weight, kind, pattern, *rest in sig.rules:
+            hit = index.find(kind, pattern, rest[0] if rest else None)
             if hit is not None:
                 score += weight
-                if hit not in evidence:
+                if weight > 0 and hit not in evidence:
                     evidence.append(hit)
         if score + 1e-9 < THRESHOLD:
             continue

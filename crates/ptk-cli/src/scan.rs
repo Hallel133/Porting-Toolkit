@@ -203,6 +203,58 @@ pub fn print_scan(style: &Style, scan: &ScanResult, shown: &Path) {
     );
 }
 
+/// `ptk engines`: the engine catalog.
+pub fn engines(
+    style: &Style,
+    status: Option<&str>,
+    search: Option<&str>,
+    json: bool,
+) -> anyhow::Result<ExitCode> {
+    let needle = search.map(str::to_lowercase);
+    let list: Vec<&ptk_core::routes::Route> = ptk_core::routes::routes()
+        .iter()
+        .filter(|r| status.is_none_or(|s| r.status == s))
+        .filter(|r| {
+            needle.as_ref().is_none_or(|n| {
+                r.engine.contains(n.as_str()) || r.name.to_lowercase().contains(n.as_str())
+            })
+        })
+        .collect();
+    if json {
+        println!("{}", serde_json::to_string_pretty(&list)?);
+        return Ok(ExitCode::SUCCESS);
+    }
+    for r in &list {
+        let what = match (r.plugin, r.via) {
+            (Some(p), _) => format!("{} · plugin {p}", r.kind.label()),
+            (None, Some(v)) => format!("detected as {v}"),
+            _ => r.kind.label().to_string(),
+        };
+        let what = match r.kind {
+            RouteKind::Retarget | RouteKind::Native => style.green(what),
+            RouteKind::Runtime if r.plugin.is_some() => style.green(what),
+            RouteKind::Partial | RouteKind::Runtime => style.yellow(what),
+            RouteKind::NeedsSource => style.red(what),
+            RouteKind::NotApplicable | RouteKind::Unresolved => style.dim(what),
+        };
+        println!(
+            "{:<15} {}  {what}",
+            r.engine,
+            style.bold(format!("{:<44}", r.name))
+        );
+    }
+    println!();
+    println!(
+        "  {}",
+        style.dim(format!(
+            "{} of {} engines. `--status runtime` lists the ones an open-source runtime can run; `ptk scan` says which one a game uses.",
+            list.len(),
+            ptk_core::routes::routes().len()
+        ))
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
 /// What it takes to port this engine, with or without source code.
 pub fn print_route(style: &Style, scan: &ScanResult) {
     let engine = scan.primary.as_ref().map(|p| p.id.as_str());
@@ -210,11 +262,22 @@ pub fn print_route(style: &Style, scan: &ScanResult) {
         println!("{}", style.heading("Porting route"));
         let label = match r.kind {
             RouteKind::Retarget | RouteKind::Native => style.green(r.kind.label()),
-            RouteKind::Partial => style.yellow(r.kind.label()),
+            RouteKind::Runtime if r.plugin.is_some() => style.green(r.kind.label()),
+            RouteKind::Partial | RouteKind::Runtime => style.yellow(r.kind.label()),
             RouteKind::NeedsSource => style.red(r.kind.label()),
+            RouteKind::NotApplicable | RouteKind::Unresolved => style.dim(r.kind.label()),
         };
         println!("  {}  {label}", style.bold(r.name));
         println!("  {}", r.how);
+        if let (Some(name), Some(url)) = (r.runtime, r.runtime_url) {
+            println!("  {} {name} ({})", style.dim("Runtime:"), style.cyan(url));
+        }
+        if let Some(plugin) = r.plugin {
+            println!(
+                "  {} ptk market install {plugin}",
+                style.dim("Plugin: install it from the Marketplace:")
+            );
+        }
     }
 }
 

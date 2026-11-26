@@ -1096,15 +1096,30 @@ impl App {
                         Some(r) => {
                             ui.horizontal_wrapped(|ui| {
                                 ui.label(RichText::new(r.name).size(18.0).strong().color(TEAL));
-                                let c = match r.kind {
-                                    ptk_core::routes::RouteKind::Retarget
-                                    | ptk_core::routes::RouteKind::Native => GREEN,
-                                    ptk_core::routes::RouteKind::Partial => WARN,
-                                    ptk_core::routes::RouteKind::NeedsSource => ERROR,
-                                };
-                                badge(ui, r.kind.label(), c);
+                                badge(ui, r.kind.label(), route_color(r));
                             });
                             ui.label(r.how);
+                            if let (Some(name), Some(url)) = (r.runtime, r.runtime_url) {
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label(RichText::new("Runtime:").color(TEXT_WEAK));
+                                    ui.hyperlink_to(name, url);
+                                });
+                            }
+                            if let Some(plugin) = r.plugin {
+                                let installed = exporter_for_engine_installed(
+                                    &self.installed_plugin_ids(),
+                                    plugin,
+                                );
+                                if !installed
+                                    && ui
+                                        .button(format!(
+                                            "Get the {plugin} plugin in the Marketplace"
+                                        ))
+                                        .clicked()
+                                {
+                                    find = Some(plugin.to_owned());
+                                }
+                            }
                         }
                         None => hint(
                             ui,
@@ -1350,24 +1365,73 @@ impl App {
                         .num_columns(2)
                         .spacing([12.0, 6.0])
                         .show(ui, |ui| {
-                            for r in ptk_core::routes::ROUTES
-                                .iter()
-                                .filter(|r| r.engine != "macos")
-                            {
+                            for r in ptk_core::routes::exportable().filter(|r| {
+                                r.plugin.is_none()
+                                    && (r.kind == ptk_core::routes::RouteKind::Retarget
+                                        || matches!(r.engine, "unity" | "gamemaker"))
+                            }) {
                                 ui.label(RichText::new(r.name).color(Color32::WHITE));
-                                let (text, c) = match r.kind {
-                                    ptk_core::routes::RouteKind::Retarget => ("yes", GREEN),
-                                    ptk_core::routes::RouteKind::Partial => ("depends", WARN),
-                                    ptk_core::routes::RouteKind::NeedsSource => {
-                                        ("needs source", ERROR)
-                                    }
-                                    ptk_core::routes::RouteKind::Native => ("native", GREEN),
+                                let text = match r.kind {
+                                    ptk_core::routes::RouteKind::Retarget => "yes",
+                                    _ => "depends",
                                 };
-                                ui.label(RichText::new(text).color(c)).on_hover_text(r.how);
+                                ui.label(RichText::new(text).color(route_color(r)))
+                                    .on_hover_text(r.how);
                                 ui.end_row();
                             }
                         });
-                    hint(ui, "Hover a row for details.");
+                    let depends: Vec<_> = ptk_core::routes::exportable()
+                        .filter(|r| {
+                            r.kind == ptk_core::routes::RouteKind::Partial
+                                && !matches!(r.engine, "unity" | "gamemaker")
+                        })
+                        .collect();
+                    egui::CollapsingHeader::new(
+                        RichText::new(format!("Depends on the build ({} engines)", depends.len()))
+                            .color(WARN),
+                    )
+                    .id_salt("routes-depends")
+                    .show(ui, |ui| {
+                        for r in &depends {
+                            ui.label(RichText::new(r.name).color(Color32::WHITE))
+                                .on_hover_text(r.how);
+                        }
+                    });
+                    let with_plugin: Vec<_> = ptk_core::routes::exportable()
+                        .filter(|r| r.plugin.is_some())
+                        .collect();
+                    egui::CollapsingHeader::new(
+                        RichText::new(format!(
+                            "With a Marketplace plugin ({} engines)",
+                            with_plugin.len()
+                        ))
+                        .color(TEAL),
+                    )
+                    .id_salt("routes-plugins")
+                    .show(ui, |ui| {
+                        egui::Grid::new("routes-plugins-grid")
+                            .num_columns(2)
+                            .spacing([12.0, 4.0])
+                            .show(ui, |ui| {
+                                for r in &with_plugin {
+                                    ui.label(RichText::new(r.name).color(Color32::WHITE))
+                                        .on_hover_text(r.how);
+                                    ui.label(
+                                        RichText::new(r.plugin.unwrap_or_default())
+                                            .monospace()
+                                            .color(TEXT_WEAK),
+                                    );
+                                    ui.end_row();
+                                }
+                            });
+                    });
+                    let total = ptk_core::routes::routes().len();
+                    hint(
+                        ui,
+                        &format!(
+                            "Hover a row for details. Porting Toolkit recognises {total} engines in all: the ptk engines command lists them with what each needs."
+                        ),
+                    );
                 });
             }
         });
@@ -3539,6 +3603,23 @@ pub fn options_editor(
             ui.label(RichText::new(l).size(12.0).color(TEXT_FAINT));
         }
     }
+}
+
+/// The badge color of a porting route.
+fn route_color(r: &ptk_core::routes::Route) -> Color32 {
+    use ptk_core::routes::RouteKind;
+    match r.kind {
+        RouteKind::Retarget | RouteKind::Native => GREEN,
+        RouteKind::Runtime if r.plugin.is_some() => TEAL,
+        RouteKind::Partial | RouteKind::Runtime => WARN,
+        RouteKind::NeedsSource => ERROR,
+        RouteKind::NotApplicable | RouteKind::Unresolved => TEXT_WEAK,
+    }
+}
+
+/// Whether a plugin with this id is installed (or built in).
+fn exporter_for_engine_installed(installed: &[String], plugin: &str) -> bool {
+    installed.iter().any(|id| id == plugin)
 }
 
 #[cfg(test)]

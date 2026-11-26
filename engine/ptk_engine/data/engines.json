@@ -1,0 +1,5201 @@
+{
+ "version": 1,
+ "engines": [
+  {
+   "id": "unity",
+   "name": "Unity",
+   "kind": "engine",
+   "status": "partial",
+   "how": "Mono builds keep the game's code in Data/Managed/*.dll, which runs with the Unity player of the same version for another platform (found in a Unity install, or downloaded once from Unity: only the player, no Unity install needed). The build's shaders must cover the target's graphics API, and native plugins need their own builds. IL2CPP builds are native code and need the source.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "unityplayer.dll"
+    ],
+    [
+     0.6,
+     "name",
+     "unityplayer.so"
+    ],
+    [
+     0.6,
+     "name",
+     "unityplayer.dylib"
+    ],
+    [
+     0.6,
+     "name",
+     "unityframework"
+    ],
+    [
+     0.6,
+     "name",
+     "globalgamemanagers"
+    ],
+    [
+     0.5,
+     "name",
+     "data.unity3d"
+    ],
+    [
+     0.3,
+     "dir",
+     "*_data"
+    ],
+    [
+     0.3,
+     "name",
+     "sharedassets*.assets"
+    ],
+    [
+     0.3,
+     "path",
+     "*/managed/assembly-csharp.dll"
+    ],
+    [
+     0.3,
+     "name",
+     "gameassembly.dll"
+    ],
+    [
+     0.2,
+     "path",
+     "*/il2cpp_data/*"
+    ]
+   ],
+   "samples": [
+    "UnityPlayer.dll",
+    "Game_Data/globalgamemanagers"
+   ]
+  },
+  {
+   "id": "unreal",
+   "name": "Unreal Engine",
+   "kind": "engine",
+   "status": "closed",
+   "how": "The game code is compiled into the executable. A native port needs the project source; otherwise run the Windows build through a compatibility layer.",
+   "aliases": [
+    "Unreal Engine 1-5"
+   ],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.4,
+     "name",
+     "*.pak"
+    ],
+    [
+     0.5,
+     "name",
+     "*.utoc"
+    ],
+    [
+     0.5,
+     "name",
+     "*.ucas"
+    ],
+    [
+     0.5,
+     "path",
+     "*/content/paks/*"
+    ],
+    [
+     0.2,
+     "dirpath",
+     "/engine"
+    ],
+    [
+     0.3,
+     "path",
+     "/engine/binaries/*"
+    ],
+    [
+     0.5,
+     "name",
+     "*-shipping.exe"
+    ],
+    [
+     0.3,
+     "name",
+     "*.uproject"
+    ],
+    [
+     0.3,
+     "name",
+     "*.utx"
+    ],
+    [
+     0.3,
+     "name",
+     "*.unr"
+    ],
+    [
+     0.2,
+     "name",
+     "*.ukx"
+    ],
+    [
+     0.2,
+     "name",
+     "*.uax"
+    ]
+   ],
+   "samples": [
+    "Game/Content/Paks/Game-WindowsNoEditor.pak",
+    "Game/Binaries/Win64/Game-Win64-Shipping.exe"
+   ]
+  },
+  {
+   "id": "godot",
+   "name": "Godot",
+   "kind": "engine",
+   "status": "supported",
+   "how": "Scripts and assets live in the .pck (or inside the .exe). The same .pck runs with the Godot export template of the same version for the target.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "*.pck"
+    ],
+    [
+     0.6,
+     "magic",
+     "godot-pck"
+    ],
+    [
+     0.9,
+     "embedded",
+     "pck"
+    ],
+    [
+     0.8,
+     "name",
+     "project.godot"
+    ],
+    [
+     0.3,
+     "dir",
+     ".godot"
+    ],
+    [
+     0.3,
+     "name",
+     "*.gdc"
+    ],
+    [
+     0.2,
+     "name",
+     "*.gd"
+    ]
+   ],
+   "samples": [
+    "Game.pck"
+   ]
+  },
+  {
+   "id": "rage",
+   "name": "RAGE (Rockstar Advanced Game Engine)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code. Without source, only a compatibility layer (or a hosted/streamed build) can run it elsewhere.",
+   "aliases": [
+    "Rockstar Advanced Game Engine"
+   ],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*.rpf"
+    ],
+    [
+     0.3,
+     "path",
+     "*/update/update.rpf"
+    ],
+    [
+     0.2,
+     "name",
+     "x64*.rpf"
+    ]
+   ],
+   "samples": [
+    "x64a.rpf",
+    "update/update.rpf"
+   ]
+  },
+  {
+   "id": "source",
+   "name": "Source",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code. Without source, only a compatibility layer can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.5,
+     "name",
+     "*.vpk"
+    ],
+    [
+     0.3,
+     "name",
+     "*_dir.vpk"
+    ],
+    [
+     0.5,
+     "name",
+     "gameinfo.txt"
+    ],
+    [
+     0.2,
+     "name",
+     "hl2.exe"
+    ],
+    [
+     0.2,
+     "name",
+     "*.bsp"
+    ],
+    [
+     -0.6,
+     "name",
+     "gameinfo.gi"
+    ]
+   ],
+   "samples": [
+    "hl2.exe",
+    "hl2/gameinfo.txt",
+    "hl2/hl2_misc_dir.vpk"
+   ]
+  },
+  {
+   "id": "gamemaker",
+   "name": "GameMaker",
+   "kind": "engine",
+   "status": "partial",
+   "how": "data.win holds the game; it needs a GameMaker runner for the target. Compatibility varies by version.",
+   "aliases": [
+    "Game Maker",
+    "GameMaker Studio"
+   ],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.8,
+     "name",
+     "data.win"
+    ],
+    [
+     0.8,
+     "name",
+     "game.unx"
+    ],
+    [
+     0.8,
+     "name",
+     "game.ios"
+    ],
+    [
+     0.8,
+     "name",
+     "game.droid"
+    ],
+    [
+     0.2,
+     "name",
+     "audiogroup*.dat"
+    ],
+    [
+     0.1,
+     "name",
+     "options.ini"
+    ]
+   ],
+   "samples": [
+    "data.win",
+    "options.ini"
+   ]
+  },
+  {
+   "id": "renpy",
+   "name": "Ren'Py",
+   "kind": "engine",
+   "status": "supported",
+   "how": "The game/ folder (.rpa, .rpyc) runs on any platform with the Ren'Py runtime of the same version.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.5,
+     "dirpath",
+     "/renpy"
+    ],
+    [
+     0.5,
+     "name",
+     "*.rpa"
+    ],
+    [
+     0.4,
+     "name",
+     "*.rpyc"
+    ],
+    [
+     0.3,
+     "name",
+     "*.rpy"
+    ],
+    [
+     0.2,
+     "path",
+     "*/game/script.rpy*"
+    ]
+   ],
+   "samples": [
+    "renpy/__init__.py",
+    "game/archive.rpa"
+   ]
+  },
+  {
+   "id": "rpgmaker",
+   "name": "RPG Maker MV/MZ",
+   "kind": "engine",
+   "status": "supported",
+   "how": "MV/MZ games are HTML5 + JavaScript: the web folder runs in a browser, in a WebKit app on macOS, or with NW.js on Windows and Linux.",
+   "aliases": [
+    "RPG Maker"
+   ],
+   "family": "RPG Maker",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.8,
+     "path",
+     "*/js/rpg_core.js"
+    ],
+    [
+     0.8,
+     "path",
+     "*/js/rmmz_core.js"
+    ],
+    [
+     0.2,
+     "path",
+     "*/data/system.json"
+    ]
+   ],
+   "samples": [
+    "www/js/rpg_core.js",
+    "www/data/System.json"
+   ]
+  },
+  {
+   "id": "rgss",
+   "name": "RPG Maker XP/VX/VX Ace",
+   "kind": "engine",
+   "status": "supported",
+   "how": "The game's Ruby scripts and data run on mkxp-z, an open-source RGSS runtime for macOS and Linux. Windows keeps the original Game.exe. Games that use the RTP need it installed.",
+   "aliases": [],
+   "family": "RPG Maker",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.8,
+     "name",
+     "*.rgss3a"
+    ],
+    [
+     0.8,
+     "name",
+     "*.rgss2a"
+    ],
+    [
+     0.8,
+     "name",
+     "*.rgssad"
+    ],
+    [
+     0.4,
+     "name",
+     "rgss*.dll"
+    ],
+    [
+     0.5,
+     "name",
+     "*.rvdata2"
+    ],
+    [
+     0.5,
+     "name",
+     "*.rvdata"
+    ],
+    [
+     0.5,
+     "name",
+     "*.rxdata"
+    ],
+    [
+     0.1,
+     "name",
+     "game.ini"
+    ]
+   ],
+   "samples": [
+    "Game.rgss3a",
+    "Game.ini"
+   ]
+  },
+  {
+   "id": "love",
+   "name": "LÖVE",
+   "kind": "engine",
+   "status": "supported",
+   "how": "The game is a .love archive of Lua scripts and assets (on its own or fused into the .exe). It runs with the official LÖVE build of the same version for each platform.",
+   "aliases": [
+    "LOVE",
+    "Love2D"
+   ],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.8,
+     "name",
+     "*.love"
+    ],
+    [
+     0.6,
+     "name",
+     "love.dll"
+    ],
+    [
+     0.2,
+     "name",
+     "lua51.dll"
+    ],
+    [
+     0.3,
+     "name",
+     "main.lua"
+    ],
+    [
+     0.2,
+     "name",
+     "conf.lua"
+    ]
+   ],
+   "samples": [
+    "game.love"
+   ]
+  },
+  {
+   "id": "html5",
+   "name": "HTML5 (Construct, GDevelop, Twine, NW.js, Electron)",
+   "kind": "engine",
+   "status": "supported",
+   "how": "The game is a web page: it runs in a browser, in a WebKit app on macOS, or with NW.js on Windows and Linux. Electron games that call Node.js need those parts changed.",
+   "aliases": [
+    "HTML5"
+   ],
+   "family": "Web",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "c2runtime.js"
+    ],
+    [
+     0.6,
+     "name",
+     "c3runtime.js"
+    ],
+    [
+     0.6,
+     "name",
+     "c3main.js"
+    ],
+    [
+     0.4,
+     "name",
+     "gd.js"
+    ],
+    [
+     0.3,
+     "dir",
+     "pixi-renderers"
+    ],
+    [
+     0.5,
+     "name",
+     "phaser*.js"
+    ],
+    [
+     0.5,
+     "name",
+     "cocos2d-js*.js"
+    ],
+    [
+     0.5,
+     "name",
+     "dmloader.js"
+    ],
+    [
+     0.9,
+     "mark",
+     "twine"
+    ],
+    [
+     0.8,
+     "name",
+     "package.nw"
+    ],
+    [
+     0.5,
+     "name",
+     "nw.dll"
+    ],
+    [
+     0.4,
+     "name",
+     "nw_elf.dll"
+    ],
+    [
+     0.4,
+     "path",
+     "*/resources/app.nw/*"
+    ],
+    [
+     0.6,
+     "path",
+     "*/resources/app.asar"
+    ],
+    [
+     0.5,
+     "path",
+     "*/resources/app/package.json"
+    ],
+    [
+     0.4,
+     "path",
+     "*/contents/resources/app.nw/package.json"
+    ],
+    [
+     0.2,
+     "name",
+     "package.json"
+    ],
+    [
+     0.1,
+     "name",
+     "index.html"
+    ],
+    [
+     0.5,
+     "name",
+     "three*.min.js"
+    ],
+    [
+     0.5,
+     "name",
+     "three.module*.js"
+    ],
+    [
+     0.5,
+     "name",
+     "babylon*.js"
+    ],
+    [
+     0.5,
+     "name",
+     "playcanvas*.js"
+    ],
+    [
+     0.5,
+     "name",
+     "aframe*.js"
+    ],
+    [
+     0.5,
+     "name",
+     "laya.core*.js"
+    ],
+    [
+     0.5,
+     "name",
+     "b4w*.js"
+    ],
+    [
+     0.5,
+     "name",
+     "turbulenz*.js"
+    ],
+    [
+     0.4,
+     "name",
+     "*.tzjs"
+    ]
+   ],
+   "samples": [
+    "index.html",
+    "c3runtime.js"
+   ]
+  },
+  {
+   "id": "macos",
+   "name": "macOS app / Mach-O",
+   "kind": "format",
+   "status": "native",
+   "how": "Already a macOS build. Porting Toolkit can still apply advanced options and community patches.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "path",
+     "*.app/contents/info.plist"
+    ],
+    [
+     0.3,
+     "path",
+     "*.app/contents/macos/*"
+    ],
+    [
+     0.5,
+     "magic",
+     "mach-o"
+    ],
+    [
+     0.3,
+     "name",
+     "*.dylib"
+    ]
+   ],
+   "samples": [
+    "Game.app/Contents/Info.plist",
+    "Game.app/Contents/MacOS/Game"
+   ]
+  },
+  {
+   "id": "construct",
+   "name": "Construct",
+   "kind": "engine",
+   "status": "web",
+   "how": "Web games: the HTML5 plugins export them (browser, WebKit app on macOS, NW.js on Windows and Linux).",
+   "aliases": [],
+   "family": "Web",
+   "runtime": null,
+   "plugin": null,
+   "via": "html5",
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "gdevelop",
+   "name": "GDevelop",
+   "kind": "engine",
+   "status": "web",
+   "how": "Web games: the HTML5 plugins export them (browser, WebKit app on macOS, NW.js on Windows and Linux).",
+   "aliases": [],
+   "family": "Web",
+   "runtime": null,
+   "plugin": null,
+   "via": "html5",
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "phaser",
+   "name": "Phaser",
+   "kind": "engine",
+   "status": "web",
+   "how": "Web games: the HTML5 plugins export them (browser, WebKit app on macOS, NW.js on Windows and Linux).",
+   "aliases": [],
+   "family": "Web",
+   "runtime": null,
+   "plugin": null,
+   "via": "html5",
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "twine",
+   "name": "Twine",
+   "kind": "engine",
+   "status": "web",
+   "how": "Web games: the HTML5 plugins export them (browser, WebKit app on macOS, NW.js on Windows and Linux).",
+   "aliases": [],
+   "family": "Web",
+   "runtime": null,
+   "plugin": null,
+   "via": "html5",
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "threejs",
+   "name": "Three.js",
+   "kind": "engine",
+   "status": "web",
+   "how": "Web games: the HTML5 plugins export them (browser, WebKit app on macOS, NW.js on Windows and Linux).",
+   "aliases": [],
+   "family": "Web",
+   "runtime": null,
+   "plugin": null,
+   "via": "html5",
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "babylonjs",
+   "name": "Babylon.js",
+   "kind": "engine",
+   "status": "web",
+   "how": "Web games: the HTML5 plugins export them (browser, WebKit app on macOS, NW.js on Windows and Linux).",
+   "aliases": [],
+   "family": "Web",
+   "runtime": null,
+   "plugin": null,
+   "via": "html5",
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "playcanvas",
+   "name": "PlayCanvas",
+   "kind": "engine",
+   "status": "web",
+   "how": "Web games: the HTML5 plugins export them (browser, WebKit app on macOS, NW.js on Windows and Linux).",
+   "aliases": [],
+   "family": "Web",
+   "runtime": null,
+   "plugin": null,
+   "via": "html5",
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "aframe",
+   "name": "A-Frame (VR)",
+   "kind": "engine",
+   "status": "web",
+   "how": "Web games: the HTML5 plugins export them (browser, WebKit app on macOS, NW.js on Windows and Linux).",
+   "aliases": [],
+   "family": "Web",
+   "runtime": null,
+   "plugin": null,
+   "via": "html5",
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "layaair",
+   "name": "LayaAir",
+   "kind": "engine",
+   "status": "web",
+   "how": "Web games: the HTML5 plugins export them (browser, WebKit app on macOS, NW.js on Windows and Linux).",
+   "aliases": [],
+   "family": "Web",
+   "runtime": null,
+   "plugin": null,
+   "via": "html5",
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "blend4web",
+   "name": "Blend4Web",
+   "kind": "engine",
+   "status": "web",
+   "how": "Web games: the HTML5 plugins export them (browser, WebKit app on macOS, NW.js on Windows and Linux).",
+   "aliases": [],
+   "family": "Web",
+   "runtime": null,
+   "plugin": null,
+   "via": "html5",
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "turbulenz",
+   "name": "Turbulenz",
+   "kind": "engine",
+   "status": "web",
+   "how": "Web games: the HTML5 plugins export them (browser, WebKit app on macOS, NW.js on Windows and Linux).",
+   "aliases": [],
+   "family": "Web",
+   "runtime": null,
+   "plugin": null,
+   "via": "html5",
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "scumm",
+   "name": "SCUMM (LucasArts)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "The game's data files run on ScummVM, which reimplements SCUMM for every platform.",
+   "aliases": [
+    "SCUMM",
+    "iMUSE games"
+   ],
+   "family": "ScummVM",
+   "runtime": {
+    "name": "ScummVM",
+    "url": "https://www.scummvm.org",
+    "license": "GPL-3.0-or-later"
+   },
+   "plugin": "scummvm-export",
+   "via": null,
+   "rules": [
+    [
+     0.4,
+     "name",
+     "*.000"
+    ],
+    [
+     0.3,
+     "name",
+     "*.001"
+    ],
+    [
+     0.6,
+     "name",
+     "*.la0"
+    ],
+    [
+     0.3,
+     "name",
+     "*.la1"
+    ],
+    [
+     0.3,
+     "name",
+     "*.sou"
+    ],
+    [
+     0.2,
+     "name",
+     "monster.sou"
+    ]
+   ],
+   "samples": [
+    "MONKEY2.000",
+    "MONKEY2.001"
+   ]
+  },
+  {
+   "id": "agi",
+   "name": "Adventure Game Interpreter (Sierra AGI)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "The game's resource files (LOGDIR, PICDIR, VOL.*) run on ScummVM.",
+   "aliases": [
+    "AGI"
+   ],
+   "family": "ScummVM",
+   "runtime": {
+    "name": "ScummVM",
+    "url": "https://www.scummvm.org",
+    "license": "GPL-3.0-or-later"
+   },
+   "plugin": "scummvm-export",
+   "via": null,
+   "rules": [
+    [
+     0.4,
+     "name",
+     "logdir"
+    ],
+    [
+     0.3,
+     "name",
+     "picdir"
+    ],
+    [
+     0.3,
+     "name",
+     "viewdir"
+    ],
+    [
+     0.2,
+     "name",
+     "snddir"
+    ],
+    [
+     0.3,
+     "name",
+     "words.tok"
+    ],
+    [
+     0.3,
+     "name",
+     "vol.0"
+    ],
+    [
+     0.2,
+     "name",
+     "*vol.0"
+    ],
+    [
+     0.3,
+     "name",
+     "*dir"
+    ]
+   ],
+   "samples": [
+    "LOGDIR",
+    "PICDIR",
+    "VIEWDIR",
+    "WORDS.TOK",
+    "VOL.0"
+   ]
+  },
+  {
+   "id": "ags",
+   "name": "Adventure Game Studio",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "AGS games keep their data in ac2game.dat, a .ags file or appended to the .exe; ScummVM runs them on every platform.",
+   "aliases": [
+    "AGS"
+   ],
+   "family": "ScummVM",
+   "runtime": {
+    "name": "ScummVM",
+    "url": "https://www.scummvm.org",
+    "license": "GPL-3.0-or-later"
+   },
+   "plugin": "scummvm-export",
+   "via": null,
+   "rules": [
+    [
+     0.8,
+     "name",
+     "ac2game.dat"
+    ],
+    [
+     0.4,
+     "name",
+     "acsetup.cfg"
+    ],
+    [
+     0.6,
+     "name",
+     "*.ags"
+    ],
+    [
+     0.3,
+     "name",
+     "agsfnt*.wfn"
+    ],
+    [
+     0.3,
+     "name",
+     "audio.vox"
+    ],
+    [
+     0.2,
+     "name",
+     "speech.vox"
+    ]
+   ],
+   "samples": [
+    "acsetup.cfg",
+    "audio.vox",
+    "Game.exe"
+   ]
+  },
+  {
+   "id": "wintermute",
+   "name": "Wintermute Engine",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Wintermute games keep their data in .dcp packages, which ScummVM runs on every platform.",
+   "aliases": [],
+   "family": "ScummVM",
+   "runtime": {
+    "name": "ScummVM",
+    "url": "https://www.scummvm.org",
+    "license": "GPL-3.0-or-later"
+   },
+   "plugin": "scummvm-export",
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*.dcp"
+    ],
+    [
+     0.2,
+     "name",
+     "data.dcp"
+    ]
+   ],
+   "samples": [
+    "data.dcp"
+   ]
+  },
+  {
+   "id": "freescape",
+   "name": "Freescape (Incentive Software)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "ScummVM runs the DOS releases of Driller, Dark Side, Total Eclipse and Castle Master.",
+   "aliases": [],
+   "family": "ScummVM",
+   "runtime": {
+    "name": "ScummVM",
+    "url": "https://www.scummvm.org",
+    "license": "GPL-3.0-or-later"
+   },
+   "plugin": "scummvm-export",
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "drille.exe"
+    ],
+    [
+     0.7,
+     "name",
+     "drillc.exe"
+    ],
+    [
+     0.7,
+     "name",
+     "driller.exe"
+    ],
+    [
+     0.7,
+     "name",
+     "dsidee.exe"
+    ],
+    [
+     0.7,
+     "name",
+     "totee.exe"
+    ]
+   ],
+   "samples": [
+    "DRILLE.EXE"
+   ]
+  },
+  {
+   "id": "doom",
+   "name": "Doom engine (id Tech 1)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "The game's IWAD (DOOM.WAD, DOOM2.WAD, HERETIC.WAD...) runs on a Doom source port for every platform.",
+   "aliases": [
+    "Doom engine",
+    "id Tech 1"
+   ],
+   "family": "id Software",
+   "runtime": {
+    "name": "GZDoom / UZDoom",
+    "url": "https://github.com/UZDoom/UZDoom",
+    "license": "GPL-3.0-or-later"
+   },
+   "plugin": "doom-export",
+   "via": null,
+   "rules": [
+    [
+     0.8,
+     "head",
+     "*.wad",
+     "IWAD"
+    ],
+    [
+     0.3,
+     "head",
+     "*.wad",
+     "PWAD"
+    ]
+   ],
+   "samples": [
+    "DOOM2.WAD=IWAD"
+   ]
+  },
+  {
+   "id": "quake",
+   "name": "Quake engine",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Quake's id1/ folder (pak0.pak, pak1.pak) runs on QuakeSpasm or vkQuake.",
+   "aliases": [],
+   "family": "id Software",
+   "runtime": {
+    "name": "QuakeSpasm / vkQuake",
+    "url": "https://github.com/Novum/vkQuake",
+    "license": "GPL-2.0-or-later"
+   },
+   "plugin": "quake-export",
+   "via": null,
+   "rules": [
+    [
+     0.8,
+     "path",
+     "*/id1/pak0.pak"
+    ],
+    [
+     0.2,
+     "head",
+     "*.pak",
+     "PACK"
+    ]
+   ],
+   "samples": [
+    "id1/pak0.pak=PACK"
+   ]
+  },
+  {
+   "id": "idtech2",
+   "name": "id Tech 2 (Quake II)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Quake II's baseq2/ folder runs on Yamagi Quake II.",
+   "aliases": [
+    "Quake II engine"
+   ],
+   "family": "id Software",
+   "runtime": {
+    "name": "Yamagi Quake II",
+    "url": "https://github.com/yquake2/yquake2",
+    "license": "GPL-2.0-or-later"
+   },
+   "plugin": "quake2-export",
+   "via": null,
+   "rules": [
+    [
+     0.8,
+     "path",
+     "*/baseq2/pak0.pak"
+    ],
+    [
+     0.2,
+     "head",
+     "*.pak",
+     "PACK"
+    ],
+    [
+     0.2,
+     "name",
+     "quake2.exe"
+    ]
+   ],
+   "samples": [
+    "baseq2/pak0.pak=PACK",
+    "quake2.exe"
+   ]
+  },
+  {
+   "id": "jake2",
+   "name": "Jake2",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Jake2 is a Java port of Quake II; the quake2-export plugin packs the same baseq2/ data with Yamagi Quake II.",
+   "aliases": [],
+   "family": "id Software",
+   "runtime": {
+    "name": "Yamagi Quake II",
+    "url": "https://github.com/yquake2/yquake2",
+    "license": "GPL-2.0-or-later"
+   },
+   "plugin": "quake2-export",
+   "via": null,
+   "rules": [
+    [
+     0.8,
+     "name",
+     "jake2*.jar"
+    ]
+   ],
+   "samples": [
+    "jake2.jar"
+   ]
+  },
+  {
+   "id": "idtech3",
+   "name": "id Tech 3 (Quake III Arena)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Quake III Arena's baseq3/ folder runs on ioquake3. Other id Tech 3 games need their own source ports.",
+   "aliases": [],
+   "family": "id Software",
+   "runtime": {
+    "name": "ioquake3",
+    "url": "https://github.com/ioquake/ioq3",
+    "license": "GPL-2.0-or-later"
+   },
+   "plugin": "quake3-export",
+   "via": null,
+   "rules": [
+    [
+     0.8,
+     "path",
+     "*/baseq3/pak0.pk3"
+    ],
+    [
+     0.2,
+     "name",
+     "*.pk3"
+    ]
+   ],
+   "samples": [
+    "baseq3/pak0.pk3"
+   ]
+  },
+  {
+   "id": "ioquake3",
+   "name": "ioquake3",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "ioquake3 is itself the open source port of id Tech 3; the quake3-export plugin packs baseq3/ with it.",
+   "aliases": [],
+   "family": "id Software",
+   "runtime": {
+    "name": "ioquake3",
+    "url": "https://github.com/ioquake/ioq3",
+    "license": "GPL-2.0-or-later"
+   },
+   "plugin": "quake3-export",
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "ioquake3*"
+    ]
+   ],
+   "samples": [
+    "ioquake3.x86_64"
+   ]
+  },
+  {
+   "id": "idtech4",
+   "name": "id Tech 4 (Doom 3)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Doom 3 and Resurrection of Evil (base/*.pk4) run on dhewm3. Quake 4 and Prey are not supported by it.",
+   "aliases": [],
+   "family": "id Software",
+   "runtime": {
+    "name": "dhewm3",
+    "url": "https://github.com/dhewm/dhewm3",
+    "license": "GPL-3.0-or-later"
+   },
+   "plugin": "doom3-export",
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "path",
+     "*/base/pak000.pk4"
+    ],
+    [
+     0.3,
+     "name",
+     "*.pk4"
+    ],
+    [
+     0.3,
+     "name",
+     "doom3.exe"
+    ]
+   ],
+   "samples": [
+    "base/pak000.pk4",
+    "Doom3.exe"
+   ]
+  },
+  {
+   "id": "wolf3d",
+   "name": "Wolfenstein 3D engine",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "The game's data files (VSWAP.WL6, GAMEMAPS.WL6...) run on ECWolf.",
+   "aliases": [],
+   "family": "id Software",
+   "runtime": {
+    "name": "ECWolf",
+    "url": "https://bitbucket.org/ecwolf/ecwolf",
+    "license": "GPL-2.0-or-later"
+   },
+   "plugin": "wolf3d-export",
+   "via": null,
+   "rules": [
+    [
+     0.8,
+     "name",
+     "vswap.wl6"
+    ],
+    [
+     0.8,
+     "name",
+     "vswap.wl1"
+    ],
+    [
+     0.8,
+     "name",
+     "vswap.sod"
+    ],
+    [
+     0.3,
+     "name",
+     "gamemaps.*"
+    ],
+    [
+     0.3,
+     "name",
+     "maphead.*"
+    ]
+   ],
+   "samples": [
+    "VSWAP.WL6",
+    "GAMEMAPS.WL6",
+    "MAPHEAD.WL6"
+   ]
+  },
+  {
+   "id": "build",
+   "name": "Build engine",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Duke Nukem 3D, Blood, Shadow Warrior and other Build games run on Raze with their original data.",
+   "aliases": [],
+   "family": "",
+   "runtime": {
+    "name": "Raze",
+    "url": "https://github.com/ZDoom/Raze",
+    "license": "GPL-2.0-or-later"
+   },
+   "plugin": "build-export",
+   "via": null,
+   "rules": [
+    [
+     0.8,
+     "head",
+     "*.grp",
+     "KenSilverman"
+    ],
+    [
+     0.5,
+     "name",
+     "blood.rff"
+    ],
+    [
+     0.2,
+     "name",
+     "*.art"
+    ]
+   ],
+   "samples": [
+    "DUKE3D.GRP=KenSilverman"
+   ]
+  },
+  {
+   "id": "jedi",
+   "name": "Jedi engine (Dark Forces)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Dark Forces' .GOB files run on The Force Engine.",
+   "aliases": [
+    "Jedi"
+   ],
+   "family": "",
+   "runtime": {
+    "name": "The Force Engine",
+    "url": "https://github.com/luciusDXL/TheForceEngine",
+    "license": "GPL-2.0-only"
+   },
+   "plugin": "jedi-export",
+   "via": null,
+   "rules": [
+    [
+     0.8,
+     "name",
+     "dark.gob"
+    ],
+    [
+     0.3,
+     "name",
+     "sounds.gob"
+    ],
+    [
+     0.3,
+     "name",
+     "textures.gob"
+    ],
+    [
+     0.2,
+     "name",
+     "*.gob"
+    ]
+   ],
+   "samples": [
+    "DARK.GOB",
+    "SOUNDS.GOB"
+   ]
+  },
+  {
+   "id": "goldsrc",
+   "name": "GoldSrc (Half-Life engine)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Half-Life's valve/ folder runs on Xash3D FWGS (the game's own DLLs need builds for the target; Valve's are Windows only).",
+   "aliases": [
+    "Half-Life engine"
+   ],
+   "family": "",
+   "runtime": {
+    "name": "Xash3D FWGS",
+    "url": "https://github.com/FWGS/xash3d-fwgs",
+    "license": "GPL-3.0-or-later"
+   },
+   "plugin": "goldsrc-export",
+   "via": null,
+   "rules": [
+    [
+     0.5,
+     "name",
+     "hl.exe"
+    ],
+    [
+     0.6,
+     "path",
+     "*/valve/liblist.gam"
+    ],
+    [
+     0.3,
+     "name",
+     "liblist.gam"
+    ],
+    [
+     0.4,
+     "head",
+     "*.wad",
+     "WAD3"
+    ]
+   ],
+   "samples": [
+    "hl.exe",
+    "valve/liblist.gam"
+   ]
+  },
+  {
+   "id": "infinity",
+   "name": "Infinity Engine",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Baldur's Gate, Icewind Dale and Planescape: Torment data (chitin.key, .bif) run on GemRB.",
+   "aliases": [],
+   "family": "",
+   "runtime": {
+    "name": "GemRB",
+    "url": "https://github.com/gemrb/gemrb",
+    "license": "GPL-2.0-or-later"
+   },
+   "plugin": "infinity-export",
+   "via": null,
+   "rules": [
+    [
+     0.5,
+     "head",
+     "chitin.key",
+     "KEY V1  "
+    ],
+    [
+     0.3,
+     "name",
+     "*.bif"
+    ],
+    [
+     0.3,
+     "name",
+     "baldur.exe"
+    ],
+    [
+     0.3,
+     "name",
+     "torment.exe"
+    ],
+    [
+     0.3,
+     "name",
+     "idmain.exe"
+    ],
+    [
+     0.1,
+     "name",
+     "dialog.tlk"
+    ],
+    [
+     -0.6,
+     "name",
+     "nwmain*"
+    ],
+    [
+     -0.6,
+     "name",
+     "*.hak"
+    ],
+    [
+     -0.6,
+     "name",
+     "swkotor*"
+    ],
+    [
+     -0.6,
+     "name",
+     "*.rim"
+    ]
+   ],
+   "samples": [
+    "chitin.key=KEY V1  ",
+    "BALDUR.EXE",
+    "data/AREA000A.bif"
+   ]
+  },
+  {
+   "id": "openmw",
+   "name": "OpenMW (Morrowind)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Morrowind's Data Files (Morrowind.esm, .bsa) run on OpenMW.",
+   "aliases": [
+    "Morrowind"
+   ],
+   "family": "",
+   "runtime": {
+    "name": "OpenMW",
+    "url": "https://openmw.org",
+    "license": "GPL-3.0-or-later"
+   },
+   "plugin": "morrowind-export",
+   "via": null,
+   "rules": [
+    [
+     0.9,
+     "name",
+     "morrowind.esm"
+    ],
+    [
+     0.2,
+     "name",
+     "*.bsa"
+    ]
+   ],
+   "samples": [
+    "Data Files/Morrowind.esm",
+    "Data Files/Morrowind.bsa"
+   ]
+  },
+  {
+   "id": "exult",
+   "name": "Exult (Ultima VII)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Ultima VII's data (STATIC/U7CHUNKS...) runs on Exult.",
+   "aliases": [
+    "Ultima VII"
+   ],
+   "family": "",
+   "runtime": {
+    "name": "Exult",
+    "url": "https://github.com/exult/exult",
+    "license": "GPL-2.0-or-later"
+   },
+   "plugin": "exult-export",
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "path",
+     "*/static/u7chunks"
+    ],
+    [
+     0.4,
+     "path",
+     "*/static/u7map"
+    ]
+   ],
+   "samples": [
+    "STATIC/U7CHUNKS",
+    "STATIC/U7MAP"
+   ]
+  },
+  {
+   "id": "xngine",
+   "name": "XnGine (Daggerfall)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "The Elder Scrolls II: Daggerfall's ARENA2 folder runs on Daggerfall Unity. Other XnGine games have no open runtime.",
+   "aliases": [],
+   "family": "",
+   "runtime": {
+    "name": "Daggerfall Unity",
+    "url": "https://github.com/Interkarma/daggerfall-unity",
+    "license": "MIT"
+   },
+   "plugin": "daggerfall-export",
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "dir",
+     "arena2"
+    ],
+    [
+     0.3,
+     "path",
+     "*/arena2/*.bsa"
+    ],
+    [
+     0.4,
+     "name",
+     "fall.exe"
+    ]
+   ],
+   "samples": [
+    "ARENA2/BLOCKS.BSA",
+    "FALL.EXE"
+   ]
+  },
+  {
+   "id": "stratagus",
+   "name": "Stratagus",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Stratagus games (Wargus, Stargus...) are Lua data for the open source Stratagus engine. Wargus needs data extracted from the original Warcraft II.",
+   "aliases": [],
+   "family": "",
+   "runtime": {
+    "name": "Stratagus",
+    "url": "https://github.com/Wargus/stratagus",
+    "license": "GPL-2.0-or-later"
+   },
+   "plugin": "stratagus-export",
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "stratagus*"
+    ],
+    [
+     0.6,
+     "path",
+     "*/scripts/stratagus.lua"
+    ]
+   ],
+   "samples": [
+    "stratagus.exe",
+    "scripts/stratagus.lua"
+   ]
+  },
+  {
+   "id": "nscripter",
+   "name": "NScripter",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "NScripter novels (nscript.dat, .nsa archives) run on ONScripter.",
+   "aliases": [],
+   "family": "",
+   "runtime": {
+    "name": "ONScripter",
+    "url": "https://onscripter.osdn.jp",
+    "license": "GPL-2.0-or-later"
+   },
+   "plugin": "nscripter-export",
+   "via": null,
+   "rules": [
+    [
+     0.8,
+     "name",
+     "nscript.dat"
+    ],
+    [
+     0.3,
+     "name",
+     "0.txt"
+    ],
+    [
+     0.3,
+     "name",
+     "00.txt"
+    ],
+    [
+     0.5,
+     "name",
+     "arc.nsa"
+    ],
+    [
+     0.3,
+     "name",
+     "*.nsa"
+    ]
+   ],
+   "samples": [
+    "nscript.dat",
+    "arc.nsa"
+   ]
+  },
+  {
+   "id": "ohrrpgce",
+   "name": "OHRRPGCE",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "The game's .rpg file runs on the OHRRPGCE player (open source) for every platform.",
+   "aliases": [],
+   "family": "",
+   "runtime": {
+    "name": "OHRRPGCE",
+    "url": "https://rpg.hamsterrepublic.com/ohrrpgce/",
+    "license": "GPL-2.0-or-later"
+   },
+   "plugin": "ohrrpgce-export",
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*.rpg"
+    ]
+   ],
+   "samples": [
+    "game.rpg"
+   ]
+  },
+  {
+   "id": "mugen",
+   "name": "M.U.G.E.N",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "M.U.G.E.N content (chars/, stages/, data/mugen.cfg) runs on Ikemen GO.",
+   "aliases": [
+    "MUGEN"
+   ],
+   "family": "",
+   "runtime": {
+    "name": "Ikemen GO",
+    "url": "https://github.com/ikemen-engine/Ikemen-GO",
+    "license": "MIT"
+   },
+   "plugin": "mugen-export",
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "mugen.exe"
+    ],
+    [
+     0.6,
+     "path",
+     "*/data/mugen.cfg"
+    ],
+    [
+     0.2,
+     "dir",
+     "chars"
+    ]
+   ],
+   "samples": [
+    "mugen.exe",
+    "data/mugen.cfg",
+    "chars/kfm/kfm.def"
+   ]
+  },
+  {
+   "id": "alephone",
+   "name": "Aleph One (Marathon)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Marathon's Shapes, Sounds and Map files run on Aleph One. No Porting Toolkit plugin for it yet.",
+   "aliases": [],
+   "family": "",
+   "runtime": {
+    "name": "Aleph One",
+    "url": "https://alephone.lhowon.org",
+    "license": "GPL-3.0-or-later"
+   },
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.5,
+     "name",
+     "*.shpa"
+    ],
+    [
+     0.4,
+     "name",
+     "*.snda"
+    ],
+    [
+     0.5,
+     "name",
+     "*.scea"
+    ],
+    [
+     0.3,
+     "name",
+     "images.imga"
+    ]
+   ],
+   "samples": [
+    "Shapes.shpA",
+    "Sounds.sndA",
+    "Map.sceA"
+   ]
+  },
+  {
+   "id": "fs2",
+   "name": "FreeSpace 2 (Source Code Project)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "FreeSpace 2's .vp archives run on FreeSpace Open. No Porting Toolkit plugin for it yet.",
+   "aliases": [
+    "FreeSpace 2 Source Code Project"
+   ],
+   "family": "",
+   "runtime": {
+    "name": "FreeSpace Open",
+    "url": "https://github.com/scp-fs2open/fs2open.github.com",
+    "license": "Volition source licence"
+   },
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.8,
+     "head",
+     "*.vp",
+     "VPVP"
+    ]
+   ],
+   "samples": [
+    "root_fs2.vp=VPVP"
+   ]
+  },
+  {
+   "id": "rpgmaker2k",
+   "name": "RPG Maker 2000/2003",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "RPG_RT games run on EasyRPG Player. No Porting Toolkit plugin for it yet.",
+   "aliases": [],
+   "family": "RPG Maker",
+   "runtime": {
+    "name": "EasyRPG Player",
+    "url": "https://easyrpg.org",
+    "license": "GPL-3.0-or-later"
+   },
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "rpg_rt.exe"
+    ],
+    [
+     0.7,
+     "name",
+     "rpg_rt.ldb"
+    ],
+    [
+     0.5,
+     "name",
+     "rpg_rt.lmt"
+    ]
+   ],
+   "samples": [
+    "RPG_RT.ldb",
+    "RPG_RT.lmt"
+   ]
+  },
+  {
+   "id": "xna",
+   "name": "MonoGame / XNA",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "XNA games run on macOS and Linux with FNA (an open reimplementation of XNA); MonoGame DesktopGL builds are already cross-platform .NET. No Porting Toolkit plugin for it yet.",
+   "aliases": [
+    "MonoGame",
+    "XNA"
+   ],
+   "family": "",
+   "runtime": {
+    "name": "FNA",
+    "url": "https://fna-xna.github.io",
+    "license": "MS-PL"
+   },
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.4,
+     "name",
+     "*.xnb"
+    ],
+    [
+     0.5,
+     "name",
+     "microsoft.xna.framework*.dll"
+    ],
+    [
+     0.6,
+     "name",
+     "monogame.framework.dll"
+    ],
+    [
+     0.6,
+     "name",
+     "fna.dll"
+    ]
+   ],
+   "samples": [
+    "Content/a.xnb",
+    "MonoGame.Framework.dll"
+   ]
+  },
+  {
+   "id": "bge",
+   "name": "Blender Game Engine",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "UPBGE, the community continuation of the Blender Game Engine, can run many .blend games; older files may need changes. No Porting Toolkit plugin for it yet.",
+   "aliases": [],
+   "family": "",
+   "runtime": {
+    "name": "UPBGE",
+    "url": "https://upbge.org",
+    "license": "GPL-2.0-or-later"
+   },
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "blenderplayer*"
+    ],
+    [
+     0.4,
+     "name",
+     "*.blend"
+    ]
+   ],
+   "samples": [
+    "blenderplayer.exe",
+    "game.blend"
+   ]
+  },
+  {
+   "id": "flash",
+   "name": "Adobe Flash (SWF)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Flash games run in Ruffle (web or desktop). Games built on Stage3D (Starling, Flare3D, Away3D) are not supported by Ruffle yet. No Porting Toolkit plugin for it yet.",
+   "aliases": [],
+   "family": "Flash",
+   "runtime": {
+    "name": "Ruffle",
+    "url": "https://ruffle.rs",
+    "license": "MIT OR Apache-2.0"
+   },
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "*.swf"
+    ]
+   ],
+   "samples": [
+    "game.swf"
+   ]
+  },
+  {
+   "id": "flixel",
+   "name": "Flixel",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Flixel games are Flash (.swf): see Adobe Flash. HaxeFlixel builds are native or HTML5.",
+   "aliases": [],
+   "family": "Flash",
+   "runtime": {
+    "name": "Ruffle",
+    "url": "https://ruffle.rs",
+    "license": "MIT OR Apache-2.0"
+   },
+   "plugin": null,
+   "via": "flash",
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "starling",
+   "name": "Starling Framework",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Starling draws with Flash's Stage3D, which Ruffle does not support yet, so there is no open runtime for it today.",
+   "aliases": [],
+   "family": "Flash",
+   "runtime": null,
+   "plugin": null,
+   "via": "flash",
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "flare3d",
+   "name": "Flare3D",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Flare3D draws with Flash's Stage3D, which Ruffle does not support yet, so there is no open runtime for it today.",
+   "aliases": [],
+   "family": "Flash",
+   "runtime": null,
+   "plugin": null,
+   "via": "flash",
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "scratch",
+   "name": "Scratch",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Scratch projects (.sb3) become web or desktop apps with the TurboWarp Packager. No Porting Toolkit plugin for it yet.",
+   "aliases": [],
+   "family": "",
+   "runtime": {
+    "name": "TurboWarp Packager",
+    "url": "https://packager.turbowarp.org",
+    "license": "MPL-2.0"
+   },
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*.sb3"
+    ],
+    [
+     0.7,
+     "name",
+     "*.sb2"
+    ]
+   ],
+   "samples": [
+    "project.sb3"
+   ]
+  },
+  {
+   "id": "tic80",
+   "name": "TIC-80",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "TIC-80 carts (.tic) run on the open source TIC-80 for every platform.",
+   "aliases": [],
+   "family": "",
+   "runtime": {
+    "name": "TIC-80",
+    "url": "https://github.com/nesbox/TIC-80",
+    "license": "MIT"
+   },
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*.tic"
+    ]
+   ],
+   "samples": [
+    "cart.tic"
+   ]
+  },
+  {
+   "id": "pyrogenesis",
+   "name": "Pyrogenesis (0 A.D.)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "0 A.D. is open source and released for every platform; mods are data for it.",
+   "aliases": [],
+   "family": "",
+   "runtime": {
+    "name": "0 A.D. / Pyrogenesis",
+    "url": "https://play0ad.com",
+    "license": "GPL-2.0-or-later"
+   },
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "pyrogenesis*"
+    ],
+    [
+     0.4,
+     "path",
+     "*/mods/public/*"
+    ],
+    [
+     0.5,
+     "name",
+     "*.pyromod"
+    ]
+   ],
+   "samples": [
+    "pyrogenesis.exe",
+    "data/mods/public/public.zip"
+   ]
+  },
+  {
+   "id": "openclonk",
+   "name": "OpenClonk",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "OpenClonk is open source for every platform; scenarios are data for it.",
+   "aliases": [],
+   "family": "",
+   "runtime": {
+    "name": "OpenClonk",
+    "url": "https://www.openclonk.org",
+    "license": "ISC"
+   },
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.5,
+     "name",
+     "openclonk*"
+    ],
+    [
+     0.4,
+     "name",
+     "*.ocd"
+    ],
+    [
+     0.4,
+     "name",
+     "*.ocs"
+    ],
+    [
+     0.3,
+     "name",
+     "*.ocg"
+    ]
+   ],
+   "samples": [
+    "openclonk.exe",
+    "Objects.ocd"
+   ]
+  },
+  {
+   "id": "qfusion",
+   "name": "Qfusion (Warsow)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Qfusion and Warsow are open source; the basewsw/ data runs on them.",
+   "aliases": [],
+   "family": "",
+   "runtime": {
+    "name": "Qfusion / Warsow",
+    "url": "https://github.com/Qfusion/qfusion",
+    "license": "GPL-2.0-or-later"
+   },
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "path",
+     "*/basewsw/*"
+    ],
+    [
+     0.4,
+     "name",
+     "warsow*"
+    ],
+    [
+     0.6,
+     "name",
+     "qfusion*"
+    ]
+   ],
+   "samples": [
+    "basewsw/data0.pk3",
+    "warsow.exe"
+   ]
+  },
+  {
+   "id": "cube",
+   "name": "Cube Engine",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Cube is open source; the packages/ folder runs with Cube built for the target.",
+   "aliases": [],
+   "family": "",
+   "runtime": {
+    "name": "Cube",
+    "url": "http://cubeengine.com",
+    "license": "zlib"
+   },
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "path",
+     "*/packages/base/*.cgz"
+    ]
+   ],
+   "samples": [
+    "packages/base/metl3.cgz"
+   ]
+  },
+  {
+   "id": "cube2",
+   "name": "Cube 2 Engine (Sauerbraten)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Cube 2: Sauerbraten is open source and released for every platform; the packages/ folder is data for it.",
+   "aliases": [],
+   "family": "",
+   "runtime": {
+    "name": "Cube 2: Sauerbraten",
+    "url": "http://sauerbraten.org",
+    "license": "zlib"
+   },
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "path",
+     "*/packages/base/*.ogz"
+    ],
+    [
+     0.3,
+     "name",
+     "sauerbraten*"
+    ]
+   ],
+   "samples": [
+    "packages/base/complex.ogz",
+    "sauerbraten.exe"
+   ]
+  },
+  {
+   "id": "stepmania",
+   "name": "StepMania",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Songs (.sm, .ssc) play in ITGmania or StepMania on every platform.",
+   "aliases": [],
+   "family": "",
+   "runtime": {
+    "name": "ITGmania / StepMania",
+    "url": "https://github.com/itgmania/itgmania",
+    "license": "MIT"
+   },
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.4,
+     "name",
+     "*.sm"
+    ],
+    [
+     0.5,
+     "name",
+     "*.ssc"
+    ],
+    [
+     0.5,
+     "name",
+     "stepmania*"
+    ],
+    [
+     0.5,
+     "name",
+     "itgmania*"
+    ]
+   ],
+   "samples": [
+    "Songs/Pack/Song/song.ssc",
+    "StepMania.exe"
+   ]
+  },
+  {
+   "id": "visualpinball",
+   "name": "Visual Pinball",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Visual Pinball X is open source, with standalone builds for macOS and Linux; tables (.vpx) are data for it.",
+   "aliases": [],
+   "family": "",
+   "runtime": {
+    "name": "Visual Pinball X",
+    "url": "https://github.com/vpinball/vpinball",
+    "license": "GPL-3.0-or-later"
+   },
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*.vpx"
+    ],
+    [
+     0.6,
+     "name",
+     "*.vpt"
+    ]
+   ],
+   "samples": [
+    "table.vpx"
+   ]
+  },
+  {
+   "id": "serious",
+   "name": "Serious Engine",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Serious Engine 1 (The First and Second Encounter) is open source; its .gro data runs on SeriousSamClassic. Later Serious Engine versions need the source.",
+   "aliases": [],
+   "family": "",
+   "runtime": {
+    "name": "Serious Sam Classic (Serious Engine 1)",
+    "url": "https://github.com/tx00100xt/SeriousSamClassic",
+    "license": "GPL-2.0-only"
+   },
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "*.gro"
+    ],
+    [
+     0.2,
+     "name",
+     "*.wld"
+    ]
+   ],
+   "samples": [
+    "SE1_00.gro",
+    "Levels/a.wld"
+   ]
+  },
+  {
+   "id": "hpl",
+   "name": "HPL Engine (Frictional Games)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Penumbra and Amnesia already ship for macOS and Linux, and their HPL engines are open source (GPL). No Porting Toolkit plugin for it yet.",
+   "aliases": [],
+   "family": "",
+   "runtime": {
+    "name": "HPL engines (GPL source releases)",
+    "url": "https://github.com/FrictionalGames",
+    "license": "GPL-3.0"
+   },
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.5,
+     "name",
+     "*.hps"
+    ],
+    [
+     0.2,
+     "name",
+     "*.ent"
+    ]
+   ],
+   "samples": [
+    "maps/level.hps",
+    "entities/door.ent"
+   ]
+  },
+  {
+   "id": "goldbox",
+   "name": "Gold Box (SSI)",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Gold Box games are DOS programs (.DAX data): they run in DOSBox. No Porting Toolkit plugin for it yet.",
+   "aliases": [],
+   "family": "",
+   "runtime": {
+    "name": "DOSBox Staging",
+    "url": "https://www.dosbox-staging.org",
+    "license": "GPL-2.0-or-later"
+   },
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "*.dax"
+    ]
+   ],
+   "samples": [
+    "GEO1.DAX",
+    "ECL1.DAX"
+   ]
+  },
+  {
+   "id": "defold",
+   "name": "Defold",
+   "kind": "engine",
+   "status": "runtime",
+   "how": "Defold's game archive (game.arcd, game.projectc) is platform independent; the open Defold engine of the same version runs it. No Porting Toolkit plugin for it yet.",
+   "aliases": [],
+   "family": "",
+   "runtime": {
+    "name": "Defold engine",
+    "url": "https://github.com/defold/defold",
+    "license": "Defold License"
+   },
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "game.projectc"
+    ],
+    [
+     0.6,
+     "name",
+     "game.arcd"
+    ],
+    [
+     0.3,
+     "name",
+     "game.arci"
+    ],
+    [
+     0.3,
+     "name",
+     "game.dmanifest"
+    ]
+   ],
+   "samples": [
+    "game.projectc",
+    "game.arcd"
+   ]
+  },
+  {
+   "id": "ardor3d",
+   "name": "Ardor3D",
+   "kind": "engine",
+   "status": "partial",
+   "how": "Java: the game's .jar files run on any platform with a Java runtime, as long as the build ships the native libraries (LWJGL, JOGL...) for the target.",
+   "aliases": [],
+   "family": "Java",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.8,
+     "name",
+     "ardor3d-core*.jar"
+    ]
+   ],
+   "samples": [
+    "lib/ardor3d-core-1.0.jar"
+   ]
+  },
+  {
+   "id": "java3d",
+   "name": "Java 3D",
+   "kind": "engine",
+   "status": "partial",
+   "how": "Java: the game's .jar files run on any platform with a Java runtime, as long as the build ships the native libraries (LWJGL, JOGL...) for the target.",
+   "aliases": [],
+   "family": "Java",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.8,
+     "name",
+     "j3dcore*.jar"
+    ]
+   ],
+   "samples": [
+    "lib/j3dcore.jar"
+   ]
+  },
+  {
+   "id": "jmonkeyengine",
+   "name": "jMonkeyEngine",
+   "kind": "engine",
+   "status": "partial",
+   "how": "Java: the game's .jar files run on any platform with a Java runtime, as long as the build ships the native libraries (LWJGL, JOGL...) for the target.",
+   "aliases": [],
+   "family": "Java",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.8,
+     "name",
+     "jme3-core*.jar"
+    ],
+    [
+     0.2,
+     "name",
+     "jme3*.jar"
+    ]
+   ],
+   "samples": [
+    "lib/jme3-core-3.6.1.jar"
+   ]
+  },
+  {
+   "id": "libgdx",
+   "name": "libGDX",
+   "kind": "engine",
+   "status": "partial",
+   "how": "Java: the game's .jar files run on any platform with a Java runtime, as long as the build ships the native libraries (LWJGL, JOGL...) for the target.",
+   "aliases": [],
+   "family": "Java",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "gdx*.jar"
+    ],
+    [
+     0.6,
+     "name",
+     "gdx64.dll"
+    ],
+    [
+     0.6,
+     "name",
+     "libgdx64.so"
+    ],
+    [
+     0.6,
+     "name",
+     "libgdx64.dylib"
+    ]
+   ],
+   "samples": [
+    "gdx64.dll",
+    "desktop.jar"
+   ]
+  },
+  {
+   "id": "playn",
+   "name": "PlayN",
+   "kind": "engine",
+   "status": "partial",
+   "how": "Java: the game's .jar files run on any platform with a Java runtime, as long as the build ships the native libraries (LWJGL, JOGL...) for the target.",
+   "aliases": [],
+   "family": "Java",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.8,
+     "name",
+     "playn-core*.jar"
+    ]
+   ],
+   "samples": [
+    "lib/playn-core.jar"
+   ]
+  },
+  {
+   "id": "kivy",
+   "name": "Kivy",
+   "kind": "engine",
+   "status": "partial",
+   "how": "Kivy apps are Python: the app's own scripts run with Kivy for the target, if the build keeps them readable.",
+   "aliases": [],
+   "family": "Python",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.5,
+     "dir",
+     "kivy_install"
+    ],
+    [
+     0.4,
+     "dir",
+     "kivy"
+    ]
+   ],
+   "samples": [
+    "kivy_install/data/style.kv"
+   ]
+  },
+  {
+   "id": "pygame",
+   "name": "Pygame",
+   "kind": "engine",
+   "status": "partial",
+   "how": "Pygame games are Python: the scripts run with Python and pygame on any platform, if the build keeps them readable.",
+   "aliases": [],
+   "family": "Python",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.5,
+     "dir",
+     "pygame"
+    ]
+   ],
+   "samples": [
+    "lib/pygame/__init__.pyc"
+   ]
+  },
+  {
+   "id": "panda3d",
+   "name": "Panda3D",
+   "kind": "engine",
+   "status": "partial",
+   "how": "Panda3D games are usually Python with .bam/.egg models; they run with Panda3D for the target if the scripts are readable.",
+   "aliases": [],
+   "family": "Python",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "libpanda*"
+    ],
+    [
+     0.3,
+     "name",
+     "*.bam"
+    ],
+    [
+     0.3,
+     "name",
+     "*.egg"
+    ]
+   ],
+   "samples": [
+    "libpanda.dll",
+    "models/a.bam"
+   ]
+  },
+  {
+   "id": "pico8",
+   "name": "PICO-8",
+   "kind": "engine",
+   "status": "partial",
+   "how": "PICO-8 carts (.p8, .p8.png) run in PICO-8 itself (a paid app for every platform) or as its web export.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*.p8"
+    ],
+    [
+     0.7,
+     "name",
+     "*.p8.png"
+    ],
+    [
+     0.5,
+     "name",
+     "pico8.dat"
+    ]
+   ],
+   "samples": [
+    "game.p8.png"
+   ]
+  },
+  {
+   "id": "solar2d",
+   "name": "Solar2D (Corona)",
+   "kind": "engine",
+   "status": "partial",
+   "how": "Solar2D compiles Lua into resource.car; the open source Solar2D can build the project again for another platform from the source project.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "resource.car"
+    ]
+   ],
+   "samples": [
+    "resource.car"
+   ]
+  },
+  {
+   "id": "appgamekit",
+   "name": "AppGameKit",
+   "kind": "engine",
+   "status": "partial",
+   "how": "Tier 1 games are bytecode (media/bytecode.byc) for AppGameKit's player, which comes with an AppGameKit licence.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.8,
+     "name",
+     "bytecode.byc"
+    ]
+   ],
+   "samples": [
+    "media/bytecode.byc"
+   ]
+  },
+  {
+   "id": "gameeditor",
+   "name": "Game Editor",
+   "kind": "engine",
+   "status": "partial",
+   "how": "Game Editor is open source; a project (.ged) can be exported again for another platform with Game Editor itself.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*.ged"
+    ]
+   ],
+   "samples": [
+    "game.ged"
+   ]
+  },
+  {
+   "id": "cocos2d",
+   "name": "Cocos2d / Cocos2d-x / Cocos2d-html5",
+   "kind": "engine",
+   "status": "partial",
+   "how": "HTML5 builds are handled by the HTML5 plugins. Native builds are C++ (or C++ with Lua/JS) and need the source.",
+   "aliases": [
+    "Cocos2d-x"
+   ],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "libcocos2d*"
+    ],
+    [
+     0.6,
+     "name",
+     "cocos2d*.dll"
+    ]
+   ],
+   "samples": [
+    "libcocos2d.dll"
+   ]
+  },
+  {
+   "id": "4a",
+   "name": "4A Engine",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "*.vfx"
+    ],
+    [
+     0.4,
+     "name",
+     "*.vfs0"
+    ]
+   ],
+   "samples": [
+    "content.vfx",
+    "content.vfs0"
+   ]
+  },
+  {
+   "id": "lumberyard",
+   "name": "Amazon Lumberyard",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.5,
+     "dir",
+     "bin64vc1*"
+    ],
+    [
+     0.3,
+     "name",
+     "bootstrap.cfg"
+    ]
+   ],
+   "samples": [
+    "Bin64vc141/Game.exe",
+    "bootstrap.cfg"
+   ]
+  },
+  {
+   "id": "anvil",
+   "name": "Anvil (Scimitar, AnvilNext)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*.forge"
+    ]
+   ],
+   "samples": [
+    "DataPC.forge"
+   ]
+  },
+  {
+   "id": "chrome",
+   "name": "Chrome Engine",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "engine_x64_rwdi.dll"
+    ],
+    [
+     0.5,
+     "name",
+     "*.rpack"
+    ]
+   ],
+   "samples": [
+    "engine_x64_rwdi.dll"
+   ]
+  },
+  {
+   "id": "clanlib",
+   "name": "ClanLib",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "*clan*core*"
+    ]
+   ],
+   "samples": [
+    "clanCore.dll"
+   ]
+  },
+  {
+   "id": "clausewitz",
+   "name": "Clausewitz (Paradox)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code. Most Paradox games are already sold for macOS and Linux.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.3,
+     "dir",
+     "localisation"
+    ],
+    [
+     0.1,
+     "dir",
+     "common"
+    ],
+    [
+     0.1,
+     "dir",
+     "events"
+    ],
+    [
+     0.2,
+     "name",
+     "launcher-settings.json"
+    ]
+   ],
+   "samples": [
+    "localisation/a.yml",
+    "common/a.txt",
+    "events/a.txt",
+    "launcher-settings.json"
+   ]
+  },
+  {
+   "id": "clickteam",
+   "name": "Clickteam Fusion",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Fusion games run on Clickteam's own runtimes; there is no open runtime, so a port needs the .mfa project.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "*.ccn"
+    ],
+    [
+     0.4,
+     "name",
+     "*.mfx"
+    ]
+   ],
+   "samples": [
+    "game.ccn"
+   ]
+  },
+  {
+   "id": "cobra",
+   "name": "Cobra Engine (Frontier)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "*.ovl"
+    ],
+    [
+     0.3,
+     "name",
+     "*.ovs"
+    ]
+   ],
+   "samples": [
+    "main.ovl"
+   ]
+  },
+  {
+   "id": "codea",
+   "name": "Codea",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Codea projects run only inside the Codea app on iPad.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "dir",
+     "*.codea"
+    ]
+   ],
+   "samples": [
+    "Game.codea/Main.lua"
+   ]
+  },
+  {
+   "id": "creation",
+   "name": "Creation Engine",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "head",
+     "*.ba2",
+     "BTDX"
+    ],
+    [
+     0.6,
+     "name",
+     "skyrim.esm"
+    ],
+    [
+     0.6,
+     "name",
+     "fallout4.esm"
+    ],
+    [
+     0.6,
+     "name",
+     "starfield.esm"
+    ]
+   ],
+   "samples": [
+    "Data/Skyrim.esm",
+    "Data/Skyrim - Textures0.bsa"
+   ]
+  },
+  {
+   "id": "gamebryo",
+   "name": "Gamebryo",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.3,
+     "name",
+     "*.bsa"
+    ],
+    [
+     0.3,
+     "name",
+     "*.esm"
+    ],
+    [
+     0.3,
+     "name",
+     "*.nif"
+    ],
+    [
+     -0.6,
+     "name",
+     "morrowind.esm"
+    ],
+    [
+     -0.6,
+     "name",
+     "skyrim.esm"
+    ],
+    [
+     -0.6,
+     "name",
+     "fallout4.esm"
+    ],
+    [
+     -0.6,
+     "name",
+     "starfield.esm"
+    ],
+    [
+     -0.5,
+     "dir",
+     "arena2"
+    ]
+   ],
+   "samples": [
+    "Data/Oblivion.esm",
+    "Data/Oblivion - Meshes.bsa"
+   ]
+  },
+  {
+   "id": "cryengine",
+   "name": "CryEngine",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "crysystem.dll"
+    ],
+    [
+     0.5,
+     "name",
+     "cryrenderd3d11.dll"
+    ],
+    [
+     -0.6,
+     "dir",
+     "bin64vc1*"
+    ]
+   ],
+   "samples": [
+    "Bin64/CrySystem.dll"
+   ]
+  },
+  {
+   "id": "o3de",
+   "name": "O3DE (Open 3D Engine)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "O3DE is open source, but the game's code is compiled C++: a port needs the project, built for the target.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "*.gamelauncher*"
+    ],
+    [
+     0.3,
+     "name",
+     "atom_rpi*"
+    ]
+   ],
+   "samples": [
+    "bin/Game.GameLauncher.exe"
+   ]
+  },
+  {
+   "id": "crystaltools",
+   "name": "Crystal Tools",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "white_*.win32.bin"
+    ],
+    [
+     0.5,
+     "name",
+     "filelist*.win32.bin"
+    ]
+   ],
+   "samples": [
+    "white_imgc.win32.bin"
+   ]
+  },
+  {
+   "id": "crystalspace",
+   "name": "Crystal Space",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "*crystalspace*"
+    ],
+    [
+     0.5,
+     "name",
+     "vfs.cfg"
+    ]
+   ],
+   "samples": [
+    "libcrystalspace.dll",
+    "vfs.cfg"
+   ]
+  },
+  {
+   "id": "dagor",
+   "name": "Dagor Engine",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*.vromfs.bin"
+    ]
+   ],
+   "samples": [
+    "grp_hdr.vromfs.bin"
+   ]
+  },
+  {
+   "id": "dark",
+   "name": "Dark Engine (Thief, System Shock 2)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [
+    "Dark Engine"
+   ],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.5,
+     "name",
+     "*.crf"
+    ],
+    [
+     0.4,
+     "name",
+     "dark.cfg"
+    ],
+    [
+     0.3,
+     "name",
+     "darkinst.cfg"
+    ]
+   ],
+   "samples": [
+    "fam.crf",
+    "dark.cfg"
+   ]
+  },
+  {
+   "id": "decima",
+   "name": "Decima",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "dir",
+     "packed_dx12"
+    ]
+   ],
+   "samples": [
+    "Packed_DX12/Initial.bin"
+   ]
+  },
+  {
+   "id": "delta3d",
+   "name": "Delta3D",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "dtcore*"
+    ]
+   ],
+   "samples": [
+    "dtCore.dll"
+   ]
+  },
+  {
+   "id": "divinity",
+   "name": "Divinity Engine (Larian)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.8,
+     "head",
+     "*.pak",
+     "LSPK"
+    ]
+   ],
+   "samples": [
+    "Data/Game.pak=LSPK"
+   ]
+  },
+  {
+   "id": "dxstudio",
+   "name": "DX Studio",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*.dxstudio"
+    ]
+   ],
+   "samples": [
+    "game.dxstudio"
+   ]
+  },
+  {
+   "id": "dunia",
+   "name": "Dunia Engine",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.5,
+     "name",
+     "common.fat"
+    ],
+    [
+     0.3,
+     "name",
+     "*.fat"
+    ]
+   ],
+   "samples": [
+    "common.fat",
+    "patch.fat"
+   ]
+  },
+  {
+   "id": "ego",
+   "name": "EGO (Codemasters)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "*.erp"
+    ]
+   ],
+   "samples": [
+    "game.erp"
+   ]
+  },
+  {
+   "id": "nwn2",
+   "name": "Electron (Obsidian, Neverwinter Nights 2)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [
+    "Electron Toolset"
+   ],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "nwn2main*"
+    ]
+   ],
+   "samples": [
+    "nwn2main.exe"
+   ]
+  },
+  {
+   "id": "aurora",
+   "name": "Aurora (BioWare, Neverwinter Nights)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Neverwinter Nights: Enhanced Edition is already sold for macOS and Linux; xoreos, an open reimplementation, is not playable yet.",
+   "aliases": [
+    "Aurora Toolset"
+   ],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.2,
+     "head",
+     "chitin.key",
+     "KEY V1  "
+    ],
+    [
+     0.6,
+     "name",
+     "nwmain*"
+    ],
+    [
+     0.4,
+     "name",
+     "*.hak"
+    ]
+   ],
+   "samples": [
+    "chitin.key=KEY V1  ",
+    "nwmain.exe",
+    "hak/cep.hak"
+   ]
+  },
+  {
+   "id": "odyssey",
+   "name": "Odyssey Engine (BioWare)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code. Knights of the Old Republic is sold for macOS; xoreos is not playable yet.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "swkotor*"
+    ],
+    [
+     0.4,
+     "name",
+     "*.rim"
+    ],
+    [
+     0.2,
+     "head",
+     "chitin.key",
+     "KEY V1  "
+    ]
+   ],
+   "samples": [
+    "swkotor.exe",
+    "modules/danm13.rim"
+   ]
+  },
+  {
+   "id": "enforce",
+   "name": "Enforce (Bohemia Interactive)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.5,
+     "name",
+     "*.pbo"
+    ],
+    [
+     0.5,
+     "name",
+     "*.ebo"
+    ],
+    [
+     0.4,
+     "name",
+     "dayz*"
+    ]
+   ],
+   "samples": [
+    "DayZ_x64.exe",
+    "Addons/ai.pbo"
+   ]
+  },
+  {
+   "id": "essence",
+   "name": "Essence Engine (Relic)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*.sga"
+    ]
+   ],
+   "samples": [
+    "Data.sga"
+   ]
+  },
+  {
+   "id": "forgelight",
+   "name": "ForgeLight",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "*.pack2"
+    ],
+    [
+     0.2,
+     "name",
+     "*.pack"
+    ]
+   ],
+   "samples": [
+    "assets_x64_0.pack2"
+   ]
+  },
+  {
+   "id": "fox",
+   "name": "Fox Engine",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.5,
+     "name",
+     "*.fpk"
+    ],
+    [
+     0.5,
+     "name",
+     "*.fpkd"
+    ],
+    [
+     0.4,
+     "name",
+     "*.qar"
+    ]
+   ],
+   "samples": [
+    "chunk0.fpk",
+    "chunk0.fpkd"
+   ]
+  },
+  {
+   "id": "frostbite",
+   "name": "Frostbite",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.3,
+     "name",
+     "*.toc"
+    ],
+    [
+     0.3,
+     "name",
+     "*.sb"
+    ],
+    [
+     0.5,
+     "name",
+     "cas.cat"
+    ],
+    [
+     0.4,
+     "name",
+     "layout.toc"
+    ],
+    [
+     0.3,
+     "name",
+     "*.cas"
+    ]
+   ],
+   "samples": [
+    "Data/layout.toc",
+    "Data/cas.cat"
+   ]
+  },
+  {
+   "id": "futurepinball",
+   "name": "Future Pinball",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Future Pinball is a closed Windows program; tables (.fpt) need it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*.fpt"
+    ],
+    [
+     0.4,
+     "name",
+     "future pinball.exe"
+    ]
+   ],
+   "samples": [
+    "table.fpt"
+   ]
+  },
+  {
+   "id": "gamestudio",
+   "name": "Gamestudio (Acknex)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.8,
+     "name",
+     "acknex.dll"
+    ],
+    [
+     0.4,
+     "name",
+     "*.wrs"
+    ],
+    [
+     0.3,
+     "name",
+     "*.wmb"
+    ]
+   ],
+   "samples": [
+    "acknex.dll"
+   ]
+  },
+  {
+   "id": "genie",
+   "name": "Genie Engine (Age of Empires)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code; openage, an open reimplementation, is not playable yet.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "*.drs"
+    ],
+    [
+     0.3,
+     "name",
+     "empires*.exe"
+    ]
+   ],
+   "samples": [
+    "data/graphics.drs",
+    "EMPIRES.EXE"
+   ]
+  },
+  {
+   "id": "horde3d",
+   "name": "Horde3D",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*horde3d*"
+    ]
+   ],
+   "samples": [
+    "Horde3D.dll"
+   ]
+  },
+  {
+   "id": "irrlicht",
+   "name": "Irrlicht",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*irrlicht*"
+    ]
+   ],
+   "samples": [
+    "Irrlicht.dll"
+   ]
+  },
+  {
+   "id": "iw",
+   "name": "IW Engine (Infinity Ward)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.5,
+     "name",
+     "*.ff"
+    ],
+    [
+     0.5,
+     "name",
+     "*.iwd"
+    ]
+   ],
+   "samples": [
+    "zone/english/code_post_gfx.ff",
+    "main/iw_00.iwd"
+   ]
+  },
+  {
+   "id": "jade",
+   "name": "Jade (Ubisoft)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "head",
+     "*.bf",
+     "BIG"
+    ]
+   ],
+   "samples": [
+    "sally_clean.bf=BIG\u0000"
+   ]
+  },
+  {
+   "id": "lithtech",
+   "name": "LithTech",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "*.rez"
+    ],
+    [
+     0.6,
+     "name",
+     "lithtech*"
+    ]
+   ],
+   "samples": [
+    "game.rez",
+    "lithtech.exe"
+   ]
+  },
+  {
+   "id": "luminous",
+   "name": "Luminous Engine",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*.earc"
+    ]
+   ],
+   "samples": [
+    "data.earc"
+   ]
+  },
+  {
+   "id": "marmalade",
+   "name": "Marmalade",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*.s3e"
+    ]
+   ],
+   "samples": [
+    "game.s3e"
+   ]
+  },
+  {
+   "id": "mtframework",
+   "name": "MT Framework (Capcom)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "head",
+     "*.arc",
+     "ARC\u0000"
+    ]
+   ],
+   "samples": [
+    "nativePC/arc/s101.arc=ARC\u0000"
+   ]
+  },
+  {
+   "id": "northlight",
+   "name": "Northlight (Remedy)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*.rmdp"
+    ]
+   ],
+   "samples": [
+    "ep100-000-generic.rmdp"
+   ]
+  },
+  {
+   "id": "ogre",
+   "name": "OGRE",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*ogremain*"
+    ],
+    [
+     0.2,
+     "name",
+     "plugins.cfg"
+    ],
+    [
+     0.2,
+     "name",
+     "resources.cfg"
+    ]
+   ],
+   "samples": [
+    "OgreMain.dll",
+    "plugins.cfg"
+   ]
+  },
+  {
+   "id": "orx",
+   "name": "ORX",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "orx.dll"
+    ],
+    [
+     0.6,
+     "name",
+     "liborx*"
+    ]
+   ],
+   "samples": [
+    "orx.dll"
+   ]
+  },
+  {
+   "id": "phyre",
+   "name": "PhyreEngine",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*.phyre"
+    ]
+   ],
+   "samples": [
+    "level.phyre"
+   ]
+  },
+  {
+   "id": "redengine",
+   "name": "REDengine (CD Projekt Red)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "head",
+     "*.archive",
+     "RDAR"
+    ],
+    [
+     0.5,
+     "path",
+     "*/content/content0/*"
+    ],
+    [
+     0.2,
+     "name",
+     "*.bundle"
+    ]
+   ],
+   "samples": [
+    "archive/pc/content/basegame_1_engine.archive=RDAR"
+   ]
+  },
+  {
+   "id": "renderware",
+   "name": "RenderWare",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.4,
+     "name",
+     "*.txd"
+    ],
+    [
+     0.4,
+     "name",
+     "*.dff"
+    ]
+   ],
+   "samples": [
+    "models/a.txd",
+    "models/a.dff"
+   ]
+  },
+  {
+   "id": "sbox",
+   "name": "S&box",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "sbox*"
+    ]
+   ],
+   "samples": [
+    "sbox.exe"
+   ]
+  },
+  {
+   "id": "source2",
+   "name": "Source 2",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "gameinfo.gi"
+    ],
+    [
+     0.2,
+     "name",
+     "*_dir.vpk"
+    ]
+   ],
+   "samples": [
+    "game/citadel/gameinfo.gi",
+    "game/citadel/pak01_dir.vpk"
+   ]
+  },
+  {
+   "id": "sage",
+   "name": "SAGE (EA)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code. EA published the source of Command & Conquer: Generals in 2025 (GPL); community ports build on it, but Porting Toolkit has no plugin.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "head",
+     "*.big",
+     "BIGF"
+    ],
+    [
+     0.1,
+     "name",
+     "*.big"
+    ]
+   ],
+   "samples": [
+    "INI.big=BIGF"
+   ]
+  },
+  {
+   "id": "snowdrop",
+   "name": "Snowdrop",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*.sdftoc"
+    ]
+   ],
+   "samples": [
+    "sdf.sdftoc"
+   ]
+  },
+  {
+   "id": "stingray",
+   "name": "Autodesk Stingray (Bitsquid)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [
+    "Bitsquid",
+    "Stingray"
+   ],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.5,
+     "path",
+     "*/bundle/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]"
+    ],
+    [
+     0.4,
+     "path",
+     "*/data/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]"
+    ]
+   ],
+   "samples": [
+    "bundle/0a1b2c3d4e5f6a7b",
+    "bundle/1a2b3c4d5e6f7a8b"
+   ]
+  },
+  {
+   "id": "stride",
+   "name": "Stride (Xenko)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Stride builds target Windows; its runtime for other platforms needs the project.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "stride.engine.dll"
+    ],
+    [
+     0.7,
+     "name",
+     "xenko.engine.dll"
+    ]
+   ],
+   "samples": [
+    "Stride.Engine.dll"
+   ]
+  },
+  {
+   "id": "telltale",
+   "name": "Telltale Tool",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [
+    "Telltale Engine and Toolset"
+   ],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*.ttarch2"
+    ],
+    [
+     0.7,
+     "name",
+     "*.ttarch"
+    ]
+   ],
+   "samples": [
+    "Pack/a.ttarch2"
+   ]
+  },
+  {
+   "id": "toshi",
+   "name": "TOSHI (Blue Tongue)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "*.trb"
+    ]
+   ],
+   "samples": [
+    "data/a.trb"
+   ]
+  },
+  {
+   "id": "torque",
+   "name": "Torque3D",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Torque3D is open source, but each game ships its own engine build: a port needs the game's engine source.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "*.cs.dso"
+    ],
+    [
+     0.6,
+     "name",
+     "*.tscript.dso"
+    ],
+    [
+     0.2,
+     "name",
+     "main.cs"
+    ]
+   ],
+   "samples": [
+    "scripts/main.cs.dso"
+   ]
+  },
+  {
+   "id": "ubiart",
+   "name": "UbiArt Framework",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "*.ipk"
+    ]
+   ],
+   "samples": [
+    "bundle_pc.ipk"
+   ]
+  },
+  {
+   "id": "unigine",
+   "name": "Unigine",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "unigine*"
+    ],
+    [
+     0.5,
+     "name",
+     "*.ung"
+    ]
+   ],
+   "samples": [
+    "Unigine_x64.dll"
+   ]
+  },
+  {
+   "id": "vvalchemy",
+   "name": "Vicarious Visions Alchemy",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "*.igb"
+    ]
+   ],
+   "samples": [
+    "actors/a.igb"
+   ]
+  },
+  {
+   "id": "virtools",
+   "name": "Virtools",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "*.cmo"
+    ],
+    [
+     0.5,
+     "name",
+     "*.nmo"
+    ],
+    [
+     0.5,
+     "name",
+     "ck2*.dll"
+    ]
+   ],
+   "samples": [
+    "game.cmo",
+    "CK2.dll"
+   ]
+  },
+  {
+   "id": "vision",
+   "name": "Vision (Havok)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.5,
+     "name",
+     "*.vmesh"
+    ],
+    [
+     0.4,
+     "name",
+     "*.vscene"
+    ]
+   ],
+   "samples": [
+    "a.vmesh",
+    "a.vscene"
+   ]
+  },
+  {
+   "id": "vrage",
+   "name": "VRAGE (Keen Software)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "vrage*.dll"
+    ],
+    [
+     0.2,
+     "name",
+     "*.sbc"
+    ]
+   ],
+   "samples": [
+    "VRage.dll"
+   ]
+  },
+  {
+   "id": "zillions",
+   "name": "Zillions of Games",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Zillions is a closed Windows program; rule files (.zrf) need it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.7,
+     "name",
+     "*.zrf"
+    ]
+   ],
+   "samples": [
+    "chess.zrf"
+   ]
+  },
+  {
+   "id": "zero",
+   "name": "Zero (Pandemic Studios)",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.5,
+     "name",
+     "*.lvl"
+    ],
+    [
+     0.3,
+     "name",
+     "battlefront*"
+    ]
+   ],
+   "samples": [
+    "data/_lvl_pc/core.lvl",
+    "BattlefrontII.exe"
+   ]
+  },
+  {
+   "id": "idtech5",
+   "name": "id Tech 5",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "*.pages"
+    ],
+    [
+     0.2,
+     "name",
+     "*.resources"
+    ]
+   ],
+   "samples": [
+    "base/megatextures/a.pages",
+    "base/a.resources"
+   ]
+  },
+  {
+   "id": "idtech7",
+   "name": "id Tech 7",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Native engine code: a port needs the game's source code. Without it, only a compatibility layer (running the Windows build through Wine/CrossOver on macOS) can run it elsewhere.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [
+    [
+     0.6,
+     "name",
+     "*.streamdb"
+    ],
+    [
+     0.2,
+     "name",
+     "*.resources"
+    ]
+   ],
+   "samples": [
+    "base/a.streamdb",
+    "base/a.resources"
+   ]
+  },
+  {
+   "id": "vengeance",
+   "name": "Vengeance Engine",
+   "kind": "engine",
+   "status": "closed",
+   "how": "A modified Unreal Engine 2 (Tribes: Vengeance, BioShock): native code, detected as Unreal Engine.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": "unreal",
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "kinetica",
+   "name": "Kinetica",
+   "kind": "engine",
+   "status": "closed",
+   "how": "A PlayStation 2 engine: no PC builds to port.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "roblox",
+   "name": "Roblox",
+   "kind": "engine",
+   "status": "closed",
+   "how": "Roblox games live on Roblox's servers and run only in the Roblox app; there is no game build to port.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "imuse",
+   "name": "iMUSE",
+   "kind": "engine",
+   "status": "not_engine",
+   "how": "iMUSE is LucasArts' interactive music system inside SCUMM games; ScummVM plays it as part of those games.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "worldbuilder",
+   "name": "World Builder",
+   "kind": "engine",
+   "status": "not_engine",
+   "how": "A map/adventure editor, not a runtime: the games it makes are handled by their engine.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "opensimulator",
+   "name": "OpenSimulator",
+   "kind": "engine",
+   "status": "not_engine",
+   "how": "A virtual world server: worlds are hosted and joined with a viewer, not ported.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "heroengine",
+   "name": "HeroEngine",
+   "kind": "engine",
+   "status": "not_engine",
+   "how": "An online engine: games run on their publisher's servers.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "worldforge",
+   "name": "WorldForge",
+   "kind": "engine",
+   "status": "not_engine",
+   "how": "An open source online world framework: worlds run on servers, joined with its client.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "dimensionex",
+   "name": "DimensioneX Multiplayer Engine",
+   "kind": "engine",
+   "status": "not_engine",
+   "how": "A server-side engine: games run on a web server and are played in a browser.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "buildbox",
+   "name": "Buildbox",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "c4",
+   "name": "C4 Engine",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "craftstudio",
+   "name": "CraftStudio",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "coretech",
+   "name": "Coretech",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "dim3",
+   "name": "Dim3",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "enigma",
+   "name": "Enigma Engine",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "gamesalad",
+   "name": "GameSalad",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "idtech6",
+   "name": "id Tech 6",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "idtech8",
+   "name": "id Tech 8",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "ironengine",
+   "name": "Iron Engine",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "leadwerks",
+   "name": "Leadwerks",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "lyn",
+   "name": "LyN",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "messiah",
+   "name": "Messiah",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "moai",
+   "name": "Moai SDK",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "monkeyx",
+   "name": "Monkey X",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "pantarhei",
+   "name": "Panta Rhei",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "pieinthesky",
+   "name": "Pie in the Sky",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "pgmmv",
+   "name": "Pixel Game Maker MV",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "q",
+   "name": "Q",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "shark3d",
+   "name": "Shark 3D",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "silentstorm",
+   "name": "Silent Storm engine",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "treyarchngl",
+   "name": "Treyarch NGL",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "vplay",
+   "name": "V-Play Game Engine (Felgo)",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  },
+  {
+   "id": "visual3d",
+   "name": "Visual3D Game Engine",
+   "kind": "engine",
+   "status": "unresolved",
+   "how": "No public, reliable file signature was found for this engine's builds, so Porting Toolkit does not guess it.",
+   "aliases": [],
+   "family": "",
+   "runtime": null,
+   "plugin": null,
+   "via": null,
+   "rules": [],
+   "samples": []
+  }
+ ]
+}
